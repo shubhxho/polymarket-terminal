@@ -334,6 +334,7 @@ async function Chart({
 
   const series: ChartSeries[] = await Promise.all(
     charted.map(async (o) => ({
+      id: o.tokenId as string,
       label: o.label,
       points: await getPriceHistory(o.tokenId as string, range),
     })),

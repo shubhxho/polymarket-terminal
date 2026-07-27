@@ -4,6 +4,8 @@ import { useRef, useState } from "react";
 import type { PricePoint } from "@/lib/polymarket";
 
 export interface ChartSeries {
+  /** Stable unique identity for React keys (e.g. CLOB token id). */
+  id: string;
   label: string;
   points: PricePoint[];
 }
@@ -128,7 +130,7 @@ export function PriceChart({ series }: { series: ChartSeries[] }) {
           const change = displayP - firstP;
           return (
             <span
-              key={s.label}
+              key={s.id}
               className="flex items-center gap-1.5 text-[11px]"
             >
               <span
@@ -258,7 +260,7 @@ export function PriceChart({ series }: { series: ChartSeries[] }) {
             )
             .join("");
           return (
-            <g key={s.label} filter="url(#line-glow)">
+            <g key={s.id} filter="url(#line-glow)">
               <path
                 d={linePath}
                 fill="none"
