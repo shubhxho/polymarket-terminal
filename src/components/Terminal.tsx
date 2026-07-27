@@ -5,6 +5,7 @@ import type { Summary } from "@/app/api/summary/route";
 import { AlertEngine } from "@/components/AlertEngine";
 import { CommandBar } from "@/components/CommandBar";
 import { Sidebar } from "@/components/Sidebar";
+import { TabStrip } from "@/components/TabStrip";
 import { TerminalProvider, useTerminal } from "@/components/TerminalProvider";
 import { TickerTape } from "@/components/TickerTape";
 import { Toasts } from "@/components/Toasts";
@@ -57,6 +58,7 @@ function Shell() {
     <div className="flex h-full flex-col overflow-hidden bg-canvas">
       <TopBar summary={summary} theme={theme} onToggleTheme={toggleTheme} />
       <CommandBar />
+      <TabStrip />
 
       <div className="flex min-h-0 flex-1">
         <Sidebar />

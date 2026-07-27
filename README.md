@@ -35,9 +35,10 @@ and press Enter, or just type a market name to search.
 
 `DES` also accepts a pasted `polymarket.com/event/…` URL.
 
-**Keys:** `/` focuses the command line · `↑`/`↓` move the grid selection ·
-`Enter` opens the selected row · `W` pins it to the watchlist ·
-`Ctrl+↑`/`Ctrl+↓` recall commands · `Alt+←`/`Alt+→` go back and forward ·
+**Keys:** `⌘K` or `/` opens the palette · `↑`/`↓` move the grid selection ·
+`Enter` opens the selected row · `⌘Enter` opens it in a new tab · `W` pins to
+the watchlist · `⌘T`/`⌘W` new and close tab · `⌘1`–`⌘9` jump to a tab ·
+`⌥⌘←`/`⌥⌘→` cycle tabs · `⌥←`/`⌥→` go back and forward *within* a tab ·
 `F1`–`F10` jump straight to a function.
 
 Light and dark themes both ship; the toggle is in the top-right and the choice
@@ -46,72 +47,128 @@ persists.
 ## Design
 
 The interface follows [ami.dev](https://ami.dev): white ground, hairline
-borders, 4–6px radii, a grouped left rail for navigation, and a soft search
-pill instead of a command prompt. The whole palette lives in CSS custom
-properties behind a `data-theme` attribute, so light and dark are the same
-components with different values and no component knows which is active.
+borders, 4–6px radii, a grouped left rail, and a search pill rather than a
+prompt. The whole palette lives in CSS custom properties behind a `data-theme`
+attribute, so light and dark are the same components with different values.
 
-Three rules hold the density together:
+### Colour is computed, not chosen
 
-- **Inter for everything, including the numbers.** Its tabular figures hold a
-  price column steady, and a table of Inter digits reads far calmer than the
-  same table in monospace. `font-variant-numeric: tabular-nums` is global and
-  non-negotiable — a column of prices must not shimmer in width as digits tick.
-- **Monospace only for machine identifiers** — the command line, token ids,
-  condition hashes, wallet addresses. That is the one place a slashed zero
-  matters, and the one place ligatures would actively lie by fusing `->` or
-  `!=` into glyphs the underlying string doesn't contain.
-- **Green and red are reserved for direction.** Nothing decorative may use
-  them, so a tint in a table always means a price and never a theme. Fuchsia
-  carries every interactive accent instead.
+The chart palette was **validated with a script, not an eye**. The previous
+hand-picked series colours failed hard: worst adjacent pair ΔE 2.7 under
+deuteranopia (pink and teal were the same colour to ~5% of men), five of eight
+outside the lightness band, all eight under 3:1 contrast.
+
+The replacement is the reference categorical palette, re-ordered for this app.
+Orderings were enumerated under one constraint — **green and red must occupy
+the last two slots** — and scored by minimum adjacent CVD ΔE in both modes. The
+winner scores **13.3 (light) / 23.6 (dark)**, clearing the ≥12 target on both,
+where the unconstrained reference ordering only reaches 10.3 in dark.
+
+That constraint is the point: green and red mean *direction* everywhere else in
+this terminal, so a chart with a handful of legs must never paint a line in a
+hue that reads as "up" beside a table where it would mean exactly that.
+
+### Type
+
+Inter carries the whole interface, **including the numbers** — its tabular
+figures hold a price column steady and read far calmer than monospace.
+`font-variant-numeric: tabular-nums` is global and non-negotiable.
+
+Monospace is reserved for genuine machine identifiers: token ids, condition
+hashes, wallet addresses. That is the one place a slashed zero earns its keep,
+and the one place ligatures would actively lie by fusing `->` or `!=` into
+glyphs the underlying string does not contain.
 
 
 ## Signals
 
-`SIG` runs a scanner over the board every 20 seconds. The engine
-(`src/lib/signals.ts`) is pure — no I/O, no React — so it runs server-side for
-the scanner and client-side on `DES` over data that screen already has.
+`SIG` runs a scanner over the board every 20 seconds. The engine is split in
+two: `lib/quant.ts` holds the statistics (what is *true*), `lib/signals.ts`
+holds the detectors (what is *interesting*). Both are pure — no I/O, no React —
+so the scanner runs them server-side and the detail screen runs them in the
+browser over data it already fetched.
 
-Two rules shape it: a signal must be **actionable** (restating a column already
-on screen is not a signal), and **silence beats noise** (every detector returns
-nothing unless its preconditions hold, and thin markets are excluded before
-scoring rather than after).
+Three rules shape it:
+
+1. **A signal must be actionable.** "Price went up" is not a signal; "price
+   went up on volume in the 97th percentile of today's cross-section, with the
+   book still bid" is.
+2. **Unusual is measured against a population, not a constant.** Thresholds are
+   robust z-scores — median/MAD, not mean/σ, so one market doing 200× normal
+   volume can't inflate the scale and hide every other outlier behind it.
+3. **Silence beats noise.** Every detector returns nothing unless its
+   preconditions hold, and thin markets are excluded before scoring.
 
 | Signal | Fires when |
 | --- | --- |
-| `ARB` | A negative-risk basket is mispriced against the $1 it must settle at |
-| `SURGE` | 24h volume far exceeds *that market's own* weekly baseline |
-| `MOM` | 24h move still running, with the last hour agreeing |
-| `REV` | Last hour fighting the 24h move |
-| `WHALE` | Net direction of block prints ≥ $10k, as a share of 24h volume |
-| `BOOK` | Resting capital skewed ≥35% to one side, weighted by cost |
-| `TAIL` | Price at an extreme but still drawing real turnover |
+| `ARB` | A negative-risk basket is crossably mispriced against the $1 it settles at |
+| `DRIFT` | Basket mids have wandered further from 100¢ than the basket's own quoting noise |
+| `SURGE` | Turnover unusual against today's cross-section, not against a fixed multiple |
+| `MOM` | Drift **per unit of volatility**, confirmed by positive lag-1 autocorrelation |
+| `REV` | Stretched past its Bollinger band while increments mean-revert |
+| `BRK` | Stretched *and* still trending, with volatility expanding |
+| `COIL` | Volatility compressed below 55% of its earlier level, price still mid-range |
+| `WHALE` | Net direction of blocks ≥ $10k, scaled by turnover and one-sidedness |
+| `BOOK` | Resting capital skewed ≥35%, weighted by what each side actually risks |
+| `LEAN` | Micro-price sits >18% of the way across the spread — next-tick pressure |
+| `TAIL` | Extreme price still drawing real turnover |
 | `EXPY` | Under 72h to resolution and still genuinely uncertain |
-| `WIDE` | Spread is a large fraction of mid — costly to cross |
+| `THIN` | Spread is a large fraction of mid — costly to cross |
 
-Each market gets a **heat** (0–100, how much it deserves a look) and a **bias**
-(−100..100, net direction, positive = bullish on YES).
+Every signal carries **strength** (how loud) and **confidence** (how much the
+inputs justify it — short history, a thin book or three prints all reduce it).
+Contributions are scaled by both, so a loud reading built on twelve data points
+cannot outrank a quiet one built on six hundred.
 
-### On the arbitrage detector
+Each market then gets three numbers, which answer different questions:
+
+- **heat** (0–100) — does this deserve a look at all?
+- **bias** (−100..100) — which way, positive = bullish on YES?
+- **conviction** (0–100) — do the directional signals *agree*? Four signals
+  pointing the same way is a different proposition from four that cancel, and a
+  single composite score cannot tell those apart.
+
+### Why the statistics are the way they are
+
+- **Simple differences, not log returns.** Prices here are probabilities. A
+  market moving 2¢→4¢ has doubled in log terms but moved two points of
+  probability; treating that as a 69% move would let every longshot dominate
+  the volatility ranking.
+- **Volatility is scaled by the actual sampling interval**, so a 1h and a 1w
+  series are comparable. Without that, "volatility" mostly measures which
+  fidelity the caller happened to request.
+- **Micro-price weights each side by the *opposite* side's size.** When the bid
+  is much larger than the ask, fair value sits nearer the ask, because that is
+  where it will trade.
+- **Book imbalance is cost-weighted** — a bid risks `price`, an ask risks
+  `1 − price` — so a wall of 2¢ asks isn't mistaken for real conviction.
+
+### On the dislocation detectors
 
 Exactly one leg of a negative-risk event resolves YES, so its YES legs form a
-basket worth exactly $1 at settlement. Sell the basket for more than $1, or buy
-it for less, and the difference is locked in.
+basket worth exactly $1 at settlement. `ARB` wants a *crossable* edge on real
+quotes; `DRIFT` measures pressure that has built without yet opening one.
 
-Three guards keep this honest, and all three matter:
+Four guards keep both honest, and every one of them was added after the raw
+data lied:
 
 - **Only `negRisk` events.** A sports event carries 20+ *unrelated* legs
   (moneyline, spreads, totals) whose prices sum to nothing meaningful. Summing
-  those manufactures a fake 15x "arbitrage" on every single game.
-- **Both sides must be genuinely quoted.** An illiquid leg reports `bestAsk`
-  near 99¢ with no real offer behind it, which inflates the basket and hides a
-  phantom edge. Buy-side opportunities require every leg quoted under 99¢.
-- **The thinnest leg caps the trade.** Baskets whose tightest leg has no
-  resting liquidity are dropped outright, and the remaining ones display that
-  number, because it — not the edge — is what bounds the size.
+  those manufactures a fake 15× "arbitrage" on every single game — one Yankees
+  event summed to 16.4.
+- **Both sides genuinely quoted.** An illiquid leg reports `bestAsk` near 99¢
+  with no real offer behind it. Ballon d'Or's 89 legs summed to 59 that way.
+- **Every leg two-way for drift.** An unquoted leg's "mid" is 50¢ of fiction —
+  on a 128-leg presidential field that produced a basket of 44.46 and a
+  4,345-point "drift" before the guard went in.
+- **Drift is compared to the basket's own noise.** Each leg's mid could sit
+  anywhere within half a spread of true, and those uncertainties accumulate
+  with leg count, so a 1-point drift is loud on a 3-leg field and silent on a
+  30-leg one. The signal reports the ratio, and fires only above 1×.
 
 Edges are shown before fees and slippage, and crossing 20+ legs eats a lot of
 both. Treat it as a place to look, not a trade ticket.
+
 
 ## How it works
 

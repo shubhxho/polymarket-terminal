@@ -24,6 +24,18 @@ export type WatchItem = {
 
 export type Toast = { id: number; text: string; tone: "info" | "warn" | "error" };
 
+/**
+ * One workspace tab. Each carries its own navigation stack, so flipping
+ * between a chart you were reading and a scanner you were sorting restores
+ * both exactly — the behaviour every terminal emulator and Bloomberg's
+ * four-panel Launchpad share, and the reason tabs beat a single back button.
+ */
+export type Tab = {
+  id: string;
+  stack: Screen[];
+  cursor: number;
+};
+
 type TerminalCtx = {
   screen: Screen;
   /** Reverse-chronological command log, newest first. */
@@ -33,6 +45,12 @@ type TerminalCtx = {
   go: (screen: Screen, commandText?: string) => void;
   back: () => void;
   forward: () => void;
+
+  tabs: Tab[];
+  activeTab: number;
+  openTab: (screen?: Screen) => void;
+  closeTab: (index: number) => void;
+  selectTab: (index: number) => void;
 
   watchlist: WatchItem[];
   isWatched: (tokenId: string) => boolean;
@@ -52,16 +70,24 @@ const Ctx = createContext<TerminalCtx | null>(null);
 
 const HOME: Screen = { fn: "MON" };
 const MAX_HISTORY = 40;
+/** Beyond this the strip stops being scannable and starts being a menu. */
+const MAX_TABS = 8;
+
+let tabSeq = 0;
+const newTab = (screen: Screen = HOME): Tab => ({
+  id: `t${++tabSeq}`,
+  stack: [screen],
+  cursor: 0,
+});
 
 export function TerminalProvider({ children }: { children: ReactNode }) {
-  // A single stack with a cursor gives browser-style back/forward without
-  // touching the URL, which would otherwise remount the whole workspace.
-  // Stack and cursor live in one state object so a navigation can move both
-  // atomically — updating them separately would render a torn intermediate.
-  const [nav, setNav] = useState<{ stack: Screen[]; cursor: number }>({
-    stack: [HOME],
-    cursor: 0,
-  });
+  // Stacks live per tab, and tabs plus the active index live in one state
+  // object so a navigation moves both atomically — updating them separately
+  // would render a torn intermediate frame.
+  const [nav, setNav] = useState<{ tabs: Tab[]; active: number }>(() => ({
+    tabs: [newTab()],
+    active: 0,
+  }));
   const [history, setHistory] = useState<string[]>([]);
 
   const [watchlist, setWatchlist] = useLocalStorage<WatchItem[]>("pmt.watchlist", []);
@@ -83,28 +109,67 @@ export function TerminalProvider({ children }: { children: ReactNode }) {
     [dismissToast]
   );
 
-  const go = useCallback((screen: Screen, commandText?: string) => {
-    setNav(({ stack, cursor }) => {
-      // Navigating after going back truncates the forward branch.
-      const truncated = stack.slice(0, cursor + 1);
-      return {
-        stack: [...truncated, screen].slice(-MAX_HISTORY),
-        cursor: Math.min(truncated.length, MAX_HISTORY - 1),
-      };
-    });
-    if (commandText) {
-      setHistory((h) => [commandText, ...h.filter((x) => x !== commandText)].slice(0, MAX_HISTORY));
-    }
+  /** Applies `fn` to the active tab, leaving every other tab untouched. */
+  const updateActive = useCallback((fn: (t: Tab) => Tab) => {
+    setNav((n) => ({
+      ...n,
+      tabs: n.tabs.map((t, i) => (i === n.active ? fn(t) : t)),
+    }));
   }, []);
 
+  const go = useCallback(
+    (screen: Screen, commandText?: string) => {
+      updateActive(({ id, stack, cursor }) => {
+        // Navigating after going back truncates the forward branch.
+        const truncated = stack.slice(0, cursor + 1);
+        return {
+          id,
+          stack: [...truncated, screen].slice(-MAX_HISTORY),
+          cursor: Math.min(truncated.length, MAX_HISTORY - 1),
+        };
+      });
+      if (commandText) {
+        setHistory((h) =>
+          [commandText, ...h.filter((x) => x !== commandText)].slice(0, MAX_HISTORY)
+        );
+      }
+    },
+    [updateActive]
+  );
+
   const back = useCallback(
-    () => setNav((n) => ({ ...n, cursor: Math.max(0, n.cursor - 1) })),
-    []
+    () => updateActive((t) => ({ ...t, cursor: Math.max(0, t.cursor - 1) })),
+    [updateActive]
   );
   const forward = useCallback(
-    () => setNav((n) => ({ ...n, cursor: Math.min(n.stack.length - 1, n.cursor + 1) })),
-    []
+    () => updateActive((t) => ({ ...t, cursor: Math.min(t.stack.length - 1, t.cursor + 1) })),
+    [updateActive]
   );
+
+  const openTab = useCallback((screen: Screen = HOME) => {
+    setNav((n) => {
+      if (n.tabs.length >= MAX_TABS) return n;
+      const tabs = [...n.tabs, newTab(screen)];
+      return { tabs, active: tabs.length - 1 };
+    });
+  }, []);
+
+  const closeTab = useCallback((index: number) => {
+    setNav((n) => {
+      // The last tab is never closed — an empty workspace has nothing to show
+      // and no way back.
+      if (n.tabs.length <= 1) return n;
+      const tabs = n.tabs.filter((_, i) => i !== index);
+      // Closing at or before the cursor shifts focus left, matching how every
+      // browser and editor behaves.
+      const active = index < n.active ? n.active - 1 : Math.min(n.active, tabs.length - 1);
+      return { tabs, active };
+    });
+  }, []);
+
+  const selectTab = useCallback((index: number) => {
+    setNav((n) => ({ ...n, active: clampIndex(index, n.tabs.length) }));
+  }, []);
 
   const isWatched = useCallback(
     (tokenId: string) => watchlist.some((w) => w.tokenId === tokenId),
@@ -161,15 +226,22 @@ export function TerminalProvider({ children }: { children: ReactNode }) {
     [setAlerts]
   );
 
+  const active = nav.tabs[nav.active] ?? nav.tabs[0];
+
   const value = useMemo<TerminalCtx>(
     () => ({
-      screen: nav.stack[nav.cursor] ?? HOME,
+      screen: active.stack[active.cursor] ?? HOME,
       history,
-      canBack: nav.cursor > 0,
-      canForward: nav.cursor < nav.stack.length - 1,
+      canBack: active.cursor > 0,
+      canForward: active.cursor < active.stack.length - 1,
       go,
       back,
       forward,
+      tabs: nav.tabs,
+      activeTab: nav.active,
+      openTab,
+      closeTab,
+      selectTab,
       watchlist,
       isWatched,
       toggleWatch,
@@ -183,6 +255,10 @@ export function TerminalProvider({ children }: { children: ReactNode }) {
     }),
     [
       nav,
+      active,
+      openTab,
+      closeTab,
+      selectTab,
       history,
       go,
       back,
@@ -201,6 +277,10 @@ export function TerminalProvider({ children }: { children: ReactNode }) {
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+}
+
+function clampIndex(i: number, len: number): number {
+  return Math.max(0, Math.min(len - 1, i));
 }
 
 export function useTerminal(): TerminalCtx {

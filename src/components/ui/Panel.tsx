@@ -45,19 +45,32 @@ export function Panel({
   );
 }
 
-/** Dim label / bright value pair used across the detail screens. */
+/**
+ * Dim label / bright value pair used across the detail screens.
+ *
+ * `title` is worth supplying on anything derived: a reader who doesn't already
+ * know what "trend quality" means has nowhere else to find out, and a label
+ * long enough to explain itself would break the column.
+ */
 export function Field({
   label,
   value,
   tone = "text-ink",
+  title,
 }: {
   label: string;
   value: ReactNode;
   tone?: string;
+  title?: string;
 }) {
   return (
     <div className="flex items-baseline justify-between gap-2 border-b border-edge/60 py-[5px] last:border-0">
-      <span className="shrink-0 text-[11px] text-muted">{label}</span>
+      <span
+        className={`shrink-0 text-[11px] text-muted ${title ? "cursor-help decoration-edge-strong decoration-dotted underline-offset-2 hover:underline" : ""}`}
+        title={title}
+      >
+        {label}
+      </span>
       <span className={`truncate text-right text-tiny font-medium ${tone}`}>{value}</span>
     </div>
   );

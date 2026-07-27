@@ -23,20 +23,14 @@ export function Sidebar() {
 
   const byCode = useMemo(() => new Map(COMMANDS.map((c) => [c.code, c])), []);
 
+  // Argument-taking functions open the palette rather than navigating blind.
+  // Dispatching the shortcut is how the sidebar reaches it without either
+  // component holding a reference to the other.
   const prefill = (spec: CommandSpec) => {
-    const input = document.querySelector<HTMLInputElement>('input[aria-label="Command line"]');
-    if (input) {
-      input.focus();
-      // React controls this input, so the value has to be set through the
-      // native setter and announced, or component state won't follow.
-      const setter = Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype,
-        "value"
-      )?.set;
-      setter?.call(input, `${spec.code} `);
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-    }
-    toast(`${spec.code} needs ${spec.args}`);
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true })
+    );
+    toast(`${spec.code} takes ${spec.args} — search for it`);
   };
 
   const launch = (spec: CommandSpec) => {

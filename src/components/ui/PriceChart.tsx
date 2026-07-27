@@ -12,17 +12,27 @@ export type Series = {
   points: PricePoint[];
 };
 
-/** Distinct hues for multi-outcome events. Green/red are excluded — in this
- *  terminal those two colours mean direction, never identity. */
+/**
+ * Categorical slots for multi-outcome events, in fixed order — never cycled.
+ *
+ * These resolve to CSS custom properties so each theme supplies its own step
+ * for its own surface, rather than one set being auto-flipped into the other.
+ * The ordering is CVD-optimised (worst adjacent pair ΔE 13.3 light / 23.6 dark)
+ * and deliberately puts green and red last, so a chart with a handful of legs
+ * never paints a line in a hue that means "up" or "down" everywhere else.
+ *
+ * A ninth series is never a generated hue — the chart caps at eight and the
+ * remaining legs stay in the table below it.
+ */
 export const SERIES_COLORS = [
-  "#ff9e18",
-  "#3fc7ff",
-  "#b18cff",
-  "#ffe066",
-  "#61d4b3",
-  "#ff8fb1",
-  "#8ea6ff",
-  "#d4a373",
+  "var(--c-series-1)",
+  "var(--c-series-2)",
+  "var(--c-series-3)",
+  "var(--c-series-4)",
+  "var(--c-series-5)",
+  "var(--c-series-6)",
+  "var(--c-series-7)",
+  "var(--c-series-8)",
 ];
 
 // Left padding leaves room for the first x-axis label, which is centred on the
@@ -120,7 +130,13 @@ export function PriceChart({ series, height = 200 }: { series: Series[]; height?
             px: x(t),
             readings: paths.map((s) => {
               const pt = nearest(s.points, t);
-              return { label: s.label, color: s.color, price: pt.p, y: y(pt.p) };
+              return {
+                tokenId: s.tokenId,
+                label: s.label,
+                color: s.color,
+                price: pt.p,
+                y: y(pt.p),
+              };
             }),
           };
         })()
@@ -144,13 +160,13 @@ export function PriceChart({ series, height = 200 }: { series: Series[]; height?
               x2={PAD.left + plotW}
               y1={y(tick)}
               y2={y(tick)}
-              stroke="var(--color-line)"
+              stroke="var(--color-grid)"
               strokeDasharray="1 3"
             />
             <text
               x={PAD.left + plotW + 5}
               y={y(tick) + 3}
-              fill="var(--color-dim)"
+              fill="var(--color-faint)"
               fontSize={9}
             >
               {cents(tick, 0)}¢
@@ -165,13 +181,13 @@ export function PriceChart({ series, height = 200 }: { series: Series[]; height?
               x2={x(tick.t)}
               y1={PAD.top}
               y2={PAD.top + plotH}
-              stroke="var(--color-line)"
+              stroke="var(--color-grid)"
               strokeDasharray="1 3"
             />
             <text
               x={x(tick.t)}
               y={h - 5}
-              fill="var(--color-dim)"
+              fill="var(--color-faint)"
               fontSize={9}
               textAnchor="middle"
             >
@@ -215,11 +231,11 @@ export function PriceChart({ series, height = 200 }: { series: Series[]; height?
               x2={cursor.px}
               y1={PAD.top}
               y2={PAD.top + plotH}
-              stroke="var(--color-amber)"
+              stroke="var(--color-accent)"
               strokeWidth={0.6}
             />
             {cursor.readings.map((r) => (
-              <circle key={r.label} cx={cursor.px} cy={r.y} r={2.4} fill={r.color} />
+              <circle key={r.tokenId} cx={cursor.px} cy={r.y} r={2.4} fill={r.color} />
             ))}
           </g>
         ) : null}
@@ -238,7 +254,7 @@ export function PriceChart({ series, height = 200 }: { series: Series[]; height?
             {new Date(cursor.t * 1000).toISOString().slice(5, 16).replace("T", " ")}Z
           </div>
           {cursor.readings.map((r) => (
-            <div key={r.label} className="flex items-center gap-1.5">
+            <div key={r.tokenId} className="flex items-center gap-1.5">
               <span className="inline-block h-1.5 w-1.5" style={{ background: r.color }} />
               <span className="text-muted">{r.label}</span>
               <span className="ml-auto text-ink">{cents(r.price)}¢</span>
