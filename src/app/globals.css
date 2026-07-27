@@ -1,0 +1,304 @@
+@import "tailwindcss";
+
+/* ── Design tokens ─────────────────────────────────────────────────────────
+   The visual language follows ami.dev: a white ground, hairline borders, small
+   4–6px radii, Inter for every piece of chrome, and monospace reserved for
+   data the way ami reserves it for code. Colour is spent sparingly — fuchsia
+   for interactive accents, and green/red exclusively for direction, so a tint
+   in a table always means a price and never decoration.
+
+   Every token is declared twice: the `@theme` block gives Tailwind the utility
+   names, and `:root` / `[data-theme="dark"]` supply the values, so the whole
+   terminal can invert without a single component knowing about it. */
+@theme {
+  --color-canvas: var(--c-canvas);
+  --color-surface: var(--c-surface);
+  --color-surface-2: var(--c-surface-2);
+  --color-edge: var(--c-edge);
+  --color-edge-strong: var(--c-edge-strong);
+
+  --color-ink: var(--c-ink);
+  --color-muted: var(--c-muted);
+  --color-faint: var(--c-faint);
+
+  --color-accent: var(--c-accent);
+  --color-accent-weak: var(--c-accent-weak);
+  --color-accent-soft: var(--c-accent-soft);
+  --color-accent-2: var(--c-accent-2);
+
+  --color-info: var(--c-info);
+  --color-info-weak: var(--c-info-weak);
+
+  --color-up: var(--c-up);
+  --color-up-weak: var(--c-up-weak);
+  --color-down: var(--c-down);
+  --color-down-weak: var(--c-down-weak);
+  --color-warn: var(--c-warn);
+
+  --font-ui: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-terminal), "SFMono-Regular", "Menlo", ui-monospace, monospace;
+
+  --text-micro: 11px;
+  --text-tiny: 12px;
+  --text-sm2: 13px;
+
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+}
+
+:root {
+  --c-canvas: #ffffff;
+  --c-surface: #fcfcfc;
+  --c-surface-2: #f4f4f5;
+  --c-edge: #e9e9ec;
+  --c-edge-strong: #d6d6da;
+
+  --c-ink: #0b0b0c;
+  --c-muted: #6f6f76;
+  --c-faint: #9d9da6;
+
+  --c-accent: #c026d3;
+  --c-accent-weak: #b45cc4;
+  --c-accent-soft: #f5a3ff;
+  --c-accent-2: #7c3aed;
+
+  --c-info: #0071e9;
+  --c-info-weak: #6aa9ee;
+
+  --c-up: #0f9d58;
+  --c-up-weak: #a9e2c1;
+  --c-down: #e0413f;
+  --c-down-weak: #f4b4b3;
+  --c-warn: #d98218;
+
+  --shadow-card: 0 1px 2px rgba(16, 16, 20, 0.05), 0 1px 1px rgba(16, 16, 20, 0.03);
+  --shadow-pop: 0 8px 24px rgba(16, 16, 20, 0.12), 0 2px 6px rgba(16, 16, 20, 0.06);
+}
+
+/* Same structure inverted. Kept deliberately soft — a pure-black terminal
+   under Inter reads as a costume; these are near-blacks with lifted borders. */
+[data-theme="dark"] {
+  --c-canvas: #0c0c0e;
+  --c-surface: #131316;
+  --c-surface-2: #1b1b1f;
+  --c-edge: #26262b;
+  --c-edge-strong: #37373e;
+
+  --c-ink: #f2f2f4;
+  --c-muted: #9c9ca6;
+  --c-faint: #6a6a74;
+
+  --c-accent: #e879f9;
+  --c-accent-weak: #b06ec4;
+  --c-accent-soft: #f5a3ff;
+  --c-accent-2: #a78bfa;
+
+  --c-info: #4da3ff;
+  --c-info-weak: #2f6ea8;
+
+  --c-up: #28c840;
+  --c-up-weak: #1d5c2c;
+  --c-down: #ff5f57;
+  --c-down-weak: #6e2422;
+  --c-warn: #febc2e;
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.6);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-ui);
+  font-size: var(--text-tiny);
+  line-height: 1.45;
+  /* Inter is drawn for slightly tight setting; ami runs about -0.006em. */
+  letter-spacing: -0.006em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+/* Inter carries the whole interface, including the numbers — its tabular
+   figures are excellent, and a table of Inter digits reads far calmer than the
+   same table in monospace. `tnum` is global and non-negotiable: a column of
+   prices must not shimmer in width as digits tick. */
+* {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Monospace is reserved for strings that are genuinely machine identifiers —
+   the command line, token ids, condition hashes, wallet addresses — the same
+   split ami.dev draws between prose and code. */
+.mono,
+code,
+kbd {
+  font-family: var(--font-mono);
+  letter-spacing: 0;
+  /* `zero`: slashed zero. A 0 beside an O in a wallet address is a real
+     misread risk, and these are the only places that hazard exists.
+     `liga`/`calt` off: JetBrains Mono ships programming ligatures on, which
+     would silently fuse `->`, `<=` and `!=` into glyphs that are not what the
+     underlying string says. */
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: "tnum" 1, "zero" 1, "liga" 0, "calt" 0;
+}
+
+::selection {
+  background: var(--color-accent-soft);
+  color: #1a0e1e;
+}
+
+/* ── Scrollbars ─────────────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-edge-strong);
+  border: 3px solid var(--color-canvas);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-faint);
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ── Semantic utilities ─────────────────────────────────────────────────── */
+@utility text-up {
+  color: var(--color-up);
+}
+@utility text-down {
+  color: var(--color-down);
+}
+@utility text-muted {
+  color: var(--color-muted);
+}
+@utility text-accent {
+  color: var(--color-accent);
+}
+
+/* Section label: the small grey uppercase run-in ami uses above groups. */
+@utility eyebrow {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-faint);
+}
+
+/* Selected table row. A tinted wash plus an accent rail on the leading edge,
+   with no border, so nothing in the row shifts by a pixel when it activates. */
+@utility row-sel {
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+
+@utility card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-edge);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}
+
+/* ── Tick flash ───────────────────────────────────────────────────────────
+   A price that changed gets a one-shot wash. Short (450ms) so a fast book
+   stays legible instead of strobing. */
+@keyframes flash-up {
+  0% {
+    background-color: color-mix(in srgb, var(--color-up) 26%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+@keyframes flash-down {
+  0% {
+    background-color: color-mix(in srgb, var(--color-down) 26%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+.flash-up {
+  animation: flash-up 450ms ease-out;
+  border-radius: var(--radius-xs);
+}
+.flash-down {
+  animation: flash-down 450ms ease-out;
+  border-radius: var(--radius-xs);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flash-up,
+  .flash-down {
+    animation-duration: 1ms;
+  }
+  .marquee-track {
+    animation: none !important;
+  }
+}
+
+/* ── Ticker tape ──────────────────────────────────────────────────────── */
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    /* The track renders its content twice; -50% lands exactly on the seam. */
+    transform: translateX(-50%);
+  }
+}
+.marquee-track {
+  display: inline-flex;
+  animation: marquee 110s linear infinite;
+  will-change: transform;
+}
+.marquee-track:hover {
+  animation-play-state: paused;
+}
+
+/* Status dot, ami's list-item motif. `currentColor` so a parent's text colour
+   drives it and callers never restate the palette. */
+.dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+  flex: none;
+}
+
+@keyframes caret {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+.caret {
+  animation: caret 1.06s step-end infinite;
+}
+
+input {
+  background: transparent;
+  outline: none;
+  color: inherit;
+  font: inherit;
+}
