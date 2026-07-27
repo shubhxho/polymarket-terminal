@@ -1,129 +1,325 @@
 @import "tailwindcss";
 
+/* ── Design tokens ─────────────────────────────────────────────────────────
+   The visual language follows ami.dev: a white ground, hairline borders, small
+   4–6px radii, Inter for every piece of chrome, and monospace reserved for
+   data the way ami reserves it for code. Colour is spent sparingly — fuchsia
+   for interactive accents, and green/red exclusively for direction, so a tint
+   in a table always means a price and never decoration.
+
+   Every token is declared twice: the `@theme` block gives Tailwind the utility
+   names, and `:root` / `[data-theme="dark"]` supply the values, so the whole
+   terminal can invert without a single component knowing about it. */
+@theme {
+  --color-canvas: var(--c-canvas);
+  --color-surface: var(--c-surface);
+  --color-surface-2: var(--c-surface-2);
+  --color-edge: var(--c-edge);
+  --color-edge-strong: var(--c-edge-strong);
+
+  --color-ink: var(--c-ink);
+  --color-muted: var(--c-muted);
+  --color-faint: var(--c-faint);
+
+  --color-accent: var(--c-accent);
+  --color-accent-weak: var(--c-accent-weak);
+  --color-accent-soft: var(--c-accent-soft);
+  --color-accent-2: var(--c-accent-2);
+
+  --color-info: var(--c-info);
+  --color-info-weak: var(--c-info-weak);
+
+  --color-accent-ink: var(--c-accent-ink);
+  --color-grid: var(--c-grid);
+  --color-axis: var(--c-axis);
+
+  --color-up: var(--c-up);
+  --color-up-weak: var(--c-up-weak);
+  --color-down: var(--c-down);
+  --color-down-weak: var(--c-down-weak);
+  --color-warn: var(--c-warn);
+
+  --font-ui: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-terminal), "SFMono-Regular", "Menlo", ui-monospace, monospace;
+
+  --text-micro: 11px;
+  --text-tiny: 12px;
+  --text-sm2: 13px;
+
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+}
+
 :root {
-  --background: #060a08;
-  --panel: #0a100d;
-  --panel-raised: #0e1611;
-  --border: #1c2a22;
-  --border-bright: #2e4536;
-  --foreground: #c9d6cd;
-  --muted: #5f7268;
-  --accent: #33e07a;
-  --accent-dim: #1d8a4c;
-  --amber: #ffb454;
-  --red: #ff5c5c;
-  --cyan: #56c8ff;
-  --grid-line: rgba(51, 224, 122, 0.028);
+  --c-canvas: #ffffff;
+  --c-surface: #fcfcfb;
+  --c-surface-2: #f4f4f2;
+  --c-edge: #e6e6e2;
+  --c-edge-strong: #d3d3ce;
+
+  --c-ink: #0b0b0b;
+  --c-muted: #52514e;
+  --c-faint: #898781;
+
+  --c-accent: #b528c9;
+  --c-accent-weak: #a76bb0;
+  --c-accent-soft: #f5a3ff;
+  --c-accent-ink: #1a0e1e;
+  --c-accent-2: #4a3aa7;
+
+  --c-info: #2a78d6;
+  --c-info-weak: #86b6ef;
+
+  --c-up: #12924e;
+  --c-up-weak: #b3ddc4;
+  --c-down: #d03b3b;
+  --c-down-weak: #f0bcbc;
+  --c-warn: #b07800;
+
+  /* Chart series. Order is CVD-optimised, not cosmetic: it was chosen by
+     enumerating every ordering that keeps green and red in the last two slots
+     and taking the one with the highest minimum adjacent CVD deltaE. Worst
+     adjacent pair is 13.3 (light) / 23.6 (dark), both clear of the >=12 target.
+     Green and red sit last so a 2-6 series chart never paints a line in a hue
+     that reads as "up" or "down" beside a table that means exactly that. */
+  --c-series-1: #2a78d6;
+  --c-series-2: #1baf7a;
+  --c-series-3: #eda100;
+  --c-series-4: #4a3aa7;
+  --c-series-5: #e87ba4;
+  --c-series-6: #eb6834;
+  --c-series-7: #e34948;
+  --c-series-8: #008300;
+
+  --c-grid: #e1e0d9;
+  --c-axis: #c3c2b7;
+
+  --shadow-card: 0 1px 2px rgba(16, 16, 20, 0.05), 0 1px 1px rgba(16, 16, 20, 0.03);
+  --shadow-pop: 0 8px 24px rgba(16, 16, 20, 0.12), 0 2px 6px rgba(16, 16, 20, 0.06);
 }
 
-/* Phosphor themes — switched from the terminal via `theme <name>` */
-:root[data-theme="amber"] {
-  --accent: #ffb454;
-  --accent-dim: #b3752c;
-}
-:root[data-theme="cyan"] {
-  --accent: #56c8ff;
-  --accent-dim: #2a7dab;
-}
-:root[data-theme="red"] {
-  --accent: #ff5c5c;
-  --accent-dim: #a83a3a;
+/* Same structure inverted. Kept deliberately soft — a pure-black terminal
+   under Inter reads as a costume; these are near-blacks with lifted borders. */
+[data-theme="dark"] {
+  --c-canvas: #0d0d0d;
+  --c-surface: #1a1a19;
+  --c-surface-2: #232321;
+  --c-edge: #2c2c2a;
+  --c-edge-strong: #383835;
+
+  --c-ink: #ffffff;
+  --c-muted: #c3c2b7;
+  --c-faint: #898781;
+
+  --c-accent: #e879f9;
+  --c-accent-weak: #a76bb0;
+  --c-accent-soft: #f5a3ff;
+  --c-accent-ink: #1a0e1e;
+  --c-accent-2: #9085e9;
+
+  --c-info: #3987e5;
+  --c-info-weak: #2f6ea8;
+
+  --c-up: #2fbf5f;
+  --c-up-weak: #1d5c2c;
+  --c-down: #ff6b6b;
+  --c-down-weak: #6e2422;
+  --c-warn: #fab219;
+
+  /* Same eight hues stepped for the dark surface, not an automatic flip. */
+  --c-series-1: #3987e5;
+  --c-series-2: #199e70;
+  --c-series-3: #c98500;
+  --c-series-4: #9085e9;
+  --c-series-5: #d55181;
+  --c-series-6: #d95926;
+  --c-series-7: #e66767;
+  --c-series-8: #008300;
+
+  --c-grid: #2c2c2a;
+  --c-axis: #383835;
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.6);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-panel: var(--panel);
-  --color-panel-raised: var(--panel-raised);
-  --color-edge: var(--border);
-  --color-edge-bright: var(--border-bright);
-  --color-foreground: var(--foreground);
-  --color-muted: var(--muted);
-  --color-accent: var(--accent);
-  --color-accent-dim: var(--accent-dim);
-  --color-amber: var(--amber);
-  --color-red: var(--red);
-  --color-cyan: var(--cyan);
-  --font-sans: var(--font-geist-mono);
-  --font-mono: var(--font-geist-mono);
+html,
+body {
+  height: 100%;
 }
 
 body {
-  color: var(--foreground);
-  font-family: var(--font-geist-mono), ui-monospace, monospace;
-  font-size: 13px;
-  /* Layered atmosphere: a phosphor pool of light up top over a faint
-     engineering grid, all on the near-black base. */
-  background-color: var(--background);
-  background-image:
-    radial-gradient(
-      ellipse 120% 80% at 50% -10%,
-      color-mix(in srgb, var(--accent) 9%, transparent) 0%,
-      transparent 55%
-    ),
-    linear-gradient(
-      to bottom,
-      color-mix(in srgb, var(--accent) 3%, transparent),
-      transparent 30%
-    ), linear-gradient(var(--grid-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
-  background-size:
-    100% 100%,
-    100% 100%,
-    44px 44px,
-    44px 44px;
-  background-attachment: fixed;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-ui);
+  font-size: var(--text-tiny);
+  line-height: 1.45;
+  /* Inter is drawn for slightly tight setting; ami runs about -0.006em. */
+  letter-spacing: -0.006em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
-/* Faint CRT scanlines over the whole terminal */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 50;
-  background: repeating-linear-gradient(
-    to bottom,
-    transparent 0,
-    transparent 2px,
-    rgba(0, 0, 0, 0.11) 3px
-  );
+/* Inter carries the whole interface, including the numbers — its tabular
+   figures are excellent, and a table of Inter digits reads far calmer than the
+   same table in monospace. `tnum` is global and non-negotiable: a column of
+   prices must not shimmer in width as digits tick. */
+* {
+  font-variant-numeric: tabular-nums;
 }
 
-/* CRT vignette — darkens screen edges */
-body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 49;
-  background: radial-gradient(
-    ellipse at 50% 42%,
-    transparent 58%,
-    rgba(0, 0, 0, 0.5) 100%
-  );
+/* Monospace is reserved for strings that are genuinely machine identifiers —
+   the command line, token ids, condition hashes, wallet addresses — the same
+   split ami.dev draws between prose and code. */
+.mono,
+code,
+kbd {
+  font-family: var(--font-mono);
+  letter-spacing: 0;
+  /* `zero`: slashed zero. A 0 beside an O in a wallet address is a real
+     misread risk, and these are the only places that hazard exists.
+     `liga`/`calt` off: JetBrains Mono ships programming ligatures on, which
+     would silently fuse `->`, `<=` and `!=` into glyphs that are not what the
+     underlying string says. */
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: "tnum" 1, "zero" 1, "liga" 0, "calt" 0;
 }
 
 ::selection {
-  background: var(--accent-dim);
-  color: #ffffff;
+  background: var(--color-accent-soft);
+  color: #1a0e1e;
 }
 
-*::-webkit-scrollbar {
+/* ── Scrollbars ─────────────────────────────────────────────────────────── */
+::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
-*::-webkit-scrollbar-track {
-  background: var(--panel);
+::-webkit-scrollbar-track {
+  background: transparent;
 }
-*::-webkit-scrollbar-thumb {
-  background: var(--border-bright);
-  border: 2px solid var(--panel);
+::-webkit-scrollbar-thumb {
+  background: var(--color-edge-strong);
+  border: 3px solid var(--color-canvas);
+  border-radius: 999px;
 }
-*::-webkit-scrollbar-thumb:hover {
-  background: var(--accent-dim);
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-faint);
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
-@keyframes blink {
+/* ── Semantic utilities ─────────────────────────────────────────────────── */
+@utility text-up {
+  color: var(--color-up);
+}
+@utility text-down {
+  color: var(--color-down);
+}
+@utility text-muted {
+  color: var(--color-muted);
+}
+@utility text-accent {
+  color: var(--color-accent);
+}
+
+/* Section label: the small grey uppercase run-in ami uses above groups. */
+@utility eyebrow {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-faint);
+}
+
+/* Selected table row. A tinted wash plus an accent rail on the leading edge,
+   with no border, so nothing in the row shifts by a pixel when it activates. */
+@utility row-sel {
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+
+@utility card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-edge);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}
+
+/* ── Tick flash ───────────────────────────────────────────────────────────
+   A price that changed gets a one-shot wash. Short (450ms) so a fast book
+   stays legible instead of strobing. */
+@keyframes flash-up {
+  0% {
+    background-color: color-mix(in srgb, var(--color-up) 26%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+@keyframes flash-down {
+  0% {
+    background-color: color-mix(in srgb, var(--color-down) 26%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+.flash-up {
+  animation: flash-up 450ms ease-out;
+  border-radius: var(--radius-xs);
+}
+.flash-down {
+  animation: flash-down 450ms ease-out;
+  border-radius: var(--radius-xs);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flash-up,
+  .flash-down {
+    animation-duration: 1ms;
+  }
+  .marquee-track {
+    animation: none !important;
+  }
+}
+
+/* ── Ticker tape ──────────────────────────────────────────────────────── */
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    /* The track renders its content twice; -50% lands exactly on the seam. */
+    transform: translateX(-50%);
+  }
+}
+.marquee-track {
+  display: inline-flex;
+  animation: marquee 110s linear infinite;
+  will-change: transform;
+}
+.marquee-track:hover {
+  animation-play-state: paused;
+}
+
+/* Status dot, ami's list-item motif. `currentColor` so a parent's text colour
+   drives it and callers never restate the palette. */
+.dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+  flex: none;
+}
+
+@keyframes caret {
   0%,
   49% {
     opacity: 1;
@@ -133,262 +329,13 @@ body::after {
     opacity: 0;
   }
 }
-
-.cursor-blink {
-  animation: blink 1.1s step-end infinite;
+.caret {
+  animation: caret 1.06s step-end infinite;
 }
 
-@keyframes pulse-dot {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.35;
-  }
-}
-
-.live-dot {
-  animation: pulse-dot 1.6s ease-in-out infinite;
-}
-
-@keyframes ticker {
-  0% {
-    transform: translateX(0);
-  }
-  100% {
-    transform: translateX(-33.333%);
-  }
-}
-
-.animate-ticker {
-  animation: ticker 120s linear infinite;
-  width: max-content;
-}
-
-.animate-ticker:hover {
-  animation-play-state: paused;
-}
-
-/* Phosphor screen glow on key values */
-.glow-accent {
-  text-shadow:
-    0 0 10px rgba(51, 224, 122, 0.55),
-    0 0 20px rgba(51, 224, 122, 0.25);
-}
-.glow-amber {
-  text-shadow:
-    0 0 10px rgba(255, 180, 84, 0.5),
-    0 0 20px rgba(255, 180, 84, 0.2);
-}
-.glow-red {
-  text-shadow:
-    0 0 10px rgba(255, 92, 92, 0.5),
-    0 0 20px rgba(255, 92, 92, 0.2);
-}
-
-@keyframes terminal-slide {
-  from {
-    transform: translateY(30%);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
-.terminal-slide {
-  animation: terminal-slide 0.18s ease-out;
-}
-
-@keyframes disclaimer-cycle {
-  0%,
-  18% {
-    content: "!! DISCLAIMER: NOT. FINANCIAL. ADVICE. !!";
-  }
-  25%,
-  43% {
-    content: "!! PAST PERFORMANCE ≠ FUTURE RETURNS !!";
-  }
-  50%,
-  68% {
-    content: "!! THESE ARE PROBABILITIES. NOT PROPHECIES. !!";
-  }
-  75%,
-  93% {
-    content: "!! SEEK A LICENSED PROFESSIONAL. IMMEDIATELY. !!";
-  }
-  100% {
-    content: "!! DISCLAIMER: NOT. FINANCIAL. ADVICE. !!";
-  }
-}
-
-.disclaimer-cycle::after {
-  animation: disclaimer-cycle 12s step-end infinite;
-}
-
-/* --- Depth & surface treatments --- */
-
-/* Top-lit panel: a hairline highlight along the top edge sells depth */
-.panel-lit {
-  background-image: linear-gradient(
-    to bottom,
-    color-mix(in srgb, var(--foreground) 3.5%, transparent),
-    transparent 42%
-  );
-}
-
-/* A thin glowing rule used to underline the header / section dividers */
-.rule-glow {
-  background: linear-gradient(
-    90deg,
-    transparent,
-    color-mix(in srgb, var(--accent) 55%, transparent) 12%,
-    color-mix(in srgb, var(--accent) 55%, transparent) 88%,
-    transparent
-  );
-  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 45%, transparent);
-}
-
-/* Soft phosphor glow for headline stats */
-.glow-soft {
-  text-shadow: 0 0 12px color-mix(in srgb, currentColor 40%, transparent);
-}
-
-/* Lift a card on hover without layout shift */
-.lift {
-  transition:
-    transform 0.14s ease,
-    box-shadow 0.14s ease,
-    border-color 0.14s ease;
-}
-.lift:hover {
-  transform: translateY(-1px);
-}
-
-/* Animated sheen that sweeps across a surface — used on the LIVE chip */
-@keyframes sheen {
-  0% {
-    transform: translateX(-120%);
-  }
-  100% {
-    transform: translateX(320%);
-  }
-}
-.sheen::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    100deg,
-    transparent 30%,
-    color-mix(in srgb, var(--accent) 22%, transparent) 50%,
-    transparent 70%
-  );
-  transform: translateX(-120%);
-  animation: sheen 4.5s ease-in-out infinite;
-  pointer-events: none;
-}
-
-/* Rows fade/rise in as the board mounts */
-@keyframes rise {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-.rise {
-  animation: rise 0.32s ease-out both;
-}
-
-/* Gentle pulse for the "live" ping ring */
-@keyframes ping-ring {
-  0% {
-    transform: scale(0.9);
-    opacity: 0.6;
-  }
-  70%,
-  100% {
-    transform: scale(2.4);
-    opacity: 0;
-  }
-}
-.ping-ring::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: 9999px;
-  background: var(--accent);
-  animation: ping-ring 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
-}
-
-/* Loading shimmer — a light bar sweeps across skeleton surfaces */
-@keyframes shimmer {
-  100% {
-    transform: translateX(100%);
-  }
-}
-.shimmer {
-  position: relative;
-  overflow: hidden;
-}
-.shimmer::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  transform: translateX(-100%);
-  background: linear-gradient(
-    90deg,
-    transparent,
-    color-mix(in srgb, var(--accent) 10%, transparent),
-    transparent
-  );
-  animation: shimmer 1.6s infinite;
-}
-
-/* A one-shot scan line that sweeps down a panel as it mounts */
-@keyframes scan-sweep {
-  from {
-    transform: translateY(-100%);
-    opacity: 0.8;
-  }
-  to {
-    transform: translateY(2200%);
-    opacity: 0;
-  }
-}
-.scan-sweep {
-  position: relative;
-  overflow: hidden;
-}
-.scan-sweep::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 2px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    color-mix(in srgb, var(--accent) 60%, transparent),
-    transparent
-  );
-  animation: scan-sweep 1.1s ease-in 0.1s 1 both;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .sheen::after,
-  .ping-ring::before,
-  .animate-ticker,
-  .rise,
-  .live-dot,
-  .cursor-blink,
-  .shimmer::after,
-  .scan-sweep::before {
-    animation: none !important;
-  }
+input {
+  background: transparent;
+  outline: none;
+  color: inherit;
+  font: inherit;
 }
