@@ -100,6 +100,35 @@ def build_dataset(series: List[List[float]]) -> Tuple[List[List[float]], List[in
     return X, y
 
 
+class Sample:
+    """One training row for the sequence model: the return sequence, the hand
+    features, the direction label, and the *signed forward return* (for the
+    backtest, which asks whether the model's ranking separates winners)."""
+
+    __slots__ = ("seq", "feat", "label", "fwd")
+
+    def __init__(self, seq: List[float], feat: List[float], label: int, fwd: float):
+        self.seq = seq
+        self.feat = feat
+        self.label = label
+        self.fwd = fwd
+
+
+def series_to_rich(prices: List[float]) -> List[Sample]:
+    """Like `series_to_samples` but also carries the raw return sequence and the
+    forward return, so one pass feeds both the feature-MLP and the GRU."""
+    out: List[Sample] = []
+    n = len(prices)
+    for i in range(WINDOW, n - HORIZON):
+        window = prices[i - WINDOW : i]
+        rets = [window[k] - window[k - 1] for k in range(1, len(window))]
+        if _std(rets) < MIN_STD:
+            continue
+        fwd = prices[i + HORIZON] - prices[i]
+        out.append(Sample(rets, window_features(window), 1 if fwd > 0 else 0, fwd))
+    return out
+
+
 if __name__ == "__main__":
     # Self-check on a synthetic up-drifting ramp: later prices are higher, so
     # most labels should be 1 and features should be finite.

@@ -50,24 +50,39 @@ def _get(url: str, tries: int = 3) -> Any:
 
 
 def market_tokens(limit: int) -> List[str]:
-    """First-outcome CLOB token id for each active, liquid market."""
-    q = urllib.parse.urlencode(
-        {
-            "limit": limit,
-            "order": "volume24hr",
-            "ascending": "false",
-            "active": "true",
-            "closed": "false",
-        }
-    )
-    rows = _get(f"{GAMMA}/markets?{q}")
+    """First-outcome CLOB token id for each active, liquid market.
+
+    Gamma caps a single page near 100, so page by offset to reach the few
+    hundred markets a sequence model needs to learn anything general.
+    """
     tokens: List[str] = []
-    for m in rows:
-        raw = m.get("clobTokenIds")
-        ids = json.loads(raw) if isinstance(raw, str) else raw
-        if ids:
-            tokens.append(str(ids[0]))
-    return tokens
+    seen: set[str] = set()
+    offset = 0
+    PAGE = 100
+    while len(tokens) < limit:
+        q = urllib.parse.urlencode(
+            {
+                "limit": PAGE,
+                "offset": offset,
+                "order": "volume24hr",
+                "ascending": "false",
+                "active": "true",
+                "closed": "false",
+            }
+        )
+        rows = _get(f"{GAMMA}/markets?{q}")
+        if not rows:
+            break
+        for m in rows:
+            raw = m.get("clobTokenIds")
+            ids = json.loads(raw) if isinstance(raw, str) else raw
+            if ids and str(ids[0]) not in seen:
+                seen.add(str(ids[0]))
+                tokens.append(str(ids[0]))
+        offset += PAGE
+        if len(rows) < PAGE:
+            break
+    return tokens[:limit]
 
 
 def price_series(token: str) -> List[float]:

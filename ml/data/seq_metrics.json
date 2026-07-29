@@ -1,0 +1,42 @@
+{
+  "series": 98,
+  "train_windows": 7961,
+  "val_windows": 1899,
+  "majority_baseline_acc": 0.6448,
+  "models": {
+    "feature_mlp": {
+      "val_auc": 0.6524,
+      "backtest": {
+        "top_up_rate": 0.467,
+        "bottom_up_rate": 0.153,
+        "up_rate_spread": 0.314,
+        "top_median_pts": 0.0,
+        "bottom_median_pts": 0.0,
+        "slice": 379
+      }
+    },
+    "seq_gru": {
+      "val_auc": 0.6583,
+      "backtest": {
+        "top_up_rate": 0.512,
+        "bottom_up_rate": 0.156,
+        "up_rate_spread": 0.356,
+        "top_median_pts": 0.1,
+        "bottom_median_pts": 0.0,
+        "slice": 379
+      }
+    }
+  },
+  "winner": "seq_gru",
+  "seq_len": 15,
+  "features": [
+    "last",
+    "mean_ret",
+    "vol",
+    "drift",
+    "band_z",
+    "momentum",
+    "autocorr",
+    "activity"
+  ]
+}
