@@ -1,10 +1,12 @@
 "use client";
 
+import { AnimatePresence, motion } from "motion/react";
 import { memo, useEffect, useRef, useState } from "react";
 import { useTerminal } from "@/components/TerminalProvider";
 import { shortAddress, useWallet } from "@/hooks/useWallet";
 import { cn } from "@/lib/cn";
 import { copyToClipboard } from "@/lib/clipboard";
+import { popVariants, tapScale } from "@/lib/motion";
 
 /**
  * Wallet control in the masthead. Disconnected, it's a single quiet "Connect"
@@ -47,7 +49,8 @@ export const WalletButton = memo(function WalletButton() {
   if (status !== "connected" || !address) {
     const connecting = status === "connecting";
     return (
-      <button
+      <motion.button
+        whileTap={tapScale}
         onClick={connect}
         disabled={connecting}
         title={
@@ -59,7 +62,7 @@ export const WalletButton = memo(function WalletButton() {
       >
         <PhantomMark />
         <span>{connecting ? "Connecting…" : "Connect"}</span>
-      </button>
+      </motion.button>
     );
   }
 
@@ -72,7 +75,8 @@ export const WalletButton = memo(function WalletButton() {
 
   return (
     <div ref={rootRef} className="relative shrink-0">
-      <button
+      <motion.button
+        whileTap={tapScale}
         onClick={() => setOpen((v) => !v)}
         title={address}
         aria-label={`Wallet ${shortAddress(address)}${onPolygon ? "" : " — wrong network"}`}
@@ -91,36 +95,44 @@ export const WalletButton = memo(function WalletButton() {
             Wrong net
           </span>
         )}
-      </button>
+      </motion.button>
 
-      {open && (
-        <div className="absolute right-0 z-50 mt-1 w-[200px] overflow-hidden rounded-md border border-edge bg-canvas py-1 shadow-[var(--shadow-pop)]">
-          <div className="flex items-center gap-1.5 px-3 py-1.5">
-            <PhantomMark />
-            <span className="mono truncate text-[11px] text-muted" title={address}>
-              {shortAddress(address)}
-            </span>
-          </div>
-          <div className="my-1 h-px bg-edge" />
-          {!onPolygon && (
-            <MenuItem onClick={act(switchToPolygon)}>
-              <span className="text-warn">Switch to Polygon</span>
-            </MenuItem>
-          )}
-          <MenuItem onClick={act(() => go({ fn: "PORT", user: address }, `PORT ${address}`))}>
-            View my portfolio
-          </MenuItem>
-          <MenuItem onClick={act(() => copyToClipboard(address, toast))}>Copy address</MenuItem>
-          <MenuItem
-            onClick={act(() => {
-              disconnect();
-              toast("wallet disconnected");
-            })}
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            variants={popVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            className="absolute right-0 z-50 mt-1 w-[200px] overflow-hidden rounded-md border border-edge bg-canvas py-1 shadow-[var(--shadow-pop)]"
           >
-            <span className="text-down">Disconnect</span>
-          </MenuItem>
-        </div>
-      )}
+            <div className="flex items-center gap-1.5 px-3 py-1.5">
+              <PhantomMark />
+              <span className="mono truncate text-[11px] text-muted" title={address}>
+                {shortAddress(address)}
+              </span>
+            </div>
+            <div className="my-1 h-px bg-edge" />
+            {!onPolygon && (
+              <MenuItem onClick={act(switchToPolygon)}>
+                <span className="text-warn">Switch to Polygon</span>
+              </MenuItem>
+            )}
+            <MenuItem onClick={act(() => go({ fn: "PORT", user: address }, `PORT ${address}`))}>
+              View my portfolio
+            </MenuItem>
+            <MenuItem onClick={act(() => copyToClipboard(address, toast))}>Copy address</MenuItem>
+            <MenuItem
+              onClick={act(() => {
+                disconnect();
+                toast("wallet disconnected");
+              })}
+            >
+              <span className="text-down">Disconnect</span>
+            </MenuItem>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 });

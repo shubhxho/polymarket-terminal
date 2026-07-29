@@ -1,5 +1,6 @@
 "use client";
 
+import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTerminal } from "@/components/TerminalProvider";
 import { usePoll } from "@/hooks/usePoll";
@@ -16,6 +17,7 @@ import {
 import { cn } from "@/lib/cn";
 import { compact, truncate } from "@/lib/format";
 import { fuzzyMatch, highlight } from "@/lib/fuzzy";
+import { popVariants, rowVariants, scrimVariants, staggerContainer } from "@/lib/motion";
 import type { EventSummary, Market } from "@/lib/types";
 
 type Row = {
@@ -284,110 +286,124 @@ export function CommandPalette({
       ?.scrollIntoView({ block: "nearest" });
   }, [sel]);
 
-  if (!open) return null;
-
   let lastGroup: Row["group"] | null = null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-ink/20 px-3 pt-[12vh] backdrop-blur-[2px]"
-      onMouseDown={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Command palette"
-    >
-      <div
-        onMouseDown={(e) => e.stopPropagation()}
-        className="flex max-h-[62vh] w-full max-w-[620px] flex-col overflow-hidden rounded-lg border border-edge bg-canvas shadow-[var(--shadow-pop)]"
-      >
-        <div className="flex shrink-0 items-center gap-2.5 border-b border-edge px-3.5 py-3">
-          <span className="text-faint">⌘</span>
-          <input
-            ref={inputRef}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={onKeyDown}
-            spellCheck={false}
-            autoComplete="off"
-            aria-label="Command line"
-            role="combobox"
-            aria-expanded
-            aria-controls="pal-list"
-            aria-activedescendant={rows[sel] ? `pal-opt-${sel}` : undefined}
-            placeholder="Search markets, or type a function code…"
-            className="min-w-0 flex-1 text-sm2 placeholder:text-faint"
-          />
-          {remote.refreshing ? <span className="dot animate-pulse text-accent" /> : null}
-        </div>
-
-        <div
-          ref={listRef}
-          id="pal-list"
-          role="listbox"
-          aria-label="Results"
-          className="min-h-0 flex-1 overflow-y-auto py-1"
+    <AnimatePresence>
+      {open ? (
+        <motion.div
+          key="pal-scrim"
+          variants={scrimVariants}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          className="fixed inset-0 z-50 flex items-start justify-center bg-ink/20 px-3 pt-[12vh] backdrop-blur-[2px]"
+          onMouseDown={onClose}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Command palette"
         >
-          {rows.length === 0 ? (
-            <div className="px-3.5 py-6 text-center text-tiny text-faint">
-              No matches — press Enter to search markets for “{query}”
+          <motion.div
+            variants={popVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            onMouseDown={(e) => e.stopPropagation()}
+            className="flex max-h-[62vh] w-full max-w-[620px] flex-col overflow-hidden rounded-lg border border-edge bg-canvas shadow-[var(--shadow-pop)]"
+          >
+            <div className="flex shrink-0 items-center gap-2.5 border-b border-edge px-3.5 py-3">
+              <span className="text-faint">⌘</span>
+              <input
+                ref={inputRef}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={onKeyDown}
+                spellCheck={false}
+                autoComplete="off"
+                aria-label="Command line"
+                role="combobox"
+                aria-expanded
+                aria-controls="pal-list"
+                aria-activedescendant={rows[sel] ? `pal-opt-${sel}` : undefined}
+                placeholder="Search markets, or type a function code…"
+                className="min-w-0 flex-1 text-sm2 placeholder:text-faint"
+              />
+              {remote.refreshing ? <span className="dot animate-pulse text-accent" /> : null}
             </div>
-          ) : (
-            rows.map((row, i) => {
-              const header = row.group !== lastGroup ? row.group : null;
-              lastGroup = row.group;
-              return (
-                <div key={row.id}>
-                  {header ? <div className="eyebrow px-3.5 pt-2 pb-1">{header}</div> : null}
-                  <button
-                    data-row={i}
-                    id={`pal-opt-${i}`}
-                    role="option"
-                    aria-selected={i === sel}
-                    onMouseEnter={() => setSel(i)}
-                    // Preventing mousedown keeps focus in the search field, so
-                    // a prefilling row leaves the caret ready for its argument.
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={(e) => run(row, e.metaKey || e.ctrlKey)}
-                    className={cn(
-                      "flex w-full items-center gap-2.5 px-3.5 py-[6px] text-left",
-                      i === sel && "row-sel"
-                    )}
-                  >
-                    <span className="min-w-0 flex-1 truncate text-tiny">
-                      {highlight(row.label, row.positions).map((part, k) => (
-                        <span
-                          key={k}
-                          className={part.hit ? "font-semibold text-accent" : undefined}
-                        >
-                          {part.text}
-                        </span>
-                      ))}
-                    </span>
-                    {row.meta ? (
-                      <span className="shrink-0 text-[11px] text-faint">
-                        {truncate(row.meta, 34)}
-                      </span>
-                    ) : null}
-                    {row.hint ? (
-                      <kbd className="shrink-0 rounded-sm border border-edge px-1 text-[10px] text-faint">
-                        {row.hint}
-                      </kbd>
-                    ) : null}
-                  </button>
-                </div>
-              );
-            })
-          )}
-        </div>
 
-        <div className="flex shrink-0 items-center gap-3 border-t border-edge px-3.5 py-2 text-[11px] text-faint">
-          <Hint keys="↑↓" label="navigate" />
-          <Hint keys="⏎" label="open" />
-          <Hint keys="⌘⏎" label="open in new tab" />
-          <Hint keys="esc" label="close" />
-        </div>
-      </div>
-    </div>
+            <motion.div
+              ref={listRef}
+              id="pal-list"
+              role="listbox"
+              aria-label="Results"
+              className="min-h-0 flex-1 overflow-y-auto py-1"
+              variants={staggerContainer}
+              initial="initial"
+              animate="animate"
+            >
+              {rows.length === 0 ? (
+                <div className="px-3.5 py-6 text-center text-tiny text-faint">
+                  No matches — press Enter to search markets for “{query}”
+                </div>
+              ) : (
+                rows.map((row, i) => {
+                  const header = row.group !== lastGroup ? row.group : null;
+                  lastGroup = row.group;
+                  return (
+                    <motion.div key={row.id} variants={rowVariants}>
+                      {header ? <div className="eyebrow px-3.5 pt-2 pb-1">{header}</div> : null}
+                      <button
+                        data-row={i}
+                        id={`pal-opt-${i}`}
+                        role="option"
+                        aria-selected={i === sel}
+                        onMouseEnter={() => setSel(i)}
+                        // Preventing mousedown keeps focus in the search field, so
+                        // a prefilling row leaves the caret ready for its argument.
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={(e) => run(row, e.metaKey || e.ctrlKey)}
+                        className={cn(
+                          "flex w-full items-center gap-2.5 px-3.5 py-[6px] text-left",
+                          i === sel && "row-sel"
+                        )}
+                      >
+                        <span className="min-w-0 flex-1 truncate text-tiny">
+                          {highlight(row.label, row.positions).map((part, k) => (
+                            <span
+                              key={k}
+                              className={part.hit ? "font-semibold text-accent" : undefined}
+                            >
+                              {part.text}
+                            </span>
+                          ))}
+                        </span>
+                        {row.meta ? (
+                          <span className="shrink-0 text-[11px] text-faint">
+                            {truncate(row.meta, 34)}
+                          </span>
+                        ) : null}
+                        {row.hint ? (
+                          <kbd className="shrink-0 rounded-sm border border-edge px-1 text-[10px] text-faint">
+                            {row.hint}
+                          </kbd>
+                        ) : null}
+                      </button>
+                    </motion.div>
+                  );
+                })
+              )}
+            </motion.div>
+
+            <div className="flex shrink-0 items-center gap-3 border-t border-edge px-3.5 py-2 text-[11px] text-faint">
+              <Hint keys="↑↓" label="navigate" />
+              <Hint keys="⏎" label="open" />
+              <Hint keys="⌘⏎" label="open in new tab" />
+              <Hint keys="esc" label="close" />
+            </div>
+          </motion.div>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
   );
 }
 

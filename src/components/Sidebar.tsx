@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo } from "react";
+import { motion } from "motion/react";
 import { useTerminal } from "@/components/TerminalProvider";
 import { useWallet } from "@/hooks/useWallet";
 import { cn } from "@/lib/cn";
@@ -11,6 +12,7 @@ import {
   SECTORS,
   type CommandSpec,
 } from "@/lib/commands";
+import { rowVariants, staggerContainer, tapScale } from "@/lib/motion";
 
 /**
  * Primary navigation, modelled on ami.dev's project sidebar: grouped sections
@@ -69,9 +71,14 @@ export function Sidebar() {
   }, [go, toast]);
 
   return (
-    <nav className="hidden w-[184px] shrink-0 flex-col gap-4 overflow-y-auto border-r border-edge bg-surface px-2 py-3 md:flex">
+    <motion.nav
+      variants={staggerContainer}
+      initial="initial"
+      animate="animate"
+      className="hidden w-[184px] shrink-0 flex-col gap-4 overflow-y-auto border-r border-edge bg-surface px-2 py-3 md:flex"
+    >
       {GROUPS.map((group) => (
-        <div key={group.label}>
+        <motion.div key={group.label} variants={rowVariants}>
           <div className="eyebrow px-1.5 pb-1">{group.label}</div>
           <ul className="flex flex-col gap-px">
             {group.codes.map((code) => {
@@ -80,7 +87,8 @@ export function Sidebar() {
               const active = screen.fn === spec.code;
               return (
                 <li key={code}>
-                  <button
+                  <motion.button
+                    whileTap={tapScale}
                     onClick={() => launch(spec)}
                     title={`${spec.title} — ${spec.blurb}`}
                     aria-current={active ? "page" : undefined}
@@ -104,28 +112,29 @@ export function Sidebar() {
                     >
                       {spec.fkey ? `F${spec.fkey}` : spec.code}
                     </span>
-                  </button>
+                  </motion.button>
                 </li>
               );
             })}
           </ul>
-        </div>
+        </motion.div>
       ))}
 
-      <div className="mt-auto">
+      <motion.div variants={rowVariants} className="mt-auto">
         <div className="eyebrow px-1.5 pb-1">Sectors</div>
         <div className="flex flex-wrap gap-1 px-1">
           {SECTORS.slice(0, 6).map((s) => (
-            <button
+            <motion.button
               key={s.key}
+              whileTap={tapScale}
               onClick={() => go({ fn: "CAT", tag: s.tag, label: s.label }, `CAT ${s.key}`)}
               className="rounded-sm border border-edge px-1.5 py-[1px] text-[10px] text-muted hover:border-accent-weak hover:text-accent"
             >
               {s.label}
-            </button>
+            </motion.button>
           ))}
         </div>
-      </div>
-    </nav>
+      </motion.div>
+    </motion.nav>
   );
 }

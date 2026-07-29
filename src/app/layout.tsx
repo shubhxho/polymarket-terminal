@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import { Providers } from "@/components/Providers";
 import "./globals.css";
 
 /**
@@ -40,7 +41,9 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`h-full ${ui.variable} ${mono.variable}`}>
-      <body className="h-full bg-canvas text-ink">{children}</body>
+      <body className="h-full bg-canvas text-ink">
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }

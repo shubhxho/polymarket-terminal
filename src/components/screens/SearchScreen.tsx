@@ -1,11 +1,13 @@
 "use client";
 
+import { motion } from "motion/react";
 import type { ReactNode } from "react";
 import { MarketGrid } from "@/components/MarketGrid";
 import { useTerminal } from "@/components/TerminalProvider";
 import { Empty, ErrorBox, Loading, Panel } from "@/components/ui/Panel";
 import { usePoll } from "@/hooks/usePoll";
 import { compact, timeToExpiry, truncate } from "@/lib/format";
+import { panelVariants, staggerContainer } from "@/lib/motion";
 import type { EventSummary, Market } from "@/lib/types";
 
 type SearchResult = { events: EventSummary[]; markets: Market[] };
@@ -28,8 +30,16 @@ export default function SearchScreen({ q }: { q: string }) {
   const stale = !!error && !!data;
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2">
-      <div className="flex shrink-0 items-center gap-2 border border-edge bg-surface px-1.5 py-[3px] text-[10px] tracking-wide uppercase">
+    <motion.div
+      className="flex h-full min-h-0 flex-col gap-2"
+      variants={staggerContainer}
+      initial="initial"
+      animate="animate"
+    >
+      <motion.div
+        variants={panelVariants}
+        className="flex shrink-0 items-center gap-2 border border-edge bg-surface px-1.5 py-[3px] text-[10px] tracking-wide uppercase"
+      >
         <span className="shrink-0 text-info">Query</span>
         <span className="min-w-0 truncate text-accent">{query ? `"${query}"` : "—"}</span>
         <span className="ml-auto flex shrink-0 items-center gap-3 text-muted">
@@ -42,10 +52,13 @@ export default function SearchScreen({ q }: { q: string }) {
           {stale ? <span className="text-warn">stale</span> : null}
           {refreshing ? <span className="text-accent-weak">···</span> : null}
         </span>
-      </div>
+      </motion.div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-y-auto lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] lg:overflow-visible">
-        <Panel title="Events" right={`${events.length}`} flush className="min-h-0">
+      <motion.div
+        variants={staggerContainer}
+        className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-y-auto lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] lg:overflow-visible"
+      >
+        <Panel title="Events" right={`${events.length}`} flush className="min-h-0" animate>
           <Body loading={loading} error={error} hasData={!!data}>
             {!query ? (
               <Empty text="enter a query" />
@@ -57,13 +70,13 @@ export default function SearchScreen({ q }: { q: string }) {
           </Body>
         </Panel>
 
-        <Panel title="Markets" right={`${markets.length}`} flush className="min-h-0">
+        <Panel title="Markets" right={`${markets.length}`} flush className="min-h-0" animate>
           <Body loading={loading} error={error} hasData={!!data}>
             {!query ? <Empty text="enter a query" /> : <MarketGrid markets={markets} />}
           </Body>
         </Panel>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }
 

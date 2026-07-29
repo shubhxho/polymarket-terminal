@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo } from "react";
+import { motion } from "motion/react";
 import { cents, compact } from "@/lib/format";
+import { transition } from "@/lib/motion";
 import { Empty } from "@/components/ui/Panel";
 import type { BookLevel, OrderBook as Book } from "@/lib/types";
 
@@ -62,7 +64,12 @@ export function OrderBookLadder({
   if (model.bids.length === 0 && model.asks.length === 0) return <Empty text="book is empty" />;
 
   return (
-    <div className="text-tiny">
+    <motion.div
+      className="text-tiny"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={transition}
+    >
       {outcomeLabel ? (
         <div className="mb-1 truncate text-[10px] tracking-wide text-info uppercase">
           {outcomeLabel}
@@ -105,7 +112,7 @@ export function OrderBookLadder({
           <div className="flex-1 bg-down/70" />
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 

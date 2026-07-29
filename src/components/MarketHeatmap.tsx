@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { motion } from "motion/react";
 import { useTerminal } from "@/components/TerminalProvider";
 import { useElementSize } from "@/hooks/useElementSize";
 import { buildCells, heatColor, heatColorCss, type HeatCell } from "@/lib/heatmap";
 import { cents, compact, signed } from "@/lib/format";
+import { transition } from "@/lib/motion";
 import type { Market } from "@/lib/types";
 
 /**
@@ -190,7 +192,13 @@ export function MarketHeatmap({ markets }: { markets: readonly Market[] }) {
   };
 
   return (
-    <div ref={wrapRef} className="relative h-full w-full">
+    <motion.div
+      ref={wrapRef}
+      className="relative h-full w-full"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={transition}
+    >
       <canvas
         ref={canvasRef}
         onMouseMove={onMove}
@@ -231,6 +239,6 @@ export function MarketHeatmap({ markets }: { markets: readonly Market[] }) {
           </div>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }

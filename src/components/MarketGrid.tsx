@@ -1,10 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { motion } from "motion/react";
 import { useMarketSocket, type Quote } from "@/hooks/useMarketSocket";
 import { useTerminal } from "@/components/TerminalProvider";
 import { Empty } from "@/components/ui/Panel";
 import { cents, compact, dirClass, signed, timeToExpiry, truncate } from "@/lib/format";
+import { rowVariants, staggerContainer, tapScale } from "@/lib/motion";
 import type { Market } from "@/lib/types";
 
 export type GridColumn =
@@ -145,7 +147,13 @@ export function MarketGrid({
   if (markets.length === 0) return <Empty text={emptyText} />;
 
   return (
-    <div ref={bodyRef} className="min-w-[720px] text-tiny">
+    <motion.div
+      ref={bodyRef}
+      className="min-w-[720px] text-tiny"
+      variants={staggerContainer}
+      initial="initial"
+      animate="animate"
+    >
       <div className="sticky top-0 z-10 flex items-center gap-1 border-b border-edge-strong bg-surface-2 px-1 py-[3px] text-[10px] tracking-wide text-accent-weak uppercase">
         {showRank ? <span className="w-[22px] shrink-0 text-right">#</span> : null}
         <span className="min-w-0 flex-1">Market</span>
@@ -188,7 +196,7 @@ export function MarketGrid({
           }}
         />
       ))}
-    </div>
+    </motion.div>
   );
 }
 
@@ -309,8 +317,10 @@ function Row({
   };
 
   return (
-    <div
+    <motion.div
       data-row={index}
+      variants={rowVariants}
+      whileTap={tapScale}
       onClick={onSelect}
       onDoubleClick={onOpen}
       role="button"
@@ -349,7 +359,7 @@ function Row({
       >
         {watched ? "★" : "☆"}
       </button>
-    </div>
+    </motion.div>
   );
 }
 

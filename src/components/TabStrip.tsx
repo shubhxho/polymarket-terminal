@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import { useTerminal } from "@/components/TerminalProvider";
 import { screenTitle } from "@/lib/commands";
+import { popVariants, tapScale, transition } from "@/lib/motion";
 
 /**
  * Workspace tabs.
@@ -61,61 +63,71 @@ export function TabStrip() {
       role="tablist"
       className="flex h-[32px] shrink-0 items-end gap-1 border-b border-edge bg-canvas px-3"
     >
-      {tabs.map((tab, i) => {
-        const current = tab.stack[tab.cursor];
-        const active = i === activeTab;
-        return (
-          <div
-            key={tab.id}
-            onClick={() => selectTab(i)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                selectTab(i);
-              }
-            }}
-            role="tab"
-            aria-selected={active}
-            // Roving tabindex: only the active tab takes Tab focus; arrows are
-            // for within-list movement, which the command bar already owns.
-            tabIndex={active ? 0 : -1}
-            title={`${screenTitle(current)} — ⌘${i + 1}`}
-            className={`group flex h-[26px] max-w-[190px] min-w-0 cursor-pointer items-center gap-1.5 rounded-t-md border border-b-0 px-2.5 text-tiny transition-colors ${
-              active
-                ? "border-edge bg-surface font-medium text-ink"
-                : "border-transparent text-muted hover:bg-surface-2"
-            }`}
-          >
-            <span className={`dot ${active ? "text-accent" : "text-edge-strong"}`} />
-            <span className="min-w-0 flex-1 truncate">{screenTitle(current)}</span>
-            {tabs.length > 1 ? (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  closeTab(i);
-                }}
-                aria-label="Close tab"
-                // Hover-hidden on desktop (pointer reveals it), but always shown
-                // on touch and when keyboard-focused — otherwise a tab can never
-                // be closed without a mouse.
-                className="shrink-0 text-faint opacity-60 hover:text-ink focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100"
-              >
-                ×
-              </button>
-            ) : null}
-          </div>
-        );
-      })}
+      <AnimatePresence initial={false}>
+        {tabs.map((tab, i) => {
+          const current = tab.stack[tab.cursor];
+          const active = i === activeTab;
+          return (
+            <motion.div
+              key={tab.id}
+              layout
+              variants={popVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              transition={transition}
+              whileTap={tapScale}
+              onClick={() => selectTab(i)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  selectTab(i);
+                }
+              }}
+              role="tab"
+              aria-selected={active}
+              // Roving tabindex: only the active tab takes Tab focus; arrows are
+              // for within-list movement, which the command bar already owns.
+              tabIndex={active ? 0 : -1}
+              title={`${screenTitle(current)} — ⌘${i + 1}`}
+              className={`group flex h-[26px] max-w-[190px] min-w-0 cursor-pointer items-center gap-1.5 rounded-t-md border border-b-0 px-2.5 text-tiny transition-colors ${
+                active
+                  ? "border-edge bg-surface font-medium text-ink"
+                  : "border-transparent text-muted hover:bg-surface-2"
+              }`}
+            >
+              <span className={`dot ${active ? "text-accent" : "text-edge-strong"}`} />
+              <span className="min-w-0 flex-1 truncate">{screenTitle(current)}</span>
+              {tabs.length > 1 ? (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    closeTab(i);
+                  }}
+                  aria-label="Close tab"
+                  // Hover-hidden on desktop (pointer reveals it), but always shown
+                  // on touch and when keyboard-focused — otherwise a tab can never
+                  // be closed without a mouse.
+                  className="shrink-0 text-faint opacity-60 hover:text-ink focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100"
+                >
+                  ×
+                </button>
+              ) : null}
+            </motion.div>
+          );
+        })}
+      </AnimatePresence>
 
       {tabs.length < 8 ? (
-        <button
+        <motion.button
+          whileTap={tapScale}
           onClick={() => openTab()}
           title="New tab (⌘T)"
           aria-label="New tab"
           className="mb-[3px] flex h-[24px] w-[24px] items-center justify-center rounded-sm text-muted hover:bg-surface-2 hover:text-ink"
         >
           +
-        </button>
+        </motion.button>
       ) : null}
     </div>
   );
