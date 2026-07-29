@@ -344,7 +344,7 @@ function Row({
         }}
         title={watched ? "Remove from watchlist (W)" : "Add to watchlist (W)"}
         className={`w-[16px] shrink-0 text-center ${
-          watched ? "text-accent" : "text-faint hover:text-accent-weak"
+          watched ? "text-accent hover:text-accent-weak" : "text-faint hover:text-accent"
         }`}
       >
         {watched ? "★" : "☆"}

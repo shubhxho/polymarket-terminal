@@ -39,7 +39,9 @@ export const WalletButton = memo(function WalletButton() {
   // Hold the layout until we know Phantom's state, so the pill doesn't flip
   // from "Connect" to an address a frame after paint.
   if (!ready) {
-    return <span className="h-[24px] w-[84px] shrink-0 rounded-md border border-edge" />;
+    return (
+      <span className="h-[24px] w-[84px] shrink-0 animate-pulse rounded-md border border-edge bg-surface-2" />
+    );
   }
 
   if (status !== "connected" || !address) {
@@ -73,13 +75,22 @@ export const WalletButton = memo(function WalletButton() {
       <button
         onClick={() => setOpen((v) => !v)}
         title={address}
-        className="flex h-[24px] items-center gap-1.5 rounded-md border border-edge px-2 text-tiny hover:border-edge-strong"
+        aria-label={`Wallet ${shortAddress(address)}${onPolygon ? "" : " — wrong network"}`}
+        aria-expanded={open}
+        className={cn(
+          "flex h-[24px] items-center gap-1.5 rounded-md border border-edge px-2 text-tiny hover:border-accent-weak",
+          open && "border-accent-weak bg-surface-2"
+        )}
       >
-        <span
-          className={cn("dot", onPolygon ? "text-up" : "text-warn")}
-          title={onPolygon ? "On Polygon" : "Wrong network — switch to Polygon"}
-        />
+        {/* Neutral dot — green is reserved for price direction. Off Polygon we
+            show a legible amber tag rather than leaning on hue on a 6px dot. */}
+        <span className={cn("dot", onPolygon ? "text-faint" : "text-warn")} aria-hidden />
         <span className="mono text-[11px]">{shortAddress(address)}</span>
+        {!onPolygon && (
+          <span className="border border-warn/40 px-1 text-[10px] font-medium tracking-wide text-warn uppercase">
+            Wrong net
+          </span>
+        )}
       </button>
 
       {open && (

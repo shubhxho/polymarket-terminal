@@ -65,7 +65,7 @@ test.describe("wallet", () => {
     // Bare "PORT" would normally error for want of an address; a connected
     // wallet supplies it, so the palette opens that wallet's book instead.
     await page.keyboard.press("ControlOrMeta+k");
-    await page.getByRole("textbox", { name: "Command line" }).fill("PORT");
+    await page.getByRole("combobox", { name: "Command line" }).fill("PORT");
     await page.keyboard.press("Enter");
 
     await expect(page.getByText(ADDRESS)).toBeVisible();

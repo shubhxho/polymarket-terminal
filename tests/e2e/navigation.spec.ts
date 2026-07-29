@@ -16,7 +16,7 @@ test.describe("navigation", () => {
     const palette = page.getByRole("dialog", { name: "Command palette" });
     await expect(palette).toBeVisible();
 
-    await page.getByRole("textbox", { name: "Command line" }).fill("HELP");
+    await page.getByRole("combobox", { name: "Command line" }).fill("HELP");
     await page.keyboard.press("Enter");
 
     await expect(page.getByText("Function Codes")).toBeVisible();
@@ -47,7 +47,7 @@ test.describe("navigation", () => {
     await expect(page.getByRole("banner").getByText("MARKET MONITOR")).toBeVisible();
     // Type-anywhere seeds the palette with the first key.
     await page.keyboard.press("f");
-    const input = page.getByRole("textbox", { name: "Command line" });
+    const input = page.getByRole("combobox", { name: "Command line" });
     await expect(input).toBeVisible();
     await input.fill("SRCH bitcoin");
     await page.keyboard.press("Enter");

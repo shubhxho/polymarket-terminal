@@ -195,7 +195,7 @@ kbd {
 
 ::selection {
   background: var(--color-accent-soft);
-  color: #1a0e1e;
+  color: var(--color-accent-ink);
 }
 
 /* ── Scrollbars ─────────────────────────────────────────────────────────── */
@@ -288,7 +288,9 @@ kbd {
   .flash-down {
     animation-duration: 1ms;
   }
-  .marquee-track {
+  .marquee-track,
+  .caret,
+  .animate-pulse {
     animation: none !important;
   }
 }
@@ -339,7 +341,20 @@ kbd {
 
 input {
   background: transparent;
-  outline: none;
   color: inherit;
   font: inherit;
+}
+
+/* Keyboard focus, in one place. Fuchsia = interactive, the same rule the rest
+   of the palette follows, so every control lights the same way — and pointer
+   users never see it because `:focus-visible` only fires for keyboard focus. */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+  border-radius: var(--radius-xs);
+}
+/* A mouse press on a text input shouldn't paint the ring; its border already
+   carries focus. Keyboard focus still matches `:focus-visible` above. */
+input:focus:not(:focus-visible) {
+  outline: none;
 }

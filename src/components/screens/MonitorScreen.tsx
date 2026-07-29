@@ -26,6 +26,9 @@ export default function MonitorScreen() {
   const blocks = usePoll<Trade[]>("/api/trades?limit=40&min=25000", 6000);
 
   const rows = markets.data ?? [];
+  // A board that stopped updating but still shows numbers must say so — an
+  // operator can't tell frozen prices from live ones otherwise.
+  const stale = !!markets.error && rows.length > 0;
 
   const asOf = useMemo(
     () => (markets.updatedAt ? clock(new Date(markets.updatedAt)) : "--:--:--"),
@@ -35,15 +38,15 @@ export default function MonitorScreen() {
   return (
     <div className="flex h-full min-h-0 gap-2">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
-        <div className="flex shrink-0 items-center gap-1 border-b border-edge bg-surface px-2 py-1">
-          <span className="mr-1 text-[10px] tracking-wide text-muted uppercase">Rank by</span>
+        <div className="flex shrink-0 flex-wrap items-center gap-x-1 gap-y-1 border border-edge bg-surface px-1.5 py-[3px]">
+          <span className="mr-1 text-[10px] tracking-wide text-info uppercase">Rank by</span>
           {SORTS.map((s) => (
             <button
               key={s.key}
               onClick={() => setSort(s.key)}
               className={`border px-1.5 py-[1px] text-[10px] tracking-wide ${
                 sort === s.key
-                  ? "border-accent text-accent"
+                  ? "border-accent bg-accent/8 font-medium text-accent"
                   : "border-edge text-muted hover:border-edge-strong hover:text-ink"
               }`}
             >
@@ -57,7 +60,15 @@ export default function MonitorScreen() {
 
         <Panel
           title="MARKET MONITOR"
-          right={markets.refreshing ? "sync…" : `${rows.length} rows`}
+          right={
+            stale ? (
+              <span className="text-warn">stale</span>
+            ) : markets.refreshing ? (
+              "sync…"
+            ) : (
+              `${rows.length} rows`
+            )
+          }
           className="min-h-0 flex-1"
           flush
         >
@@ -75,6 +86,10 @@ export default function MonitorScreen() {
         <Panel title="EVENT LEADERS" className="min-h-0 flex-1" flush>
           {events.loading ? (
             <Loading />
+          ) : events.error && !events.data ? (
+            <div className="p-1.5">
+              <ErrorBox message={events.error} />
+            </div>
           ) : (events.data?.length ?? 0) === 0 ? (
             <Empty />
           ) : (
@@ -102,6 +117,10 @@ export default function MonitorScreen() {
         <Panel title="BLOCK PRINTS · $25K+" className="min-h-0 flex-1" flush>
           {blocks.loading ? (
             <Loading />
+          ) : blocks.error && !blocks.data ? (
+            <div className="p-1.5">
+              <ErrorBox message={blocks.error} />
+            </div>
           ) : (blocks.data?.length ?? 0) === 0 ? (
             <Empty text="no blocks in window" />
           ) : (

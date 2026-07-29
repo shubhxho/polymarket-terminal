@@ -27,7 +27,9 @@ export default defineConfig({
   // A production build, not `next dev`: it's the artifact that ships, and it
   // starts clean without the dev overlay intercepting keystrokes.
   webServer: {
-    command: `npm run build && npm run start -- --port ${PORT}`,
+    // Build and serve on the Bun runtime — the same `bun --bun next` path the
+    // app scripts use — so e2e exercises exactly what ships.
+    command: `bun run build && bun run start -- --port ${PORT}`,
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
