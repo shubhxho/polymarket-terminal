@@ -2,8 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { MarketGrid } from "@/components/MarketGrid";
+import { MarketHeatmap } from "@/components/MarketHeatmap";
 import { useTerminal } from "@/components/TerminalProvider";
-import { Empty, ErrorBox, Loading, Panel } from "@/components/ui/Panel";
+import { Empty, ErrorBox, Loading, Panel, Segmented } from "@/components/ui/Panel";
 import { usePoll } from "@/hooks/usePoll";
 import { clock, compact, truncate } from "@/lib/format";
 import type { EventSummary, Market, Trade } from "@/lib/types";
@@ -19,6 +20,7 @@ const SORTS = [
 export default function MonitorScreen() {
   const { go } = useTerminal();
   const [sort, setSort] = useState<(typeof SORTS)[number]["key"]>("volume24hr");
+  const [view, setView] = useState<"grid" | "heat">("grid");
 
   const markets = usePoll<Market[]>(`/api/markets?limit=120&order=${sort}`, 8000);
   const events = usePoll<EventSummary[]>("/api/events?limit=14&order=volume24hr", 30000);
@@ -61,13 +63,24 @@ export default function MonitorScreen() {
         <Panel
           title="MARKET MONITOR"
           right={
-            stale ? (
-              <span className="text-warn">stale</span>
-            ) : markets.refreshing ? (
-              "sync…"
-            ) : (
-              `${rows.length} rows`
-            )
+            <span className="flex items-center gap-2">
+              {stale ? (
+                <span className="text-warn">stale</span>
+              ) : markets.refreshing ? (
+                <span className="text-faint">sync…</span>
+              ) : (
+                <span className="text-faint">{rows.length} rows</span>
+              )}
+              <Segmented
+                size="xs"
+                value={view}
+                onChange={setView}
+                options={[
+                  { value: "grid", label: "Grid", title: "Sortable market table" },
+                  { value: "heat", label: "Heat", title: "GPU heatmap of the whole board" },
+                ]}
+              />
+            </span>
           }
           className="min-h-0 flex-1"
           flush
@@ -76,6 +89,10 @@ export default function MonitorScreen() {
             <Loading text="loading board" />
           ) : markets.error && rows.length === 0 ? (
             <ErrorBox message={markets.error} />
+          ) : view === "heat" ? (
+            <div className="h-full p-1">
+              <MarketHeatmap markets={rows} />
+            </div>
           ) : (
             <MarketGrid markets={rows} />
           )}

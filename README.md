@@ -180,9 +180,16 @@ src/
   components/      terminal shell, shared grid/book/tape widgets
   components/screens/  one file per function code
 tests/
-  unit/            Vitest over the pure lib/ logic — formatters, quant, fuzzy, parser
-  e2e/             Playwright over the real shell — routing, palette, wallet, theming
+  unit/            Vitest over the pure lib/ logic — formatters, quant, fuzzy, parser, heatmap, signals
+  e2e/             Playwright over the real shell — routing, palette, wallet, theming, heatmap
+ml/                MLX direction classifier — fetch → features → train (see ml/README.md)
 ```
+
+The Monitor board has a **Grid / Heat** toggle: the Heat view renders the whole
+board as a WebGPU heatmap (`MarketHeatmap` + the pure `lib/heatmap` core), one
+instanced quad per market coloured green/red by 24h change, with a Canvas2D
+fallback when the browser has no `navigator.gpu`. Hit-testing is CPU-side, so
+hover and click work on either backend.
 
 Three upstream sources, all public:
 
