@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { aggregateFlow, buildCrossSection, findArbitrage, WHALE_NOTIONAL } from "@/lib/signals";
 import type { EventSummary, Market, Trade } from "@/lib/types";
 

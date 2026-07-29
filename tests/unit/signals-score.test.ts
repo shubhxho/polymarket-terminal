@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { findBasketDrift, scoreMarket } from "@/lib/signals";
 import type { EventSummary, Market, OrderBook } from "@/lib/types";
 
