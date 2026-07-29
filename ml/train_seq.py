@@ -121,11 +121,53 @@ def _decile_backtest(probs: List[float], fwd: List[float], q: float = 0.2) -> di
     }
 
 
-def _split(series):
-    n_val = max(1, int(len(series) * 0.2))
-    tr = [s for prices in series[n_val:] for s in series_to_rich(prices)]
-    va = [s for prices in series[:n_val] for s in series_to_rich(prices)]
+from features import HORIZON  # noqa: E402
+
+
+def _split(series, val_frac: float = 0.2):
+    """Time-ordered, leakage-safe split.
+
+    Each market's windows are already in chronological order. We train on each
+    series' earlier windows and validate on its *later* ones — so validation is
+    strictly out-of-time, the honest test of whether a signal survives into the
+    future (not just across markets). A purge of HORIZON windows between the two
+    drops the pairs whose forward label would peek into the validation region.
+    """
+    tr, va = [], []
+    for prices in series:
+        rich = series_to_rich(prices)
+        if len(rich) < 5:
+            tr.extend(rich)
+            continue
+        cut = int(len(rich) * (1 - val_frac))
+        tr.extend(rich[: max(0, cut - HORIZON)])   # purge the overlap band
+        va.extend(rich[cut:])
     return tr, va
+
+
+def _walk_forward(series, folds: int = 4):
+    """Expanding-window walk-forward over each market's timeline.
+
+    Each series is cut into `folds+1` equal time blocks. Fold k trains on blocks
+    0..k and validates on block k+1 (with a HORIZON purge before it). Reporting
+    AUC per fold shows whether the signal is stable across epochs rather than a
+    one-off fit to a single slice — that is what "verify over time" means.
+    Yields (fold_index, train_samples, val_samples).
+    """
+    blocks = folds + 1
+    for k in range(1, blocks):
+        tr, va = [], []
+        for prices in series:
+            rich = series_to_rich(prices)
+            if len(rich) < blocks:
+                continue
+            step = len(rich) / blocks
+            tr_end = int(step * k)
+            va_end = int(step * (k + 1))
+            tr.extend(rich[: max(0, tr_end - HORIZON)])
+            va.extend(rich[tr_end:va_end])
+        if tr and va:
+            yield k, tr, va
 
 
 def _tensors(samples: List[Sample], fmean, fstd, rstd):
@@ -144,7 +186,7 @@ def _probs(model, seq, feat) -> List[float]:
     return out
 
 
-def _train_one(name, model, tr, va, dims):
+def _train_one(name, model, tr, va, dims, verbose: bool = True):
     seq_tr, feat_tr, y_tr = tr
     seq_va, feat_va, y_va = va
     pos = y_tr.mean().item()
@@ -172,11 +214,19 @@ def _train_one(name, model, tr, va, dims):
         if auc > best_auc:
             best_auc = auc
             best_flat = {k: mx.array(v) for k, v in tree_flatten(model.parameters())}
-        if (epoch + 1) % 10 == 0 or epoch == EPOCHS - 1:
+        if verbose and ((epoch + 1) % 10 == 0 or epoch == EPOCHS - 1):
             print(f"  [{name}] epoch {epoch + 1:3d}  val auc {auc:.4f}  (best {best_auc:.4f})")
     if best_flat is not None:
         model.update(tree_unflatten(list(best_flat.items())))
     return best_auc
+
+
+def _normalizers(tr_s):
+    """Feature mean/std and return-std, from TRAIN samples only (no leakage)."""
+    feat_all = mx.array([s.feat for s in tr_s], dtype=mx.float32)
+    fmean, fstd = feat_all.mean(axis=0), feat_all.std(axis=0) + 1e-6
+    rstd = float(mx.array([r for s in tr_s for r in s.seq]).std().item()) + 1e-6
+    return fmean, fstd, rstd
 
 
 def main() -> None:
@@ -192,9 +242,7 @@ def main() -> None:
     print(f"loaded {len(series)} series → train {len(tr_s)} / val {len(va_s)} windows")
 
     # Normalisers from TRAIN only.
-    feat_all = mx.array([s.feat for s in tr_s], dtype=mx.float32)
-    fmean, fstd = feat_all.mean(axis=0), feat_all.std(axis=0) + 1e-6
-    rstd = float(mx.array([r for s in tr_s for r in s.seq]).std().item()) + 1e-6
+    fmean, fstd, rstd = _normalizers(tr_s)
 
     tr = _tensors(tr_s, fmean, fstd, rstd)
     va = _tensors(va_s, fmean, fstd, rstd)
@@ -202,20 +250,69 @@ def main() -> None:
     base = max(tr[2].mean().item(), 1 - tr[2].mean().item())
 
     results = {}
+    probs = {}
     models = {"feature_mlp": FeatureMLP(len(FEATURE_NAMES)), "seq_gru": SeqGRU(len(FEATURE_NAMES))}
     for name, model in models.items():
         print(f"training {name} …")
         auc = _train_one(name, model, tr, va, len(FEATURE_NAMES))
         p = _probs(model, va[0], va[1])
+        probs[name] = p
         results[name] = {
             "val_auc": round(auc, 4),
             "backtest": _decile_backtest(p, fwd_va),
         }
 
-    winner = max(results, key=lambda k: results[k]["val_auc"])
+    # Ensemble: mean of the two models' up-probabilities. Reported for insight;
+    # the served artifact stays a single model so the MCP loader stays trivial.
+    ens = [(a + b) / 2 for a, b in zip(probs["feature_mlp"], probs["seq_gru"])]
+    results["ensemble"] = {
+        "val_auc": round(_auc(ens, va[2].tolist()), 4),
+        "backtest": _decile_backtest(ens, fwd_va),
+    }
+
+    # Winner among the two savable single models (ensemble is report-only).
+    winner = max(("feature_mlp", "seq_gru"), key=lambda k: results[k]["val_auc"])
     best_model = models[winner]
+
+    # ── Walk-forward: is the signal stable across time, or a one-slice fit? ────
+    print("walk-forward verification over time …")
+    wf = []
+    win_cls = SeqGRU if winner == "seq_gru" else FeatureMLP
+    for k, tr_k, va_k in _walk_forward(series, folds=4):
+        fm, fs, rs = _normalizers(tr_k)
+        trk = _tensors(tr_k, fm, fs, rs)
+        vak = _tensors(va_k, fm, fs, rs)
+        m = win_cls(len(FEATURE_NAMES))
+        auc_k = _train_one(f"wf{k}", m, trk, vak, len(FEATURE_NAMES), verbose=False)
+        bt = _decile_backtest(_probs(m, vak[0], vak[1]), [s.fwd for s in va_k])
+        wf.append({"fold": k, "val_auc": round(auc_k, 4),
+                   "up_rate_spread": bt["up_rate_spread"], "val_windows": vak[0].shape[0]})
+        print(f"  fold {k}: auc {auc_k:.4f}  spread {bt['up_rate_spread']:+.3f}  (n={vak[0].shape[0]})")
+    wf_aucs = [f["val_auc"] for f in wf]
+    walk_forward = {
+        "folds": wf,
+        "mean_auc": round(sum(wf_aucs) / len(wf_aucs), 4) if wf_aucs else None,
+        "min_auc": round(min(wf_aucs), 4) if wf_aucs else None,
+        "note": "each fold trains on earlier time blocks, validates on the next — AUC>0.5 across folds = signal persists over time.",
+    }
     os.makedirs(os.path.dirname(WEIGHTS), exist_ok=True)
     mx.save_safetensors(WEIGHTS, dict(tree_flatten(best_model.parameters())))
+    # Inference needs the exact normaliser + which architecture won — the MCP
+    # server (mcp_server.py) loads these to reproduce scoring locally.
+    with open(os.path.join(HERE, "data", "seq_normalizer.json"), "w") as f:
+        json.dump(
+            {
+                "winner": winner,
+                "fmean": fmean.tolist(),
+                "fstd": fstd.tolist(),
+                "rstd": rstd,
+                "features": FEATURE_NAMES,
+                "seq_len": SEQ_LEN,
+                "hidden": HIDDEN,
+            },
+            f,
+            indent=2,
+        )
 
     report = {
         "series": len(series),
@@ -224,6 +321,7 @@ def main() -> None:
         "majority_baseline_acc": round(base, 4),
         "models": results,
         "winner": winner,
+        "walk_forward": walk_forward,
         "seq_len": SEQ_LEN,
         "features": FEATURE_NAMES,
     }

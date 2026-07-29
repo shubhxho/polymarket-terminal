@@ -1,3 +1,14 @@
-# Apple MLX — the training runtime. Everything else (data fetch, features,
-# metrics) is Python stdlib on purpose, so only this one wheel is needed.
+# Core training runtime — the close-only MLX model (train_seq.py) needs only this.
+# The CLOB fetch + hand features stay pure stdlib.
 mlx>=0.29
+
+# OHLCV + GBDT path (fetch_hf.py, features_ohlcv.py, train_ohlcv.py):
+#   real Polymarket OHLCV from HuggingFace + the deep-research-recommended
+#   gradient-boosted model (see RESEARCH.md).
+huggingface_hub>=0.24
+pyarrow>=15
+numpy>=1.26
+lightgbm>=4.0
+
+# MCP serving (mcp_server.py): the Model Context Protocol SDK (FastMCP/MCPServer).
+mcp>=1.0

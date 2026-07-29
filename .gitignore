@@ -51,3 +51,5 @@ ml/.venv
 ml/data/series.json
 __pycache__/
 *.pyc
+ml/data/ohlcv.json
+ml/data/series_100kb.json
