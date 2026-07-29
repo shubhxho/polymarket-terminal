@@ -219,9 +219,7 @@ export function TerminalProvider({ children }: { children: ReactNode }) {
 
   const markAlertTriggered = useCallback(
     (id: string) => {
-      setAlerts((prev) =>
-        prev.map((a) => (a.id === id ? { ...a, triggeredAt: Date.now() } : a))
-      );
+      setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, triggeredAt: Date.now() } : a)));
     },
     [setAlerts]
   );

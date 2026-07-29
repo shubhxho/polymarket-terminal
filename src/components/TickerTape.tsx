@@ -46,7 +46,9 @@ export function TickerTape({ summary }: { summary: Summary | null }) {
                 >
                   <span className="text-muted">{t.label}</span>
                   <span className="text-ink">{cents(t.price)}¢</span>
-                  <span className={t.chg24h > 0 ? "text-up" : t.chg24h < 0 ? "text-down" : "text-muted"}>
+                  <span
+                    className={t.chg24h > 0 ? "text-up" : t.chg24h < 0 ? "text-down" : "text-muted"}
+                  >
                     {t.chg24h > 0 ? "▲" : t.chg24h < 0 ? "▼" : "•"}
                     {signed(t.chg24h)}
                   </span>

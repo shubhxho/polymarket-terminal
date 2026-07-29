@@ -56,9 +56,7 @@ export function TradeTape({
             }`}
           >
             <span className="w-[52px] shrink-0 text-muted">{timeOfDay(t.timestamp)}</span>
-            <span
-              className={`w-[34px] shrink-0 font-bold ${buy ? "text-up" : "text-down"}`}
-            >
+            <span className={`w-[34px] shrink-0 font-bold ${buy ? "text-up" : "text-down"}`}>
               {buy ? "BUY" : "SELL"}
             </span>
             {showMarket ? (

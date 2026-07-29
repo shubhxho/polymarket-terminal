@@ -29,8 +29,7 @@ export function AlertEngine() {
     for (const alert of armed) {
       const q = feed.quotes.get(alert.tokenId);
       const price =
-        q?.last ??
-        (q?.bid !== undefined && q?.ask !== undefined ? (q.bid + q.ask) / 2 : undefined);
+        q?.last ?? (q?.bid !== undefined && q?.ask !== undefined ? (q.bid + q.ask) / 2 : undefined);
       if (price === undefined) continue;
 
       const prev = seen.current.get(alert.tokenId);

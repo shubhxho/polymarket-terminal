@@ -98,13 +98,10 @@ export function PriceChart({ series, height = 200 }: { series: Series[]; height?
     return { live, tMin, tMax, lo, hi, x, y, paths, yTicks, xTicks };
   }, [series, plotW, plotH]);
 
-  const onMove = useCallback(
-    (e: React.MouseEvent<SVGSVGElement>) => {
-      const rect = e.currentTarget.getBoundingClientRect();
-      setHoverX(e.clientX - rect.left);
-    },
-    []
-  );
+  const onMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setHoverX(e.clientX - rect.left);
+  }, []);
 
   if (!model) {
     return (
@@ -163,12 +160,7 @@ export function PriceChart({ series, height = 200 }: { series: Series[]; height?
               stroke="var(--color-grid)"
               strokeDasharray="1 3"
             />
-            <text
-              x={PAD.left + plotW + 5}
-              y={y(tick) + 3}
-              fill="var(--color-faint)"
-              fontSize={9}
-            >
+            <text x={PAD.left + plotW + 5} y={y(tick) + 3} fill="var(--color-faint)" fontSize={9}>
               {cents(tick, 0)}¢
             </text>
           </g>

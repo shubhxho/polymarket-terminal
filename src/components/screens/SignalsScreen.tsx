@@ -234,7 +234,11 @@ export default function SignalsScreen() {
                 <span className="eyebrow">Edge, points</span>
               </div>
               {arbs.map((a) => (
-                <ArbRow key={`${a.event.id}-${a.side}`} arb={a} onOpen={() => openEvent(a.event.slug)} />
+                <ArbRow
+                  key={`${a.event.id}-${a.side}`}
+                  arb={a}
+                  onOpen={() => openEvent(a.event.slug)}
+                />
               ))}
             </>
           ) : null}
@@ -626,11 +630,7 @@ function DetailRail({ row }: { row: MarketSignals }) {
             <Field label="24H" value={signed(m.chg24h)} tone={dirClass(m.chg24h)} />
             <Field label="Vol 24H" value={usd(m.volume24h)} />
             <Field label="Expiry" value={timeToExpiry(m.endDate)} tone="text-muted" />
-            <Field
-              label="Bias"
-              value={signed(row.bias, 0)}
-              tone={dirClass(row.bias)}
-            />
+            <Field label="Bias" value={signed(row.bias, 0)} tone={dirClass(row.bias)} />
             <Field label="Conviction" value={`${row.conviction}`} tone="text-accent-2" />
             <Field
               label="Condition"
@@ -688,7 +688,12 @@ function DetailRail({ row }: { row: MarketSignals }) {
         <QuantField
           label="Cost to move 1¢"
           value={usd(book.costToMoveOneCent)}
-          title="Dollars needed to lift every offer sitting within one cent above mid — what it costs to push the price a single tick."
+          title="Dollars resting within a cent of mid on the thinner side — what it costs to push the price a single tick in the direction that's harder to move. A book is only as tradable as its shallower side."
+        />
+        <QuantField
+          label="Liquidity"
+          value={`${Math.round(book.liquidityScore * 100)}`}
+          title="Execution quality, 0–100. High only when the spread is tight and real capital rests on the thinner side at once — a one-sided wall behind a wide spread scores low, because you still cross the spread to trade it."
         />
       </Panel>
 

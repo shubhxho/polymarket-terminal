@@ -424,24 +424,42 @@ function expiry(m: Market): Signal | null {
   };
 }
 
-/** Execution warning: crossing costs more than most edges are worth. */
+/**
+ * Execution warning: crossing costs more than most edges are worth.
+ *
+ * A book is expensive to trade when it is *either* wide *or* hollow, and the
+ * two are distinct hazards — a one-tick spread with nothing resting behind it
+ * fills once and gaps, which a spread-only check misses entirely. So this fires
+ * on a wide relative spread or a low two-way liquidity score, and names the
+ * thinner side, since that is the direction that will actually hurt.
+ */
 function thin(m: Market, stats: BookStats): Signal | null {
   const spread = stats.spread ?? m.spread;
   const mid = stats.mid ?? m.last;
   if (spread === undefined || mid <= 0 || spread < 0.01) return null;
   const relative = spread / mid;
-  if (relative < 0.08) return null;
+
+  // With a real book, hollowness counts too; on a bare quote, only the spread.
+  const haveBook = stats.bestBid !== undefined;
+  const hollow = haveBook ? clamp((0.2 - stats.liquidityScore) / 0.2, 0, 1) : 0;
+  const wide = saturate(Math.max(0, relative - 0.05), 0.2);
+  const severity = Math.max(wide, hollow);
+  if (severity < 0.15) return null;
+
+  // Which direction is the trap: the side with less resting within a cent.
+  const thinnerSide = stats.costUpOneCent <= stats.costDownOneCent ? "offer" : "bid";
+  const thinnerDepth = Math.min(stats.costUpOneCent, stats.costDownOneCent);
 
   return {
     kind: "THIN",
     direction: "neutral",
-    strength: Math.round(100 * saturate(relative, 0.25)),
+    strength: Math.round(100 * severity),
     confidence: 0.7,
     z: relative,
     headline: `${(spread * 100).toFixed(1)}¢ wide`,
     detail: `Spread is ${(relative * 100).toFixed(0)}% of mid${
-      stats.costToMoveOneCent > 0
-        ? `, and only $${abbreviate(stats.costToMoveOneCent)} sits within a cent of it`
+      thinnerDepth > 0
+        ? `, with only $${abbreviate(thinnerDepth)} resting within a cent on the ${thinnerSide}`
         : ""
     } — crossing costs more than most edges are worth.`,
   };
@@ -526,9 +544,7 @@ export function scoreMarket(market: Market, ctx: ScoreContext = {}): MarketSigna
   // stronger read than one strong signal alone, but returns still diminish.
   const heat = Math.round(100 * saturate(heatAcc, 90));
   const conviction =
-    directionalWeight > 0
-      ? Math.round(100 * Math.abs(directionalSigned / directionalWeight))
-      : 0;
+    directionalWeight > 0 ? Math.round(100 * Math.abs(directionalSigned / directionalWeight)) : 0;
 
   const vol = history ? realisedVol(history) : 0;
   const drift = history ? driftPerDay(history) : 0;
@@ -552,7 +568,10 @@ export function scoreMarket(market: Market, ctx: ScoreContext = {}): MarketSigna
       volCompression: history ? volCompression(history) : 1,
       book,
       volumeZ: ctx.cross
-        ? robustZ(Math.log(Math.max(market.volume24h / Math.max(market.volume1w / 7, 1), 1e-6)), ctx.cross.volumeRatios)
+        ? robustZ(
+            Math.log(Math.max(market.volume24h / Math.max(market.volume1w / 7, 1), 1e-6)),
+            ctx.cross.volumeRatios
+          )
         : 0,
       moveZ: ctx.cross ? robustZ(Math.abs(market.chg24h ?? 0), ctx.cross.absMoves) : 0,
     },
@@ -664,9 +683,7 @@ export function findBasketDrift(events: readonly EventSummary[]): BasketDrift[] 
     // anything. An unquoted leg reports bestBid 0 against bestAsk 0.999, whose
     // "mid" is 50¢ of pure fiction — on a 128-leg field like a presidential
     // nomination that summed to a basket of 44.46 and a 4,345-point "drift".
-    const properlyQuoted = legs.every(
-      (m) => m.bestAsk! < 0.99 && m.bestAsk! - m.bestBid! <= 0.1
-    );
+    const properlyQuoted = legs.every((m) => m.bestAsk! < 0.99 && m.bestAsk! - m.bestBid! <= 0.1);
     if (!properlyQuoted) continue;
 
     const basket = legs.reduce((sum, m) => sum + (m.bestBid! + m.bestAsk!) / 2, 0);
@@ -679,8 +696,7 @@ export function findBasketDrift(events: readonly EventSummary[]): BasketDrift[] 
     // constant. Each leg's mid could legitimately sit anywhere within half a
     // spread of true, and those uncertainties accumulate with leg count — so a
     // 1-point drift is loud on a 3-leg field and silent on a 30-leg one.
-    const noisePoints =
-      legs.reduce((sum, m) => sum + (m.bestAsk! - m.bestBid!), 0) * 100 * 0.5;
+    const noisePoints = legs.reduce((sum, m) => sum + (m.bestAsk! - m.bestBid!), 0) * 100 * 0.5;
     const ratio = noisePoints > 1e-6 ? Math.abs(driftPoints) / noisePoints : 0;
     if (ratio < 1) continue;
 
@@ -702,10 +718,22 @@ export const SIGNAL_META: Record<
   { label: string; tone: "direction" | "warn" | "info"; blurb: string }
 > = {
   ARB: { label: "ARB", tone: "warn", blurb: "Mutually-exclusive basket is mispriced against $1" },
-  DRIFT: { label: "DRIFT", tone: "warn", blurb: "Basket mid has wandered from the 100¢ it settles at" },
+  DRIFT: {
+    label: "DRIFT",
+    tone: "warn",
+    blurb: "Basket mid has wandered from the 100¢ it settles at",
+  },
   SURGE: { label: "SURGE", tone: "info", blurb: "Turnover unusual against today's cross-section" },
-  MOMENTUM: { label: "MOM", tone: "direction", blurb: "Drift per unit of volatility — trend quality" },
-  REVERSAL: { label: "REV", tone: "direction", blurb: "Stretched beyond its band while moves revert" },
+  MOMENTUM: {
+    label: "MOM",
+    tone: "direction",
+    blurb: "Drift per unit of volatility — trend quality",
+  },
+  REVERSAL: {
+    label: "REV",
+    tone: "direction",
+    blurb: "Stretched beyond its band while moves revert",
+  },
   BREAKOUT: { label: "BRK", tone: "direction", blurb: "Left its range with volatility expanding" },
   COIL: { label: "COIL", tone: "info", blurb: "Volatility compressed — a range yet to resolve" },
   WHALE: { label: "WHALE", tone: "direction", blurb: "Net direction of block prints ≥ $10k" },
@@ -713,5 +741,9 @@ export const SIGNAL_META: Record<
   LEAN: { label: "LEAN", tone: "direction", blurb: "Micro-price lean — pressure on the next tick" },
   TAIL: { label: "TAIL", tone: "info", blurb: "Extreme price still drawing real turnover" },
   EXPIRY: { label: "EXPY", tone: "info", blurb: "Near resolution and still genuinely uncertain" },
-  THIN: { label: "THIN", tone: "warn", blurb: "Spread is a large fraction of mid — costly to cross" },
+  THIN: {
+    label: "THIN",
+    tone: "warn",
+    blurb: "Spread is a large fraction of mid — costly to cross",
+  },
 };

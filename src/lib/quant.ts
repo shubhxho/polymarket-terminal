@@ -117,8 +117,7 @@ export function realisedVol(points: readonly PricePoint[]): number {
   if (points.length < 3) return 0;
   const d = diffs(points);
   const sd = stdev(d);
-  const spanSeconds =
-    (points[points.length - 1].t - points[0].t) / Math.max(1, points.length - 1);
+  const spanSeconds = (points[points.length - 1].t - points[0].t) / Math.max(1, points.length - 1);
   if (spanSeconds <= 0) return 0;
   const samplesPerDay = 86400 / spanSeconds;
   return sd * Math.sqrt(samplesPerDay) * 100;
@@ -209,8 +208,23 @@ export type BookStats = {
   imbalance: number;
   bidNotional: number;
   askNotional: number;
-  /** Dollars needed to sweep the book one full cent from mid. */
+  /** Dollars resting within one cent above mid — the offers a buyer must lift. */
+  costUpOneCent: number;
+  /** Dollars resting within one cent below mid — the bids a seller must hit. */
+  costDownOneCent: number;
+  /**
+   * The honest one-cent depth: the *thinner* of the two directions. A book you
+   * can push up cheaply but not down is not liquid — you can only round-trip as
+   * easily as its shallower side, so that side is what this reports.
+   */
   costToMoveOneCent: number;
+  /**
+   * Overall execution quality, 0..1. Rewards a tight spread and deep resting
+   * capital on the *thinner* side at once, so a one-sided wall can't fake depth.
+   * This is the single number to rank or gate on when what matters is "can I
+   * actually get filled here without moving the price".
+   */
+  liquidityScore: number;
 };
 
 function notional(levels: readonly BookLevel[], side: "bid" | "ask"): number {
@@ -228,7 +242,10 @@ export function bookStats(book: OrderBook | undefined, depth = 10): BookStats {
     imbalance: 0,
     bidNotional: 0,
     askNotional: 0,
+    costUpOneCent: 0,
+    costDownOneCent: 0,
     costToMoveOneCent: 0,
+    liquidityScore: 0,
   };
   if (!book || book.bids.length === 0 || book.asks.length === 0) return empty;
 
@@ -237,21 +254,36 @@ export function bookStats(book: OrderBook | undefined, depth = 10): BookStats {
   const bidSize = book.bids[0].size;
   const askSize = book.asks[0].size;
   const mid = (bestBid + bestAsk) / 2;
+  const spread = bestAsk - bestBid;
 
   const totalTop = bidSize + askSize;
-  const microPrice =
-    totalTop > 0 ? (bidSize * bestAsk + askSize * bestBid) / totalTop : mid;
+  const microPrice = totalTop > 0 ? (bidSize * bestAsk + askSize * bestBid) / totalTop : mid;
 
   const bidNotional = notional(book.bids.slice(0, depth), "bid");
   const askNotional = notional(book.asks.slice(0, depth), "ask");
   const total = bidNotional + askNotional;
 
-  // Cost of lifting every offer within one cent above mid.
-  let costToMoveOneCent = 0;
+  // Dollars resting within a cent of mid on each side. Asks sit above mid and
+  // are lifted going up; bids sit below and are hit going down. Both use
+  // price × size — the actual dollars that change hands sweeping that far.
+  let costUpOneCent = 0;
   for (const l of book.asks) {
     if (l.price > mid + 0.01) break;
-    costToMoveOneCent += l.price * l.size;
+    costUpOneCent += l.price * l.size;
   }
+  let costDownOneCent = 0;
+  for (const l of book.bids) {
+    if (l.price < mid - 0.01) break;
+    costDownOneCent += l.price * l.size;
+  }
+
+  // Tight spread AND real depth on the thinner side — either alone is a trap:
+  // a 1-tick spread with nothing behind it fills once then gaps, and a deep
+  // wall behind a 15¢ spread costs the spread to cross. Multiplying them means
+  // a book scores well only when both hold.
+  const relSpread = mid > 0 ? spread / mid : 1;
+  const tightness = 1 - clamp(relSpread / 0.1, 0, 1);
+  const twoWayDepth = saturate(Math.min(bidNotional, askNotional), 15_000);
 
   return {
     bestBid,
@@ -259,10 +291,13 @@ export function bookStats(book: OrderBook | undefined, depth = 10): BookStats {
     mid,
     microPrice,
     microLean: (microPrice - mid) * 100,
-    spread: bestAsk - bestBid,
+    spread,
     imbalance: total > 0 ? (bidNotional - askNotional) / total : 0,
     bidNotional,
     askNotional,
-    costToMoveOneCent,
+    costUpOneCent,
+    costDownOneCent,
+    costToMoveOneCent: Math.min(costUpOneCent, costDownOneCent),
+    liquidityScore: tightness * twoWayDepth,
   };
 }

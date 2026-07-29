@@ -42,23 +42,18 @@ export function OrderBookLadder({
     if (!book) return null;
     const bids = ladder(book.bids, depth);
     const asks = ladder(book.asks, depth);
-    const maxCum = Math.max(
-      bids[bids.length - 1]?.cum ?? 0,
-      asks[asks.length - 1]?.cum ?? 0,
-      1
-    );
+    const maxCum = Math.max(bids[bids.length - 1]?.cum ?? 0, asks[asks.length - 1]?.cum ?? 0, 1);
     const bestBid = book.bids[0]?.price;
     const bestAsk = book.asks[0]?.price;
     const spread = bestBid !== undefined && bestAsk !== undefined ? bestAsk - bestBid : undefined;
-    const mid = bestBid !== undefined && bestAsk !== undefined ? (bestBid + bestAsk) / 2 : undefined;
+    const mid =
+      bestBid !== undefined && bestAsk !== undefined ? (bestBid + bestAsk) / 2 : undefined;
 
     // Sum of resting notional on each side — a crude but useful skew read.
     const bidNotional = book.bids.reduce((s, l) => s + l.price * l.size, 0);
     const askNotional = book.asks.reduce((s, l) => s + (1 - l.price) * l.size, 0);
     const imbalance =
-      bidNotional + askNotional > 0
-        ? (bidNotional - askNotional) / (bidNotional + askNotional)
-        : 0;
+      bidNotional + askNotional > 0 ? (bidNotional - askNotional) / (bidNotional + askNotional) : 0;
 
     return { bids, asks, maxCum, spread, mid, imbalance, bidNotional, askNotional };
   }, [book, depth]);
@@ -90,7 +85,9 @@ export function OrderBookLadder({
         <span className="text-[10px] tracking-wide text-muted uppercase">Mid</span>
         <span className="font-bold text-accent">{cents(model.mid)}¢</span>
         <span className="text-[10px] tracking-wide text-muted uppercase">Spread</span>
-        <span className="text-ink">{model.spread === undefined ? "--" : `${cents(model.spread)}¢`}</span>
+        <span className="text-ink">
+          {model.spread === undefined ? "--" : `${cents(model.spread)}¢`}
+        </span>
       </div>
 
       {model.bids.map((r) => (
@@ -104,10 +101,7 @@ export function OrderBookLadder({
           <span>ASK ${compact(model.askNotional)}</span>
         </div>
         <div className="flex h-[6px] w-full overflow-hidden bg-edge">
-          <div
-            className="bg-up/70"
-            style={{ width: `${((model.imbalance + 1) / 2) * 100}%` }}
-          />
+          <div className="bg-up/70" style={{ width: `${((model.imbalance + 1) / 2) * 100}%` }} />
           <div className="flex-1 bg-down/70" />
         </div>
       </div>
@@ -115,15 +109,7 @@ export function OrderBookLadder({
   );
 }
 
-function LadderRow({
-  row,
-  maxCum,
-  side,
-}: {
-  row: Row;
-  maxCum: number;
-  side: "bid" | "ask";
-}) {
+function LadderRow({ row, maxCum, side }: { row: Row; maxCum: number; side: "bid" | "ask" }) {
   const pct = Math.min(100, (row.cum / maxCum) * 100);
   return (
     <div className="relative flex items-center gap-1 px-1 py-[1px]">
@@ -141,9 +127,7 @@ function LadderRow({
       </span>
       <span className="relative w-[64px] text-right text-ink/85">{compact(row.size)}</span>
       <span className="relative w-[64px] text-right text-muted">{compact(row.cum)}</span>
-      <span className="relative flex-1 text-right text-[10px] text-faint">
-        {pct.toFixed(0)}%
-      </span>
+      <span className="relative flex-1 text-right text-[10px] text-faint">{pct.toFixed(0)}%</span>
     </div>
   );
 }

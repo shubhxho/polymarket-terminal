@@ -2,6 +2,8 @@
 
 # dependencies
 /node_modules
+# This project uses npm (package-lock.json); a stray bun lockfile is noise.
+bun.lock
 /.pnp
 .pnp.*
 .yarn/*
@@ -12,6 +14,9 @@
 
 # testing
 /coverage
+/test-results
+/playwright-report
+/playwright/.cache
 
 # next.js
 /.next/

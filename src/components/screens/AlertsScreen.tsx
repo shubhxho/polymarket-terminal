@@ -35,8 +35,7 @@ export default function AlertsScreen() {
     return alerts.map((alert) => {
       const q = feed.quotes.get(alert.tokenId);
       const live =
-        q?.last ??
-        (q?.bid !== undefined && q?.ask !== undefined ? (q.bid + q.ask) / 2 : undefined);
+        q?.last ?? (q?.bid !== undefined && q?.ask !== undefined ? (q.bid + q.ask) / 2 : undefined);
       const gap =
         live === undefined
           ? undefined
@@ -125,11 +124,7 @@ export default function AlertsScreen() {
         )}
       </Panel>
 
-      <ArmForm
-        watchlist={watchlist}
-        onArm={addAlert}
-        onError={(m) => toast(m, "error")}
-      />
+      <ArmForm watchlist={watchlist} onArm={addAlert} onError={(m) => toast(m, "error")} />
     </div>
   );
 }
@@ -241,8 +236,8 @@ function ArmForm({
       )}
 
       <p className="mt-1 border-t border-edge/60 pt-1 text-[10px] text-muted">
-        Alerts are evaluated against the live websocket feed and only fire while the terminal
-        is open — nothing is stored or watched server-side.
+        Alerts are evaluated against the live websocket feed and only fire while the terminal is
+        open — nothing is stored or watched server-side.
       </p>
     </Panel>
   );

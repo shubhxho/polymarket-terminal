@@ -3,7 +3,10 @@
 import { useCallback, useMemo, useState } from "react";
 import { TradeTape } from "@/components/TradeTape";
 import { useTerminal } from "@/components/TerminalProvider";
+import { useWallet } from "@/hooks/useWallet";
 import { Empty, ErrorBox, Loading, Panel } from "@/components/ui/Panel";
+import { cn } from "@/lib/cn";
+import { copyToClipboard } from "@/lib/clipboard";
 import { usePoll } from "@/hooks/usePoll";
 import { cents, clock, compact, dirClass, signed, truncate, usd } from "@/lib/format";
 import type { Position, Trade } from "@/lib/types";
@@ -35,11 +38,36 @@ const COLUMNS: {
   { key: "title", label: "Market", width: "min-w-0 flex-1 text-left", title: "Market question" },
   { key: "outcome", label: "Outcome", width: "w-[76px] shrink-0 text-left", title: "Outcome held" },
   { key: "size", label: "Shares", width: "w-[64px] shrink-0 text-right", title: "Share count" },
-  { key: "avgPrice", label: "Avg", width: "w-[46px] shrink-0 text-right", title: "Average entry, in cents" },
-  { key: "curPrice", label: "Last", width: "w-[46px] shrink-0 text-right", title: "Current mark, in cents" },
-  { key: "value", label: "Value", width: "w-[62px] shrink-0 text-right", title: "Mark-to-market value" },
-  { key: "cashPnl", label: "P&L", width: "w-[62px] shrink-0 text-right", title: "Unrealised P&L in dollars" },
-  { key: "percentPnl", label: "P&L%", width: "w-[56px] shrink-0 text-right", title: "Unrealised P&L in percent" },
+  {
+    key: "avgPrice",
+    label: "Avg",
+    width: "w-[46px] shrink-0 text-right",
+    title: "Average entry, in cents",
+  },
+  {
+    key: "curPrice",
+    label: "Last",
+    width: "w-[46px] shrink-0 text-right",
+    title: "Current mark, in cents",
+  },
+  {
+    key: "value",
+    label: "Value",
+    width: "w-[62px] shrink-0 text-right",
+    title: "Mark-to-market value",
+  },
+  {
+    key: "cashPnl",
+    label: "P&L",
+    width: "w-[62px] shrink-0 text-right",
+    title: "Unrealised P&L in dollars",
+  },
+  {
+    key: "percentPnl",
+    label: "P&L%",
+    width: "w-[56px] shrink-0 text-right",
+    title: "Unrealised P&L in percent",
+  },
 ];
 
 /**
@@ -49,16 +77,15 @@ const COLUMNS: {
  */
 export default function PortfolioScreen({ user }: { user: string }) {
   const { go, toast } = useTerminal();
+  const { isMe } = useWallet();
+  const isOwn = isMe(user);
   const [sort, setSort] = useState<Sort>({ key: "value", dir: "desc" });
 
   const positions = usePoll<Position[]>(
     `/api/positions?user=${encodeURIComponent(user)}&limit=100`,
     POLL_MS
   );
-  const trades = usePoll<Trade[]>(
-    `/api/trades?user=${encodeURIComponent(user)}&limit=40`,
-    POLL_MS
-  );
+  const trades = usePoll<Trade[]>(`/api/trades?user=${encodeURIComponent(user)}&limit=40`, POLL_MS);
 
   const rows = useMemo(() => positions.data ?? [], [positions.data]);
 
@@ -110,17 +137,20 @@ export default function PortfolioScreen({ user }: { user: string }) {
     );
   }, []);
 
-  const copyAddress = useCallback(() => {
-    navigator.clipboard.writeText(user).then(
-      () => toast("address copied"),
-      () => toast("clipboard unavailable", "warn")
-    );
-  }, [user, toast]);
+  const copyAddress = useCallback(() => copyToClipboard(user, toast), [user, toast]);
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
       <div className="flex shrink-0 items-center gap-2 border border-edge bg-surface px-1.5 py-[3px]">
         <span className="shrink-0 text-[10px] tracking-wide text-info uppercase">Wallet</span>
+        {isOwn && (
+          <span
+            title="This is your connected Phantom wallet"
+            className="shrink-0 border border-accent-weak px-1 text-[10px] tracking-wide text-accent uppercase"
+          >
+            You
+          </span>
+        )}
         <span className="truncate text-tiny text-accent" title={user}>
           {user}
         </span>
@@ -138,21 +168,13 @@ export default function PortfolioScreen({ user }: { user: string }) {
 
       <div className="grid shrink-0 grid-cols-3 gap-2 md:grid-cols-6">
         <Stat label="Market Value" value={usd(totals.value)} />
-        <Stat
-          label="Unrealised P&L"
-          value={usd(totals.cashPnl)}
-          tone={dirClass(totals.cashPnl)}
-        />
+        <Stat label="Unrealised P&L" value={usd(totals.cashPnl)} tone={dirClass(totals.cashPnl)} />
         <Stat
           label="Return"
           value={`${signed(totals.returnPct)}%`}
           tone={dirClass(totals.returnPct)}
         />
-        <Stat
-          label="Realised P&L"
-          value={usd(totals.realized)}
-          tone={dirClass(totals.realized)}
-        />
+        <Stat label="Realised P&L" value={usd(totals.realized)} tone={dirClass(totals.realized)} />
         <Stat label="Open Pos" value={compact(rows.length)} />
         <Stat
           label="Redeemable"
@@ -161,12 +183,7 @@ export default function PortfolioScreen({ user }: { user: string }) {
         />
       </div>
 
-      <Panel
-        title="Open Positions"
-        right={`${sorted.length} pos`}
-        className="min-h-0 flex-1"
-        flush
-      >
+      <Panel title="Open Positions" right={`${sorted.length} pos`} className="min-h-0 flex-1" flush>
         {positions.error ? (
           <div className="p-1.5">
             <ErrorBox message={positions.error} />
@@ -200,9 +217,10 @@ export default function PortfolioScreen({ user }: { user: string }) {
                 onClick={() => {
                   if (p.slug) go({ fn: "DES", slug: p.slug, kind: "market" }, `DES ${p.slug}`);
                 }}
-                className={`flex items-center gap-1 border-b border-edge/40 px-1 py-[2px] hover:bg-surface-2 ${
-                  p.slug ? "cursor-pointer" : ""
-                }`}
+                className={cn(
+                  "flex items-center gap-1 border-b border-edge/40 px-1 py-[2px] hover:bg-surface-2",
+                  p.slug && "cursor-pointer"
+                )}
               >
                 <span className="min-w-0 flex-1 truncate text-ink" title={p.title}>
                   {truncate(p.title, 60)}

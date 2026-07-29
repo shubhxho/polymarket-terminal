@@ -161,9 +161,7 @@ export function commandByCode(code: ScreenName): CommandSpec {
   return COMMANDS.find((c) => c.code === code)!;
 }
 
-export type ParseResult =
-  | { kind: "screen"; screen: Screen }
-  | { kind: "error"; message: string };
+export type ParseResult = { kind: "screen"; screen: Screen } | { kind: "error"; message: string };
 
 /**
  * Parses a command line into a screen.
@@ -174,7 +172,10 @@ export type ParseResult =
  * what a user typing a market name actually wants.
  */
 export function parseCommand(input: string): ParseResult {
-  const line = input.trim().replace(/\s*<?\bGO\b>?\s*$/i, "").trim();
+  const line = input
+    .trim()
+    .replace(/\s*<?\bGO\b>?\s*$/i, "")
+    .trim();
   if (!line) return { kind: "error", message: "empty command" };
 
   const [head, ...rest] = line.split(/\s+/);
@@ -198,7 +199,11 @@ export function parseCommand(input: string): ParseResult {
       if (m) {
         return {
           kind: "screen",
-          screen: { fn: "DES", slug: m[2], kind: m[1].toLowerCase() === "market" ? "market" : "event" },
+          screen: {
+            fn: "DES",
+            slug: m[2],
+            kind: m[1].toLowerCase() === "market" ? "market" : "event",
+          },
         };
       }
       return { kind: "screen", screen: { fn: "DES", slug: arg, kind: "event" } };
@@ -213,7 +218,11 @@ export function parseCommand(input: string): ParseResult {
     }
 
     case "CAT": {
-      if (!arg) return { kind: "screen", screen: { fn: "CAT", tag: SECTORS[0].tag, label: SECTORS[0].label } };
+      if (!arg)
+        return {
+          kind: "screen",
+          screen: { fn: "CAT", tag: SECTORS[0].tag, label: SECTORS[0].label },
+        };
       const want = arg.toUpperCase();
       const sector =
         SECTORS.find((s) => s.key === want) ??
@@ -243,6 +252,24 @@ export function parseCommand(input: string): ParseResult {
     case "HELP":
       return { kind: "screen", screen: { fn: "HELP" } };
   }
+}
+
+/**
+ * Some arg-taking functions can fill their argument from live session state
+ * instead of prompting for it. Today that's only PORT, which defaults to the
+ * connected wallet — but keeping the rule here, in the command layer, means
+ * every launch surface (sidebar, palette, help) resolves it the same way rather
+ * than each re-deciding. Returns a ready screen when a default applies, else
+ * null, so callers fall back to their usual prompt/prefill.
+ */
+export function defaultScreenFor(
+  code: ScreenName,
+  ctx: { walletAddress?: string | null }
+): Screen | null {
+  if (code === "PORT" && ctx.walletAddress) {
+    return { fn: "PORT", user: ctx.walletAddress };
+  }
+  return null;
 }
 
 export function screenTitle(screen: Screen): string {

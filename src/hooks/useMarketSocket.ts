@@ -51,7 +51,10 @@ function levels(raw: unknown, dir: "bid" | "ask"): BookLevel[] {
  */
 export function useMarketSocket(tokenIds: string[], enabled = true): MarketFeed {
   const key = useMemo(
-    () => Array.from(new Set(tokenIds.filter(Boolean))).sort().join(","),
+    () =>
+      Array.from(new Set(tokenIds.filter(Boolean)))
+        .sort()
+        .join(","),
     [tokenIds]
   );
 
@@ -114,11 +117,7 @@ export function useMarketSocket(tokenIds: string[], enabled = true): MarketFeed 
       const prev = quotesRef.current.get(tokenId);
       const nextLast = patch.last ?? prev?.last;
       let dir: 0 | 1 | -1 = 0;
-      if (
-        nextLast !== undefined &&
-        prev?.last !== undefined &&
-        nextLast !== prev.last
-      ) {
+      if (nextLast !== undefined && prev?.last !== undefined && nextLast !== prev.last) {
         dir = nextLast > prev.last ? 1 : -1;
       }
       quotesRef.current.set(tokenId, {

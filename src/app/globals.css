@@ -186,7 +186,11 @@ kbd {
      would silently fuse `->`, `<=` and `!=` into glyphs that are not what the
      underlying string says. */
   font-variant-numeric: tabular-nums slashed-zero;
-  font-feature-settings: "tnum" 1, "zero" 1, "liga" 0, "calt" 0;
+  font-feature-settings:
+    "tnum" 1,
+    "zero" 1,
+    "liga" 0,
+    "calt" 0;
 }
 
 ::selection {

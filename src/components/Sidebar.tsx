@@ -2,7 +2,15 @@
 
 import { useEffect, useMemo } from "react";
 import { useTerminal } from "@/components/TerminalProvider";
-import { COMMANDS, parseCommand, SECTORS, type CommandSpec } from "@/lib/commands";
+import { useWallet } from "@/hooks/useWallet";
+import { cn } from "@/lib/cn";
+import {
+  COMMANDS,
+  defaultScreenFor,
+  parseCommand,
+  SECTORS,
+  type CommandSpec,
+} from "@/lib/commands";
 
 /**
  * Primary navigation, modelled on ami.dev's project sidebar: grouped sections
@@ -20,6 +28,7 @@ const GROUPS: { label: string; codes: string[] }[] = [
 
 export function Sidebar() {
   const { screen, go, toast } = useTerminal();
+  const { address } = useWallet();
 
   const byCode = useMemo(() => new Map(COMMANDS.map((c) => [c.code, c])), []);
 
@@ -27,13 +36,15 @@ export function Sidebar() {
   // Dispatching the shortcut is how the sidebar reaches it without either
   // component holding a reference to the other.
   const prefill = (spec: CommandSpec) => {
-    window.dispatchEvent(
-      new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true })
-    );
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }));
     toast(`${spec.code} takes ${spec.args} — search for it`);
   };
 
   const launch = (spec: CommandSpec) => {
+    // An arg-taking function whose argument can come from session state (PORT ←
+    // connected wallet) goes straight there instead of opening the palette.
+    const preset = defaultScreenFor(spec.code, { walletAddress: address });
+    if (preset) return go(preset, `${spec.code} ${address}`);
     if (spec.args) return prefill(spec);
     const parsed = parseCommand(spec.code);
     if (parsed.kind === "screen") go(parsed.screen, spec.code);
@@ -72,19 +83,23 @@ export function Sidebar() {
                   <button
                     onClick={() => launch(spec)}
                     title={`${spec.title} — ${spec.blurb}`}
-                    className={`flex w-full items-center gap-2 rounded-sm px-1.5 py-[5px] text-left text-tiny transition-colors ${
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-sm px-1.5 py-[5px] text-left text-tiny transition-colors",
                       active
                         ? "bg-accent/10 font-medium text-accent"
                         : "text-ink/85 hover:bg-surface-2"
-                    }`}
+                    )}
                   >
                     <span
-                      className={`dot ${active ? "text-accent" : "text-edge-strong"}`}
+                      className={cn("dot", active ? "text-accent" : "text-edge-strong")}
                       aria-hidden
                     />
                     <span className="min-w-0 flex-1 truncate">{spec.short ?? spec.title}</span>
                     <span
-                      className={`shrink-0 text-[10px] ${active ? "text-accent/70" : "text-faint"}`}
+                      className={cn(
+                        "shrink-0 text-[10px]",
+                        active ? "text-accent/70" : "text-faint"
+                      )}
                     >
                       {spec.fkey ? `F${spec.fkey}` : spec.code}
                     </span>

@@ -3,8 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTerminal } from "@/components/TerminalProvider";
 import { usePoll } from "@/hooks/usePoll";
+import { useWallet } from "@/hooks/useWallet";
 import {
   COMMANDS,
+  defaultScreenFor,
+  lookupCommand,
   parseCommand,
   SECTORS,
   screenTitle,
@@ -27,13 +30,7 @@ type Row = {
   prefill?: string;
 };
 
-const GROUP_ORDER: Row["group"][] = [
-  "Commands",
-  "Recent",
-  "Watchlist",
-  "Sectors",
-  "Markets",
-];
+const GROUP_ORDER: Row["group"][] = ["Commands", "Recent", "Watchlist", "Sectors", "Markets"];
 
 /**
  * ⌘K palette — the terminal's primary way in.
@@ -54,6 +51,7 @@ export function CommandPalette({
   onClose: () => void;
 }) {
   const { go, openTab, watchlist, history, toast } = useTerminal();
+  const { address } = useWallet();
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
   const [sel, setSel] = useState(0);
@@ -84,9 +82,7 @@ export function CommandPalette({
   }, [query]);
 
   const remote = usePoll<{ events: EventSummary[]; markets: Market[] }>(
-    open && debounced.length >= 2
-      ? `/api/search?q=${encodeURIComponent(debounced)}&limit=8`
-      : null,
+    open && debounced.length >= 2 ? `/api/search?q=${encodeURIComponent(debounced)}&limit=8` : null,
     60_000
   );
 
@@ -94,12 +90,7 @@ export function CommandPalette({
     const q = query.trim();
     const out: Row[] = [];
 
-    const push = (
-      group: Row["group"],
-      id: string,
-      label: string,
-      extra: Partial<Row> = {}
-    ) => {
+    const push = (group: Row["group"], id: string, label: string, extra: Partial<Row> = {}) => {
       const m = fuzzyMatch(q, label);
       // Remote market rows are already relevance-ranked upstream; keep them
       // even when the local fuzzy pass can't align the characters.
@@ -117,11 +108,15 @@ export function CommandPalette({
 
     for (const c of COMMANDS) {
       const parsed = parseCommand(c.code);
+      // A connected wallet supplies PORT's argument, so its row navigates
+      // rather than prefilling — same resolution the sidebar uses.
+      const preset = defaultScreenFor(c.code, { walletAddress: address });
+      const screen = preset ?? (c.args ? null : parsed.kind === "screen" ? parsed.screen : null);
       push("Commands", `cmd-${c.code}`, `${c.code} · ${c.title}`, {
         hint: c.fkey ? `F${c.fkey}` : undefined,
         meta: c.blurb,
-        screen: c.args ? null : parsed.kind === "screen" ? parsed.screen : null,
-        prefill: c.args ? `${c.code} ` : undefined,
+        screen,
+        prefill: !screen && c.args ? `${c.code} ` : undefined,
       });
     }
 
@@ -176,7 +171,7 @@ export function CommandPalette({
       return GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group);
     });
     return out.slice(0, 24);
-  }, [query, watchlist, history, remote.data]);
+  }, [query, watchlist, history, remote.data, address]);
 
   // Clamp the cursor when the result set shrinks under it.
   const [prevLen, setPrevLen] = useState(rows.length);
@@ -202,12 +197,22 @@ export function CommandPalette({
   const submitRaw = useCallback(() => {
     const parsed = parseCommand(query);
     if (parsed.kind === "error") {
+      // A bare arg-taking code can still resolve from session state — typing
+      // "PORT" with a wallet connected opens that wallet's book, not an error.
+      const head = query.trim().split(/\s+/)[0];
+      const spec = lookupCommand(head);
+      const preset = spec ? defaultScreenFor(spec.code, { walletAddress: address }) : null;
+      if (preset) {
+        go(preset, `${spec!.code} ${address}`);
+        onClose();
+        return;
+      }
       toast(parsed.message, "error");
       return;
     }
     go(parsed.screen, query.trim().toUpperCase());
     onClose();
-  }, [query, go, onClose, toast]);
+  }, [query, address, go, onClose, toast]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Escape") {

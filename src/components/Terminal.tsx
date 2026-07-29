@@ -21,6 +21,7 @@ import SearchScreen from "@/components/screens/SearchScreen";
 import SignalsScreen from "@/components/screens/SignalsScreen";
 import TapeScreen from "@/components/screens/TapeScreen";
 import WatchlistScreen from "@/components/screens/WatchlistScreen";
+import { shortAddress, WalletProvider } from "@/hooks/useWallet";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { usePoll } from "@/hooks/usePoll";
 import type { Screen } from "@/lib/commands";
@@ -36,7 +37,7 @@ export function Terminal() {
 }
 
 function Shell() {
-  const { screen } = useTerminal();
+  const { screen, toast } = useTerminal();
   // One shared breadth poll feeds both the masthead and the tape; polling it
   // twice would double the upstream load for identical data.
   const summary = usePoll<Summary>("/api/summary", 20000);
@@ -55,27 +56,29 @@ function Shell() {
   );
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-canvas">
-      <TopBar summary={summary} theme={theme} onToggleTheme={toggleTheme} />
-      <CommandBar />
-      <TabStrip />
+    <WalletProvider
+      onConnect={(addr) => toast(`wallet connected · ${shortAddress(addr)}`)}
+      onError={(msg) => toast(msg, "error")}
+    >
+      <div className="flex h-full flex-col overflow-hidden bg-canvas">
+        <TopBar summary={summary} theme={theme} onToggleTheme={toggleTheme} />
+        <CommandBar />
+        <TabStrip />
 
-      <div className="flex min-h-0 flex-1">
-        <Sidebar />
-        {/* `key` remounts on navigation so each screen starts from a clean
-            slate instead of inheriting the last one's selection and scroll. */}
-        <main
-          key={screenKey(screen)}
-          className="min-w-0 flex-1 overflow-hidden p-2"
-        >
-          <Workspace screen={screen} />
-        </main>
+        <div className="flex min-h-0 flex-1">
+          <Sidebar />
+          {/* `key` remounts on navigation so each screen starts from a clean
+              slate instead of inheriting the last one's selection and scroll. */}
+          <main key={screenKey(screen)} className="min-w-0 flex-1 overflow-hidden p-2">
+            <Workspace screen={screen} />
+          </main>
+        </div>
+
+        <TickerTape summary={summary.data} />
+        <Toasts />
+        <AlertEngine />
       </div>
-
-      <TickerTape summary={summary.data} />
-      <Toasts />
-      <AlertEngine />
-    </div>
+    </WalletProvider>
   );
 }
 
