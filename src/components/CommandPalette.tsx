@@ -19,7 +19,7 @@ import type { EventSummary, Market } from "@/lib/types";
 
 type Row = {
   id: string;
-  group: "Commands" | "Sectors" | "Watchlist" | "Markets" | "Recent";
+  group: "Run" | "Commands" | "Sectors" | "Watchlist" | "Markets" | "Recent";
   label: string;
   hint?: string;
   meta?: string;
@@ -30,7 +30,20 @@ type Row = {
   prefill?: string;
 };
 
-const GROUP_ORDER: Row["group"][] = ["Commands", "Recent", "Watchlist", "Sectors", "Markets"];
+const GROUP_ORDER: Row["group"][] = [
+  "Run",
+  "Commands",
+  "Recent",
+  "Watchlist",
+  "Sectors",
+  "Markets",
+];
+
+/**
+ * Score floor for the literal interpretation of the typed line, high enough
+ * that no fuzzy hit can outrank it. A user who typed a whole command meant it.
+ */
+const RUN_ROW_SCORE = 1e6;
 
 /**
  * ⌘K palette — the terminal's primary way in.
@@ -106,6 +119,25 @@ export function CommandPalette({
       });
     };
 
+    // A line with an argument ("SRCH bitcoin", "PORT 0x…") has exactly one
+    // meaning, and it is not whichever market happens to fuzzy-match the
+    // literal string. Without this row, Enter ran the top fuzzy hit and
+    // `SRCH bitcoin` silently opened an unrelated "Arch Network" market.
+    if (q.includes(" ")) {
+      const parsed = parseCommand(q);
+      if (parsed.kind === "screen") {
+        out.push({
+          id: "run",
+          group: "Run",
+          label: screenTitle(parsed.screen),
+          meta: `Run “${q}”`,
+          positions: [],
+          score: RUN_ROW_SCORE,
+          screen: parsed.screen,
+        });
+      }
+    }
+
     for (const c of COMMANDS) {
       const parsed = parseCommand(c.code);
       // A connected wallet supplies PORT's argument, so its row navigates
@@ -173,7 +205,16 @@ export function CommandPalette({
     return out.slice(0, 24);
   }, [query, watchlist, history, remote.data, address]);
 
-  // Clamp the cursor when the result set shrinks under it.
+  // Every keystroke is a new question, so the cursor returns to the top rather
+  // than sitting on whatever row happened to be under it before.
+  const [prevQuery, setPrevQuery] = useState(query);
+  if (prevQuery !== query) {
+    setPrevQuery(query);
+    setSel(0);
+  }
+
+  // Clamp when the result set shrinks under the cursor — remote results
+  // arriving and leaving can do that without the query changing.
   const [prevLen, setPrevLen] = useState(rows.length);
   if (prevLen !== rows.length) {
     setPrevLen(rows.length);
