@@ -68,14 +68,35 @@ export default function DetailScreen({ slug, kind }: { slug: string; kind: "even
     20000
   );
 
-  const event = eventQ.data?.[0] ?? null;
+  // Last resort: if the exact slug resolves to nothing on both endpoints (a
+  // renamed or truly-gone market), search by the de-slugified name and open the
+  // closest hit — so the feed never dead-ends on "no market found". This is the
+  // "try SRCH" hint, done automatically. The trailing `-<n>` disambiguator that
+  // Polymarket appends to slugs is dropped from the query.
+  const directEmpty =
+    !eventQ.loading &&
+    !marketQ.loading &&
+    (eventQ.data?.length ?? 0) === 0 &&
+    (marketQ.data?.length ?? 0) === 0;
+  const searchTerm = slug.replace(/-\d+$/, "").replace(/-/g, " ").trim();
+  const searchQ = usePoll<{ events: EventSummary[]; markets: Market[] }>(
+    directEmpty && searchTerm ? `/api/search?q=${encodeURIComponent(searchTerm)}&limit=6` : null,
+    30000
+  );
+  const searchEvent =
+    searchQ.data?.events?.find((e) => e.slug === slug) ?? searchQ.data?.events?.[0] ?? null;
+  const searchMarket =
+    searchQ.data?.markets?.find((m) => m.slug === slug) ?? searchQ.data?.markets?.[0] ?? null;
+
+  const event = eventQ.data?.[0] ?? searchEvent ?? null;
   const markets = useMemo<Market[]>(() => {
     if (event) {
       // Rank legs by turnover so the chart shows the contested ones.
       return [...event.markets].sort((a, b) => b.volume24h - a.volume24h);
     }
-    return marketQ.data ?? [];
-  }, [event, marketQ.data]);
+    if (marketQ.data?.length) return marketQ.data;
+    return searchMarket ? [searchMarket] : [];
+  }, [event, marketQ.data, searchMarket]);
 
   const title = event?.title ?? markets[0]?.question ?? slug;
   const primary = markets[0];
@@ -163,7 +184,10 @@ export default function DetailScreen({ slug, kind }: { slug: string; kind: "even
       .filter((s) => s.points.length > 1);
   }, [historyQ.data, outcomes]);
 
-  const loading = eventQ.loading || (marketFallback && marketQ.loading);
+  const loading =
+    eventQ.loading ||
+    (marketFallback && marketQ.loading) ||
+    (directEmpty && searchQ.loading && markets.length === 0);
   const notFound = !loading && markets.length === 0;
 
   if (loading) {
