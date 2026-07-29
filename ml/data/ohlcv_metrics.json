@@ -1,0 +1,189 @@
+{
+  "dataset": "ImpliedData/prediction-markets OHLCV (polymarket+manifold)",
+  "markets": 119,
+  "train_windows": 28500,
+  "val_windows": 7303,
+  "majority_baseline_acc": 0.6005,
+  "models": {
+    "feature_mlp": {
+      "val_auc": 0.5993,
+      "brier": 0.2323,
+      "backtest": {
+        "top_up_rate": 0.534,
+        "bottom_up_rate": 0.271,
+        "up_rate_spread": 0.264,
+        "top_median_pts": 0.063,
+        "bottom_median_pts": 0.0,
+        "slice": 1460
+      }
+    },
+    "seq_gru": {
+      "val_auc": 0.5961,
+      "brier": 0.233,
+      "backtest": {
+        "top_up_rate": 0.521,
+        "bottom_up_rate": 0.286,
+        "up_rate_spread": 0.234,
+        "top_median_pts": 0.03,
+        "bottom_median_pts": 0.0,
+        "slice": 1460
+      }
+    },
+    "gbdt": {
+      "val_auc": 0.6026,
+      "brier": 0.2345,
+      "backtest": {
+        "top_up_rate": 0.514,
+        "bottom_up_rate": 0.275,
+        "up_rate_spread": 0.24,
+        "top_median_pts": 0.03,
+        "bottom_median_pts": 0.0,
+        "slice": 1460
+      }
+    },
+    "ensemble": {
+      "val_auc": 0.6082,
+      "brier": 0.2314,
+      "backtest": {
+        "top_up_rate": 0.537,
+        "bottom_up_rate": 0.26,
+        "up_rate_spread": 0.277,
+        "top_median_pts": 0.077,
+        "bottom_median_pts": 0.0,
+        "slice": 1460
+      }
+    }
+  },
+  "overall_best": "ensemble",
+  "served_nn_winner": "feature_mlp",
+  "feature_importance_gbdt": [
+    [
+      "extremeness",
+      11372.0
+    ],
+    [
+      "stoch_k",
+      5211.1
+    ],
+    [
+      "last",
+      3887.4
+    ],
+    [
+      "vol",
+      3781.6
+    ],
+    [
+      "band_z",
+      2339.3
+    ],
+    [
+      "parkinson_vol",
+      2051.9
+    ],
+    [
+      "atr",
+      1936.9
+    ],
+    [
+      "williams_r",
+      1438.9
+    ],
+    [
+      "mean_ret",
+      1266.9
+    ],
+    [
+      "trade_intensity",
+      1254.3
+    ],
+    [
+      "intrabar_pressure",
+      1240.0
+    ],
+    [
+      "cci_tp",
+      1220.9
+    ],
+    [
+      "momentum",
+      1022.7
+    ],
+    [
+      "signed_flow",
+      931.0
+    ],
+    [
+      "macd_hist",
+      690.2
+    ],
+    [
+      "autocorr",
+      677.0
+    ],
+    [
+      "rsi",
+      675.2
+    ],
+    [
+      "vol_z",
+      414.7
+    ],
+    [
+      "drift",
+      321.3
+    ],
+    [
+      "platform",
+      0.0
+    ]
+  ],
+  "walk_forward": {
+    "folds": [
+      {
+        "fold": 1,
+        "val_auc": 0.5936,
+        "up_rate_spread": 0.203
+      },
+      {
+        "fold": 2,
+        "val_auc": 0.6037,
+        "up_rate_spread": 0.242
+      },
+      {
+        "fold": 3,
+        "val_auc": 0.6086,
+        "up_rate_spread": 0.264
+      },
+      {
+        "fold": 4,
+        "val_auc": 0.5971,
+        "up_rate_spread": 0.239
+      }
+    ],
+    "mean_auc": 0.6008,
+    "min_auc": 0.5936
+  },
+  "features": [
+    "last",
+    "mean_ret",
+    "vol",
+    "drift",
+    "band_z",
+    "momentum",
+    "autocorr",
+    "rsi",
+    "cci_tp",
+    "stoch_k",
+    "williams_r",
+    "macd_hist",
+    "atr",
+    "parkinson_vol",
+    "vol_z",
+    "trade_intensity",
+    "signed_flow",
+    "intrabar_pressure",
+    "extremeness",
+    "platform"
+  ]
+}

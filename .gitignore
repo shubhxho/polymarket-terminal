@@ -45,3 +45,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# ml — venv + regenerable dataset are not committed; the trained model is
+ml/.venv
+ml/data/series.json
+__pycache__/
+*.pyc
+ml/data/ohlcv.json
+ml/data/series_100kb.json
