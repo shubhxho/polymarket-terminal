@@ -1,0 +1,183 @@
+{
+  "runtime": "modal H100 / bigdata",
+  "dataset": "TimeSeventeen/Polymarket-v1",
+  "source": "orderfilled tape (1.2B trades) \u2192 hourly OHLCV + true order-flow",
+  "files_processed": 42,
+  "tokens": 8000,
+  "bars": 7391436,
+  "windows": 7168511,
+  "features": [
+    "last",
+    "mean_ret",
+    "vol",
+    "drift",
+    "band_z",
+    "momentum",
+    "rsi",
+    "cci",
+    "stoch_k",
+    "williams_r",
+    "atr",
+    "parkinson_vol",
+    "ofi_window",
+    "ofi_last",
+    "ofi_trend",
+    "vol_z",
+    "trade_intensity",
+    "log_avg_trade",
+    "extremeness",
+    "log_volume",
+    "log_trades",
+    "win_len"
+  ],
+  "horizon": 4,
+  "train_windows": 5759303,
+  "val_windows": 1409208,
+  "majority_baseline_acc": 0.5847,
+  "gbdt": {
+    "val_auc": 0.5866,
+    "brier": 0.2423,
+    "backtest": {
+      "top_up_rate": 0.541,
+      "bottom_up_rate": 0.476,
+      "up_rate_spread": 0.065,
+      "slice": 189009
+    }
+  },
+  "feature_importance_gbdt": [
+    [
+      "vol",
+      794611.5
+    ],
+    [
+      "extremeness",
+      498549.0
+    ],
+    [
+      "last",
+      473443.2
+    ],
+    [
+      "momentum",
+      211535.4
+    ],
+    [
+      "band_z",
+      141770.6
+    ],
+    [
+      "atr",
+      115610.8
+    ],
+    [
+      "parkinson_vol",
+      113288.2
+    ],
+    [
+      "log_avg_trade",
+      111015.9
+    ],
+    [
+      "williams_r",
+      109828.3
+    ],
+    [
+      "stoch_k",
+      100683.8
+    ],
+    [
+      "mean_ret",
+      95395.9
+    ],
+    [
+      "log_trades",
+      85832.5
+    ],
+    [
+      "cci",
+      83399.9
+    ],
+    [
+      "log_volume",
+      77826.0
+    ],
+    [
+      "ofi_trend",
+      75825.1
+    ],
+    [
+      "drift",
+      70945.2
+    ],
+    [
+      "ofi_window",
+      63308.3
+    ],
+    [
+      "ofi_last",
+      61902.5
+    ],
+    [
+      "rsi",
+      55473.3
+    ],
+    [
+      "trade_intensity",
+      46837.3
+    ],
+    [
+      "vol_z",
+      43882.0
+    ],
+    [
+      "win_len",
+      0.0
+    ]
+  ],
+  "neural": {
+    "val_auc": 0.581,
+    "brier": 0.237,
+    "backtest": {
+      "top_up_rate": 0.538,
+      "bottom_up_rate": 0.48,
+      "up_rate_spread": 0.058,
+      "slice": 189009
+    }
+  },
+  "ensemble": {
+    "val_auc": 0.5856,
+    "brier": 0.2378,
+    "backtest": {
+      "top_up_rate": 0.54,
+      "bottom_up_rate": 0.476,
+      "up_rate_spread": 0.064,
+      "slice": 189009
+    }
+  },
+  "overall_best": "gbdt",
+  "walk_forward": {
+    "folds": [
+      {
+        "fold": 1,
+        "val_auc": 0.5715,
+        "up_rate_spread": 0.055
+      },
+      {
+        "fold": 2,
+        "val_auc": 0.575,
+        "up_rate_spread": 0.062
+      },
+      {
+        "fold": 3,
+        "val_auc": 0.5765,
+        "up_rate_spread": 0.061
+      },
+      {
+        "fold": 4,
+        "val_auc": 0.5858,
+        "up_rate_spread": 0.062
+      }
+    ],
+    "mean_auc": 0.5772
+  }
+}
