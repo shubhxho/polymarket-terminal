@@ -150,7 +150,13 @@ export async function fetchMarkets(q: MarketQuery = {}): Promise<Market[]> {
   if (q.offset) p.set("offset", String(q.offset));
   p.set("order", q.order ?? "volume24hr");
   p.set("ascending", String(q.ascending ?? false));
-  if (q.closed === undefined) {
+  // A slug (or explicit id list) is a unique key — never constrain it by
+  // status, or a market that has since resolved (e.g. an expired
+  // "…-end-of-july" question) returns nothing and can't be opened at all.
+  const byKey = Boolean(q.slug) || (q.ids?.length ?? 0) > 0;
+  if (byKey) {
+    // no active/closed filter — match the exact market whatever its status
+  } else if (q.closed === undefined) {
     p.set("active", "true");
     p.set("closed", "false");
   } else {
@@ -171,8 +177,11 @@ export async function fetchEvents(q: MarketQuery = {}): Promise<EventSummary[]> 
   if (q.offset) p.set("offset", String(q.offset));
   p.set("order", q.order ?? "volume24hr");
   p.set("ascending", String(q.ascending ?? false));
-  p.set("active", "true");
-  p.set("closed", "false");
+  // Same rule as fetchMarkets: a slug is exact, so don't hide resolved events.
+  if (!q.slug) {
+    p.set("active", "true");
+    p.set("closed", "false");
+  }
   if (q.tagId) p.set("tag_id", q.tagId);
   if (q.slug) p.set("slug", q.slug);
 
