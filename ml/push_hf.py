@@ -30,6 +30,11 @@ ARTIFACTS = [
     ("data/ohlcv_model.safetensors", "ohlcv_model.safetensors"),
     ("data/ohlcv_normalizer.json", "ohlcv_normalizer.json"),
     ("data/ohlcv_metrics.json", "metrics/ohlcv_metrics.json"),
+    # flagship big-data model (1.2B trades, true order-flow) — from modal_bigdata.py
+    ("data/bigdata_model.safetensors", "bigdata/bigdata_model.safetensors"),
+    ("data/bigdata_gbdt.txt", "bigdata/bigdata_gbdt.txt"),
+    ("data/bigdata_normalizer.json", "bigdata/bigdata_normalizer.json"),
+    ("data/bigdata_metrics.json", "metrics/bigdata_metrics.json"),
     # H100 experiment reports
     ("data/distill_metrics.json", "metrics/distill_metrics.json"),
     ("data/multilingual_metrics.json", "metrics/multilingual_metrics.json"),
@@ -55,9 +60,22 @@ def _card(repo: str) -> str:
     ohlcv = _load("ohlcv_metrics.json")
     distill = _load("distill_metrics.json")
     ml = _load("multilingual_metrics.json")
+    big = _load("bigdata_metrics.json")
     seq_auc = seq.get("models", {}).get(seq.get("winner", ""), {}).get("val_auc")
     wf = seq.get("walk_forward", {})
     ob = {k: v.get("val_auc") for k, v in ohlcv.get("models", {}).items()}
+    big_line = ""
+    if big:
+        bb = {k: big.get(k, {}).get("val_auc") for k in ("gbdt", "neural", "ensemble")}
+        big_line = (
+            f"\n**`bigdata/bigdata_model.safetensors` + `bigdata_gbdt.txt`** — the "
+            f"flagship, trained on **{big.get('source','the 1.2B-trade tape')}** "
+            f"({big.get('windows','?')} windows from {big.get('tokens','?')} tokens, "
+            f"{big.get('bars','?')} hourly bars). Real order-flow imbalance from each "
+            f"trade's aggressor side. Out-of-time AUC {json.dumps(bb)}; walk-forward "
+            f"mean {big.get('walk_forward',{}).get('mean_auc')}. Top features: "
+            f"{[f for f,_ in big.get('feature_importance_gbdt',[])[:6]]}.\n"
+        )
     return f"""---
 license: apache-2.0
 tags:
@@ -92,7 +110,7 @@ volume/trade_count) with 20 features (typical-price CCI, stochastic/Williams on
 true high-low, ATR, Parkinson vol, order-flow imbalance). Head-to-head:
 `{json.dumps(ob)}` — a **LightGBM** GBDT beats the small MLP/GRU, and the 3-way
 ensemble is best (matching published tabular-vs-deep evidence).
-
+{big_line}
 ## H100 experiments
 
 - **Distillation** (`metrics/distill_metrics.json`): Chronos-Bolt-Base teacher →

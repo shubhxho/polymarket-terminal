@@ -53,3 +53,4 @@ __pycache__/
 *.pyc
 ml/data/ohlcv.json
 ml/data/series_100kb.json
+ml/data/bigdata_gbdt.txt
