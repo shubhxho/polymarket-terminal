@@ -1,0 +1,42 @@
+{
+  "runtime": "modal / pytorch",
+  "series": 486,
+  "train_windows": 115166,
+  "val_windows": 34914,
+  "majority_baseline_acc": 0.7152,
+  "models": {
+    "feature_mlp": {
+      "val_auc": 0.6101,
+      "backtest": {
+        "top_up_rate": 0.413,
+        "bottom_up_rate": 0.168,
+        "up_rate_spread": 0.245,
+        "top_median_pts": 0.0,
+        "bottom_median_pts": 0.0,
+        "slice": 6982
+      }
+    },
+    "seq_gru": {
+      "val_auc": 0.6116,
+      "backtest": {
+        "top_up_rate": 0.415,
+        "bottom_up_rate": 0.165,
+        "up_rate_spread": 0.25,
+        "top_median_pts": 0.0,
+        "bottom_median_pts": 0.0,
+        "slice": 6982
+      }
+    }
+  },
+  "winner": "seq_gru",
+  "features": [
+    "last",
+    "mean_ret",
+    "vol",
+    "drift",
+    "band_z",
+    "momentum",
+    "autocorr",
+    "activity"
+  ]
+}
