@@ -5,7 +5,7 @@ density in a calm, modern interface. Keyboard-driven, live order books, a
 signal scanner, and basket-arbitrage detection.
 
 Read-only: it quotes, charts and analyses markets. It does not place orders and
-never touches a private key.
+never touches a private key — connecting a wallet only reads its public address.
 
 ```bash
 npm install
@@ -176,9 +176,12 @@ both. Treat it as a place to look, not a trade ticket.
 src/
   app/api/*        server-side proxies over the Polymarket APIs
   lib/polymarket   fetching + normalisation (the only place upstream shapes exist)
-  hooks/           usePoll (REST), useMarketSocket (CLOB websocket)
+  hooks/           usePoll (REST), useMarketSocket (CLOB websocket), useWallet (Phantom)
   components/      terminal shell, shared grid/book/tape widgets
   components/screens/  one file per function code
+tests/
+  unit/            Vitest over the pure lib/ logic — formatters, quant, fuzzy, parser
+  e2e/             Playwright over the real shell — routing, palette, wallet, theming
 ```
 
 Three upstream sources, all public:
@@ -211,6 +214,43 @@ polling continues underneath as a floor, so a dropped socket degrades to a
 - `EXPIRED` vs `PENDING`: Polymarket sets `endDate` to the scheduled event time,
   but the book often stays open for hours afterwards awaiting resolution. Past
   end date + still accepting orders renders as PENDING.
+
+## Wallet
+
+Connect **Phantom** from the masthead to load your own book with one click.
+Polymarket settles on Polygon, so the terminal talks to Phantom's EVM provider
+(`window.phantom.ethereum`) and reads the 0x address that the `PORT` screen
+already understands — the sidebar's Portfolio row and the wallet menu then jump
+straight to it. It is strictly read-only: no signing, no transactions, no
+private key. `useWallet` re-links silently on reload and offers a one-click
+switch to Polygon when the wallet sits on another chain.
+
+## Toolchain
+
+Built on the [VoidZero](https://voidzero.dev) stack — the Rust-based `oxc`
+toolchain — plus Vitest and Playwright:
+
+```bash
+npm run lint      # oxlint  — ~50–100× faster than ESLint, zero-config sane defaults
+npm run fmt       # oxfmt   — formats src + tests in place
+npm run fmt:check # oxfmt   — verify formatting in CI
+npm run typecheck # tsc --noEmit
+npm run check     # lint + fmt:check + typecheck in one shot
+npm test          # Vitest  — pure lib/ logic, instant and deterministic
+npm run test:e2e  # Playwright — drives a production build in real Chromium
+```
+
+There is no ESLint or Prettier — `oxlint` (`.oxlintrc.json`) and `oxfmt`
+(`.oxfmtrc.json`) own linting and formatting, both written in Rust and running
+the whole tree in tens of milliseconds.
+
+The test split is deliberate. Everything pure — `format`, `quant`, `fuzzy`, the
+command parser, the signal engine — is unit-tested in a Node runtime with no
+DOM, so the suite runs in milliseconds. Everything that only exists in a browser
+— routing, the ⌘K palette, keyboard navigation, the wallet flow, theming — is
+Playwright's job, asserted against the shell rather than the live feed so
+upstream data can never make a test flake. Phantom is stubbed in-page with the
+same EIP-1193 surface the real extension injects.
 
 ## Caveats
 

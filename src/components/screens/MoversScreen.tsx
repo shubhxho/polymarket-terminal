@@ -110,16 +110,17 @@ export default function MoversScreen() {
 
         <span className="flex min-w-0 items-center gap-2 text-muted">
           <span>
-            <span className="text-info">ADV</span>{" "}
-            <span className="text-up">{advancing}</span>
+            <span className="text-info">ADV</span> <span className="text-up">{advancing}</span>
           </span>
-          <span className="flex h-[6px] w-[120px] shrink-0 border border-edge" title="Advancing vs declining">
+          <span
+            className="flex h-[6px] w-[120px] shrink-0 border border-edge"
+            title="Advancing vs declining"
+          >
             <span className="bg-up/70" style={{ width: `${upPct}%` }} />
             <span className="flex-1 bg-down/70" />
           </span>
           <span>
-            <span className="text-info">DEC</span>{" "}
-            <span className="text-down">{declining}</span>
+            <span className="text-info">DEC</span> <span className="text-down">{declining}</span>
           </span>
         </span>
 
@@ -136,23 +137,13 @@ export default function MoversScreen() {
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 xl:grid-cols-2">
-        <Panel
-          title={`Top Gainers · ${tf}`}
-          right={`${gainers.length}`}
-          flush
-          className="min-h-0"
-        >
+        <Panel title={`Top Gainers · ${tf}`} right={`${gainers.length}`} flush className="min-h-0">
           <Body loading={loading} error={error} hasData={!!data}>
             <MarketGrid markets={gainers} columns={columns} emptyText="no advancers" />
           </Body>
         </Panel>
 
-        <Panel
-          title={`Top Losers · ${tf}`}
-          right={`${losers.length}`}
-          flush
-          className="min-h-0"
-        >
+        <Panel title={`Top Losers · ${tf}`} right={`${losers.length}`} flush className="min-h-0">
           <Body loading={loading} error={error} hasData={!!data}>
             <MarketGrid markets={losers} columns={columns} emptyText="no decliners" />
           </Body>

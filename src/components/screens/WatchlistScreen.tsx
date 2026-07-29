@@ -31,7 +31,10 @@ export default function WatchlistScreen() {
 
   // Keys, not the array itself: the poller must not be rebuilt just because a
   // toast or a nav change re-rendered the provider.
-  const idKey = watchlist.map((w) => w.marketId).filter(Boolean).join(",");
+  const idKey = watchlist
+    .map((w) => w.marketId)
+    .filter(Boolean)
+    .join(",");
   const tokenKey = watchlist
     .slice(0, TREND_LIMIT)
     .map((w) => w.tokenId)
@@ -57,9 +60,7 @@ export default function WatchlistScreen() {
   const markets = useMemo(() => {
     const byId = new Map((data ?? []).map((m) => [m.id, m]));
     // Render in pin order, not upstream order, so the grid stops reshuffling.
-    return watchlist
-      .map((w) => byId.get(w.marketId))
-      .filter((m): m is Market => m !== undefined);
+    return watchlist.map((w) => byId.get(w.marketId)).filter((m): m is Market => m !== undefined);
   }, [data, watchlist]);
 
   const seriesByToken = useMemo(() => {

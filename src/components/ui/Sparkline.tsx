@@ -31,7 +31,9 @@ export function Sparkline({
     }
     const dx = width / (ps.length - 1);
     const y = (v: number) => height - ((v - lo) / (hi - lo)) * (height - 2) - 1;
-    return ps.map((p, i) => `${i === 0 ? "M" : "L"}${(i * dx).toFixed(2)},${y(p.p).toFixed(2)}`).join(" ");
+    return ps
+      .map((p, i) => `${i === 0 ? "M" : "L"}${(i * dx).toFixed(2)},${y(p.p).toFixed(2)}`)
+      .join(" ");
   }, [points, width, height]);
 
   if (!path) {
@@ -40,7 +42,8 @@ export function Sparkline({
 
   const first = points[0].p;
   const last = points[points.length - 1].p;
-  const stroke = last > first ? "var(--color-up)" : last < first ? "var(--color-down)" : "var(--color-dim)";
+  const stroke =
+    last > first ? "var(--color-up)" : last < first ? "var(--color-down)" : "var(--color-dim)";
 
   return (
     <svg
@@ -50,7 +53,13 @@ export function Sparkline({
       className={`overflow-visible ${className}`}
       aria-hidden
     >
-      <path d={path} fill="none" stroke={stroke} strokeWidth={1} vectorEffect="non-scaling-stroke" />
+      <path
+        d={path}
+        fill="none"
+        stroke={stroke}
+        strokeWidth={1}
+        vectorEffect="non-scaling-stroke"
+      />
     </svg>
   );
 }

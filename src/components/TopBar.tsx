@@ -3,6 +3,8 @@
 import type { Summary } from "@/app/api/summary/route";
 import { useClock } from "@/hooks/useClock";
 import { useTerminal } from "@/components/TerminalProvider";
+import { WalletButton } from "@/components/WalletButton";
+import { cn } from "@/lib/cn";
 import { screenTitle } from "@/lib/commands";
 import { clock, compact } from "@/lib/format";
 import type { PollState } from "@/hooks/usePoll";
@@ -64,6 +66,8 @@ export function TopBar({
         <span className="hidden text-tiny text-muted sm:inline">
           {now ? `${clock(now)} UTC` : "—:—:— UTC"}
         </span>
+        <span className="h-4 w-px shrink-0 bg-edge" />
+        <WalletButton />
         <button
           onClick={onToggleTheme}
           title={`Switch to ${theme === "light" ? "dark" : "light"} theme`}
@@ -93,11 +97,8 @@ function FeedLight({ state }: { state: PollState<Summary> }) {
       ? { color: "text-warn", label: "Connecting" }
       : { color: "text-up", label: "Live" };
   return (
-    <span
-      className="flex items-center gap-1.5"
-      title={state.error ?? "Market data feed"}
-    >
-      <span className={`dot ${tone.color} ${state.refreshing ? "animate-pulse" : ""}`} />
+    <span className="flex items-center gap-1.5" title={state.error ?? "Market data feed"}>
+      <span className={cn("dot", tone.color, state.refreshing && "animate-pulse")} />
       <span className="text-[11px] text-muted">{tone.label}</span>
     </span>
   );

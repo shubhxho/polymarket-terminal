@@ -122,9 +122,7 @@ function EventList({ events }: { events: EventSummary[] }) {
             {truncate(ev.title, 56)}
           </span>
           <span className="w-[30px] shrink-0 text-right text-muted">{ev.markets.length}</span>
-          <span className="w-[56px] shrink-0 text-right text-ink/80">
-            {compact(ev.volume24h)}
-          </span>
+          <span className="w-[56px] shrink-0 text-right text-ink/80">{compact(ev.volume24h)}</span>
           <span className="w-[52px] shrink-0 text-right text-info-weak">
             {compact(ev.liquidity)}
           </span>

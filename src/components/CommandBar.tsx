@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { CommandPalette } from "@/components/CommandPalette";
 import { useTerminal } from "@/components/TerminalProvider";
+import { cn } from "@/lib/cn";
 
 /** Bare letters already bound to actions on the focused grid row. */
 const ROW_ACTION_KEYS = new Set(["w"]);
@@ -119,9 +120,10 @@ function NavButton({
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className={`flex h-[24px] w-[24px] items-center justify-center rounded-md text-[13px] ${
+      className={cn(
+        "flex h-[24px] w-[24px] items-center justify-center rounded-md text-[13px]",
         disabled ? "text-edge-strong" : "text-muted hover:bg-surface-2 hover:text-ink"
-      }`}
+      )}
     >
       {label}
     </button>

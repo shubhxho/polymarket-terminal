@@ -8,12 +8,7 @@ import { PriceChart, SERIES_COLORS, type Series } from "@/components/ui/PriceCha
 import { Empty, ErrorBox, Field, Loading, Panel } from "@/components/ui/Panel";
 import { useMarketSocket } from "@/hooks/useMarketSocket";
 import { usePoll } from "@/hooks/usePoll";
-import {
-  aggregateFlow,
-  scoreMarket,
-  SIGNAL_META,
-  type MarketSignals,
-} from "@/lib/signals";
+import { aggregateFlow, scoreMarket, SIGNAL_META, type MarketSignals } from "@/lib/signals";
 import {
   cents,
   compact,
@@ -56,13 +51,7 @@ const MAX_SERIES = 8;
  * Chart, book, tape and holders all key off one selected outcome token so the
  * whole screen moves together.
  */
-export default function DetailScreen({
-  slug,
-  kind,
-}: {
-  slug: string;
-  kind: "event" | "market";
-}) {
+export default function DetailScreen({ slug, kind }: { slug: string; kind: "event" | "market" }) {
   const { toggleWatch, isWatched, addAlert, toast } = useTerminal();
   const [interval, setInterval] = useState<HistoryInterval>("1d");
   const [selectedToken, setSelectedToken] = useState<string | null>(null);
@@ -73,8 +62,7 @@ export default function DetailScreen({
   );
   // A market slug (or an event slug that resolved to nothing) falls through to
   // the markets endpoint so a direct market link still opens.
-  const marketFallback =
-    kind === "market" || (!eventQ.loading && (eventQ.data?.length ?? 0) === 0);
+  const marketFallback = kind === "market" || (!eventQ.loading && (eventQ.data?.length ?? 0) === 0);
   const marketQ = usePoll<Market[]>(
     marketFallback ? `/api/markets?slug=${encodeURIComponent(slug)}&limit=1` : null,
     20000
@@ -189,9 +177,7 @@ export default function DetailScreen({
   if (notFound) {
     return (
       <div className="p-3">
-        <ErrorBox
-          message={`no market found for slug "${slug}" — try SRCH to locate it by name`}
-        />
+        <ErrorBox message={`no market found for slug "${slug}" — try SRCH to locate it by name`} />
       </div>
     );
   }

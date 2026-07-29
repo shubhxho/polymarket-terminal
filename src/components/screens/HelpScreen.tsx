@@ -7,7 +7,10 @@ import { COMMANDS, SECTORS, type Screen, type ScreenName } from "@/lib/commands"
 /** Keyboard map. Documented here only — the handlers live with their widgets. */
 const KEYS: { keys: string[]; action: string }[] = [
   { keys: ["Enter"], action: "Run the command on the command line" },
-  { keys: ["↑", "↓"], action: "Move the grid selection · move the suggestion cursor once you type" },
+  {
+    keys: ["↑", "↓"],
+    action: "Move the grid selection · move the suggestion cursor once you type",
+  },
   { keys: ["Ctrl+↑", "Ctrl+↓"], action: "Recall previously run commands" },
   { keys: ["Tab"], action: "Complete the highlighted suggestion" },
   { keys: ["Enter"], action: "Open the highlighted grid row" },
@@ -22,6 +25,7 @@ const EXAMPLES: { line: string; note: string }[] = [
   { line: "SRCH fed cut", note: "search every event and market for a phrase" },
   { line: "DES us-recession-2026", note: "open one event's analytics launchpad" },
   { line: "PORT 0x1a2b3c…", note: "pull any wallet's positions and P&L" },
+  { line: "Connect", note: "link Phantom in the masthead — PORT then loads your own book" },
 ];
 
 /** Screens reachable with no arguments, so HELP can launch them on click. */
@@ -128,8 +132,8 @@ export default function HelpScreen() {
           </div>
           <p className="mt-2 border-t border-edge pt-1.5 text-[10px] leading-relaxed text-muted">
             A sector opens the CAT screen filtered to that Gamma tag. Type{" "}
-            <span className="text-accent">CAT crypto</span> for the same result from the
-            command line.
+            <span className="text-accent">CAT crypto</span> for the same result from the command
+            line.
           </p>
         </Panel>
       </div>

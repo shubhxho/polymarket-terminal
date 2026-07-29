@@ -1,0 +1,44 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react", "typescript", "unicorn", "oxc"],
+  "env": { "browser": true, "es2024": true },
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "perf": "warn"
+  },
+  "rules": {
+    "eqeqeq": "error",
+    "no-console": "warn",
+    "no-var": "error",
+    "prefer-const": "error",
+    "typescript/no-explicit-any": "warn",
+    "unicorn/no-array-sort": "off",
+    "unicorn/no-array-reverse": "off",
+    "react/react-in-jsx-scope": "off",
+    "react/jsx-key": "error",
+    "react/no-array-index-key": "off",
+    "unicorn/prefer-add-event-listener": "off",
+    "no-await-in-loop": "off",
+    "no-new": "off"
+  },
+  "ignorePatterns": [
+    "node_modules",
+    ".next",
+    "out",
+    "build",
+    "coverage",
+    "playwright-report",
+    "test-results",
+    "next-env.d.ts"
+  ],
+  "overrides": [
+    {
+      "files": ["tests/**/*.ts", "tests/**/*.tsx"],
+      "rules": {
+        "oxc/approx-constant": "off",
+        "typescript/no-explicit-any": "off"
+      }
+    }
+  ]
+}

@@ -99,8 +99,7 @@ export function MarketGrid({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
-      const typing =
-        target?.tagName === "INPUT" || target?.tagName === "TEXTAREA";
+      const typing = target?.tagName === "INPUT" || target?.tagName === "TEXTAREA";
       // Arrow keys still drive the grid while typing; letters must not.
       const isNav = e.key === "ArrowDown" || e.key === "ArrowUp";
       if (typing && !isNav && e.key !== "Enter") return;
@@ -230,16 +229,16 @@ function Row({
   const spread = bid !== undefined && ask !== undefined ? ask - bid : market.spread;
   const flash = useFlash(last, feedVersion);
 
-  const label = market.groupItemTitle
-    ? `${market.groupItemTitle}`
-    : market.question;
+  const label = market.groupItemTitle ? `${market.groupItemTitle}` : market.question;
   const context = market.groupItemTitle ? market.eventTitle : market.eventTitle;
 
   const cell = (c: GridColumn) => {
     switch (c) {
       case "last":
         return (
-          <span className={`${COLUMN_META.last.width} shrink-0 text-right font-bold text-ink ${flash}`}>
+          <span
+            className={`${COLUMN_META.last.width} shrink-0 text-right font-bold text-ink ${flash}`}
+          >
             {cents(last)}
           </span>
         );

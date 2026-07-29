@@ -32,9 +32,7 @@ export function Panel({
     >
       <header className="flex h-[26px] shrink-0 items-center justify-between gap-2 border-b border-edge px-2.5">
         <span className="eyebrow truncate">{title}</span>
-        {right ? (
-          <span className="shrink-0 text-[11px] text-faint">{right}</span>
-        ) : null}
+        {right ? <span className="shrink-0 text-[11px] text-faint">{right}</span> : null}
       </header>
       <div
         className={`min-h-0 flex-1 overflow-auto ${flush ? "" : "px-2.5 py-2"} ${bodyClassName}`}

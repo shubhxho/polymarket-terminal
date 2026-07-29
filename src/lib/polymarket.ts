@@ -306,10 +306,7 @@ export async function fetchTrades(opts: {
 
 export async function fetchHolders(conditionId: string, limit = 12): Promise<Holder[][]> {
   const p = new URLSearchParams({ market: conditionId, limit: String(limit) });
-  const raw = await get<{ token: string; holders: RawMarket[] }[]>(
-    `${DATA}/holders?${p}`,
-    30
-  );
+  const raw = await get<{ token: string; holders: RawMarket[] }[]>(`${DATA}/holders?${p}`, 30);
   return (Array.isArray(raw) ? raw : []).map((group) =>
     (group.holders ?? []).map((h) => ({
       wallet: String(h.proxyWallet ?? ""),
@@ -348,10 +345,7 @@ export async function fetchPositions(user: string, limit = 50): Promise<Position
 }
 
 export async function fetchTags(): Promise<{ id: string; label: string; slug: string }[]> {
-  const raw = await get<RawMarket[]>(
-    `${GAMMA}/tags?limit=200&order=id&ascending=true`,
-    3600
-  );
+  const raw = await get<RawMarket[]>(`${GAMMA}/tags?limit=200&order=id&ascending=true`, 3600);
   return (Array.isArray(raw) ? raw : []).map((t) => ({
     id: String(t.id ?? ""),
     label: String(t.label ?? ""),
