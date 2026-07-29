@@ -1,8 +1,11 @@
-import { NextResponse } from "next/server";
-
-/** Uniform envelope so client hooks can treat every endpoint the same. */
-export function ok<T>(data: T, sMaxAge = 5) {
-  return NextResponse.json(
+/** Uniform envelope so client hooks can treat every endpoint the same.
+ *
+ *  Built on the Web-standard `Response.json()` static method — the same WHATWG
+ *  surface Bun implements natively and Next 16 documents for route handlers —
+ *  rather than the `next/server` wrapper, so the API layer carries no framework
+ *  coupling and would run unchanged on Bun, Node, Deno or the edge. */
+export function ok<T>(data: T, sMaxAge = 5): Response {
+  return Response.json(
     { ok: true, data, ts: Date.now() },
     {
       headers: {
@@ -12,9 +15,9 @@ export function ok<T>(data: T, sMaxAge = 5) {
   );
 }
 
-export function fail(err: unknown, status = 502) {
+export function fail(err: unknown, status = 502): Response {
   const message = err instanceof Error ? err.message : String(err);
-  return NextResponse.json({ ok: false, error: message, ts: Date.now() }, { status });
+  return Response.json({ ok: false, error: message, ts: Date.now() }, { status });
 }
 
 /** Clamp a user-supplied `limit` so a stray query can't ask for 10k rows. */

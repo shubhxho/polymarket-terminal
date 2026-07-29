@@ -194,7 +194,11 @@ Three upstream sources, all public:
 
 Routes proxy rather than calling upstream from the browser: it keeps CORS out of
 the picture, lets Next's data cache absorb repeat polls, and means a screen only
-ever handles one response shape (`{ok, data, ts}`).
+ever handles one response shape (`{ok, data, ts}`). Each handler is a plain
+`GET(req: Request)` returning `Response.json(...)` through the `ok`/`fail`
+helpers in `lib/api-util` — Web-standard, framework-free, Bun-native. Next's
+data-cache `revalidate` still layers on top in `lib/polymarket`, where it earns
+its keep.
 
 Quotes arrive over the CLOB websocket (`useMarketSocket`), which fans out book
 snapshots and price deltas for every subscribed outcome token. Bursts are
@@ -227,22 +231,27 @@ switch to Polygon when the wallet sits on another chain.
 
 ## Toolchain
 
-Built on the [VoidZero](https://voidzero.dev) stack — the Rust-based `oxc`
-toolchain — plus Vitest and Playwright:
+Runs on [Bun](https://bun.sh) end to end, with the [VoidZero](https://voidzero.dev)
+`oxc` tools for linting and formatting and Vitest + Playwright for tests:
 
 ```bash
-npm run lint      # oxlint  — ~50–100× faster than ESLint, zero-config sane defaults
-npm run fmt       # oxfmt   — formats src + tests in place
-npm run fmt:check # oxfmt   — verify formatting in CI
-npm run typecheck # tsc --noEmit
-npm run check     # lint + fmt:check + typecheck in one shot
-npm test          # Vitest  — pure lib/ logic, instant and deterministic
-npm run test:e2e  # Playwright — drives a production build in real Chromium
+bun install       # bun.lock is the committed lockfile — no npm/package-lock
+bun run dev       # bun --bun next dev   — Next on the Bun runtime
+bun run build     # bun --bun next build
+bun run start     # bun --bun next start
+bun run lint      # oxlint  — Rust, ~50–100× faster than ESLint
+bun run fmt       # oxfmt   — formats src + tests in place
+bun run check     # lint + fmt:check + typecheck in one shot
+bun test          # → runs Vitest over the pure lib/ logic
+bun run test:e2e  # Playwright — builds and serves on Bun, drives real Chromium
 ```
 
-There is no ESLint or Prettier — `oxlint` (`.oxlintrc.json`) and `oxfmt`
-(`.oxfmtrc.json`) own linting and formatting, both written in Rust and running
-the whole tree in tens of milliseconds.
+Everything is Bun-native. `next dev/build/start` run under the Bun runtime via
+`bun --bun`; the API layer is built on the Web-standard `Response.json()` Bun
+implements natively (no `next/server` wrapper), so a route would run unchanged
+on Bun, Node, Deno or the edge. There is no ESLint, Prettier, or npm lockfile —
+`oxlint` (`.oxlintrc.json`) and `oxfmt` (`.oxfmtrc.json`) own linting and
+formatting, both Rust, running the whole tree in tens of milliseconds.
 
 The test split is deliberate. Everything pure — `format`, `quant`, `fuzzy`, the
 command parser, the signal engine — is unit-tested in a Node runtime with no

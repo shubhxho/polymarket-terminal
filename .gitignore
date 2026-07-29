@@ -2,8 +2,9 @@
 
 # dependencies
 /node_modules
-# This project uses npm (package-lock.json); a stray bun lockfile is noise.
-bun.lock
+# This project standardizes on Bun; bun.lock is the committed lockfile and a
+# stray npm lockfile is noise.
+package-lock.json
 /.pnp
 .pnp.*
 .yarn/*
