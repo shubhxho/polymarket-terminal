@@ -83,6 +83,7 @@ export function Sidebar() {
                   <button
                     onClick={() => launch(spec)}
                     title={`${spec.title} — ${spec.blurb}`}
+                    aria-current={active ? "page" : undefined}
                     className={cn(
                       "flex w-full items-center gap-2 rounded-sm px-1.5 py-[5px] text-left text-tiny transition-colors",
                       active

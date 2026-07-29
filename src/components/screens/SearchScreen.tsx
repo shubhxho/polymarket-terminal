@@ -30,7 +30,7 @@ export default function SearchScreen({ q }: { q: string }) {
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
       <div className="flex shrink-0 items-center gap-2 border border-edge bg-surface px-1.5 py-[3px] text-[10px] tracking-wide uppercase">
-        <span className="shrink-0 text-accent-weak">Query</span>
+        <span className="shrink-0 text-info">Query</span>
         <span className="min-w-0 truncate text-accent">{query ? `"${query}"` : "—"}</span>
         <span className="ml-auto flex shrink-0 items-center gap-3 text-muted">
           <span>
@@ -39,12 +39,12 @@ export default function SearchScreen({ q }: { q: string }) {
           <span>
             <span className="text-info">MKT</span> {markets.length}
           </span>
-          {stale ? <span className="text-down">stale</span> : null}
+          {stale ? <span className="text-warn">stale</span> : null}
           {refreshing ? <span className="text-accent-weak">···</span> : null}
         </span>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-y-auto lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] lg:overflow-visible">
         <Panel title="Events" right={`${events.length}`} flush className="min-h-0">
           <Body loading={loading} error={error} hasData={!!data}>
             {!query ? (
@@ -114,8 +114,14 @@ function EventList({ events }: { events: EventSummary[] }) {
         <div
           key={ev.id || ev.slug}
           onClick={() => go({ fn: "DES", slug: ev.slug, kind: "event" }, `DES ${ev.slug}`)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              go({ fn: "DES", slug: ev.slug, kind: "event" }, `DES ${ev.slug}`);
+            }
+          }}
           role="button"
-          tabIndex={-1}
+          tabIndex={0}
           className="flex cursor-pointer items-center gap-1 border-b border-edge/40 px-1 py-[2px] hover:bg-surface-2"
         >
           <span className="min-w-0 flex-1 truncate text-ink" title={ev.title}>

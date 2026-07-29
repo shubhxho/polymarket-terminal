@@ -262,7 +262,7 @@ export default function DetailScreen({ slug, kind }: { slug: string; kind: "even
       </div>
 
       {/* ── Workspace ─────────────────────────────────────────────────── */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 xl:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-y-auto xl:grid-cols-[minmax(0,1fr)_300px] xl:overflow-visible">
         <div className="flex min-h-0 min-w-0 flex-col gap-2">
           <Panel
             title="PRICE HISTORY"
@@ -327,7 +327,7 @@ export default function DetailScreen({ slug, kind }: { slug: string; kind: "even
           <Panel
             title={`TIME & SALES · ${truncate(selected?.label ?? "", 28)}`}
             right={tradesQ.refreshing ? "sync…" : undefined}
-            className="min-h-0 flex-1"
+            className="min-h-0 flex-1 max-xl:min-h-[220px]"
             flush
           >
             {tradesQ.loading ? (

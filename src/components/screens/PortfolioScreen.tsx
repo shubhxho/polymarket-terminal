@@ -146,18 +146,18 @@ export default function PortfolioScreen({ user }: { user: string }) {
         {isOwn && (
           <span
             title="This is your connected Phantom wallet"
-            className="shrink-0 border border-accent-weak px-1 text-[10px] tracking-wide text-accent uppercase"
+            className="shrink-0 border border-accent-weak px-1.5 py-[1px] text-[10px] tracking-wide text-accent uppercase"
           >
             You
           </span>
         )}
-        <span className="truncate text-tiny text-accent" title={user}>
+        <span className="mono min-w-0 truncate text-tiny text-ink" title={user}>
           {user}
         </span>
         <button
           onClick={copyAddress}
           title="Copy address to clipboard"
-          className="shrink-0 border border-edge-strong px-1 text-[10px] tracking-wide text-muted uppercase hover:border-accent-weak hover:text-accent"
+          className="shrink-0 border border-edge-strong px-1.5 py-[1px] text-[10px] tracking-wide text-muted uppercase hover:border-accent-weak hover:text-accent"
         >
           Copy
         </button>
@@ -211,47 +211,64 @@ export default function PortfolioScreen({ user }: { user: string }) {
               <span className="w-[52px] shrink-0" />
             </div>
 
-            {sorted.map((p) => (
-              <div
-                key={p.asset || `${p.conditionId}-${p.outcome}`}
-                onClick={() => {
-                  if (p.slug) go({ fn: "DES", slug: p.slug, kind: "market" }, `DES ${p.slug}`);
-                }}
-                className={cn(
-                  "flex items-center gap-1 border-b border-edge/40 px-1 py-[2px] hover:bg-surface-2",
-                  p.slug && "cursor-pointer"
-                )}
-              >
-                <span className="min-w-0 flex-1 truncate text-ink" title={p.title}>
-                  {truncate(p.title, 60)}
-                </span>
-                <span className="w-[76px] shrink-0 truncate text-info" title={p.outcome}>
-                  {p.outcome}
-                </span>
-                <span className="w-[64px] shrink-0 text-right text-muted">{compact(p.size)}</span>
-                <span className="w-[46px] shrink-0 text-right text-muted">{cents(p.avgPrice)}</span>
-                <span className="w-[46px] shrink-0 text-right font-bold text-ink">
-                  {cents(p.curPrice)}
-                </span>
-                <span className="w-[62px] shrink-0 text-right text-ink/85">{usd(p.value)}</span>
-                <span className={`w-[62px] shrink-0 text-right ${dirClass(p.cashPnl)}`}>
-                  {usd(p.cashPnl)}
-                </span>
-                <span className={`w-[56px] shrink-0 text-right ${dirClass(p.percentPnl)}`}>
-                  {signed(p.percentPnl)}
-                </span>
-                <span className="w-[52px] shrink-0 text-right">
-                  {p.redeemable ? (
-                    <span
-                      title="Resolved — proceeds can be redeemed"
-                      className="border border-accent-weak px-1 text-[10px] tracking-wide text-accent"
-                    >
-                      REDEEM
-                    </span>
-                  ) : null}
-                </span>
-              </div>
-            ))}
+            {sorted.map((p) => {
+              const open = p.slug
+                ? () => go({ fn: "DES", slug: p.slug!, kind: "market" }, `DES ${p.slug}`)
+                : undefined;
+              return (
+                <div
+                  key={p.asset || `${p.conditionId}-${p.outcome}`}
+                  onClick={open}
+                  role={open ? "button" : undefined}
+                  tabIndex={open ? 0 : undefined}
+                  onKeyDown={
+                    open
+                      ? (e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            open();
+                          }
+                        }
+                      : undefined
+                  }
+                  className={cn(
+                    "flex items-center gap-1 border-b border-edge/40 px-1 py-[2px] hover:bg-surface-2",
+                    p.slug && "cursor-pointer"
+                  )}
+                >
+                  <span className="min-w-0 flex-1 truncate text-ink" title={p.title}>
+                    {truncate(p.title, 60)}
+                  </span>
+                  <span className="w-[76px] shrink-0 truncate text-info" title={p.outcome}>
+                    {p.outcome}
+                  </span>
+                  <span className="w-[64px] shrink-0 text-right text-muted">{compact(p.size)}</span>
+                  <span className="w-[46px] shrink-0 text-right text-muted">
+                    {cents(p.avgPrice)}
+                  </span>
+                  <span className="w-[46px] shrink-0 text-right font-bold text-ink">
+                    {cents(p.curPrice)}
+                  </span>
+                  <span className="w-[62px] shrink-0 text-right text-ink/85">{usd(p.value)}</span>
+                  <span className={`w-[62px] shrink-0 text-right ${dirClass(p.cashPnl)}`}>
+                    {usd(p.cashPnl)}
+                  </span>
+                  <span className={`w-[56px] shrink-0 text-right ${dirClass(p.percentPnl)}`}>
+                    {signed(p.percentPnl)}
+                  </span>
+                  <span className="w-[52px] shrink-0 text-right">
+                    {p.redeemable ? (
+                      <span
+                        title="Resolved — proceeds can be redeemed"
+                        className="border border-accent-weak px-1.5 py-[1px] text-[10px] tracking-wide text-accent"
+                      >
+                        REDEEM
+                      </span>
+                    ) : null}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         )}
       </Panel>

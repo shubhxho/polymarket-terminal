@@ -8,7 +8,12 @@ export function Toasts() {
   if (toasts.length === 0) return null;
 
   return (
-    <div className="pointer-events-none fixed right-2 bottom-11 z-50 flex w-[300px] flex-col gap-1">
+    <div
+      role="status"
+      aria-live="polite"
+      aria-atomic="false"
+      className="pointer-events-none fixed right-2 bottom-11 z-50 flex w-[300px] flex-col gap-1"
+    >
       {toasts.map((t) => {
         const tone =
           t.tone === "error"

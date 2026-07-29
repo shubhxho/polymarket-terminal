@@ -74,7 +74,7 @@ export function Field({
   );
 }
 
-export function Empty({ text = "No data" }: { text?: string }) {
+export function Empty({ text = "no data" }: { text?: string }) {
   return (
     <div className="flex h-full min-h-[64px] items-center justify-center px-4 text-center text-[11px] text-faint">
       {text}
@@ -82,7 +82,7 @@ export function Empty({ text = "No data" }: { text?: string }) {
   );
 }
 
-export function Loading({ text = "Loading" }: { text?: string }) {
+export function Loading({ text = "loading" }: { text?: string }) {
   return (
     <div className="flex h-full min-h-[64px] items-center justify-center gap-2 text-[11px] text-faint">
       <span className="dot animate-pulse text-accent" />

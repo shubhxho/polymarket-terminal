@@ -28,7 +28,7 @@ export function TradeTape({
 
   return (
     <div className="text-tiny">
-      <div className="sticky top-0 z-10 flex items-center gap-1 border-b border-edge bg-surface-2 px-1 py-[2px] text-[10px] tracking-wide text-accent-weak uppercase">
+      <div className="sticky top-0 z-10 flex items-center gap-1 border-b border-edge-strong bg-surface-2 px-1 py-[3px] text-[10px] tracking-wide text-accent-weak uppercase">
         <span className="w-[52px] shrink-0">Time</span>
         <span className="w-[34px] shrink-0">Side</span>
         {showMarket ? <span className="min-w-0 flex-1">Market</span> : null}
@@ -48,9 +48,9 @@ export function TradeTape({
             onClick={() => {
               if (t.slug) go({ fn: "DES", slug: t.slug, kind: "market" }, `DES ${t.slug}`);
             }}
-            className={`flex items-center gap-1 border-b border-edge/30 px-1 hover:bg-surface-2 ${
+            className={`flex items-center gap-1 border-b border-edge/30 px-1 ${
               dense ? "py-0" : "py-[2px]"
-            } ${t.slug ? "cursor-pointer" : ""} ${
+            } ${t.slug ? "cursor-pointer hover:bg-surface-2" : ""} ${
               // Prints above $10k get a persistent wash, not just a flash.
               notional >= 10_000 ? (buy ? "bg-up/8" : "bg-down/8") : ""
             }`}

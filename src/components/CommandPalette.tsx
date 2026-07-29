@@ -13,6 +13,7 @@ import {
   screenTitle,
   type Screen,
 } from "@/lib/commands";
+import { cn } from "@/lib/cn";
 import { compact, truncate } from "@/lib/format";
 import { fuzzyMatch, highlight } from "@/lib/fuzzy";
 import type { EventSummary, Market } from "@/lib/types";
@@ -289,7 +290,7 @@ export function CommandPalette({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-ink/20 pt-[12vh] backdrop-blur-[2px]"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-ink/20 px-3 pt-[12vh] backdrop-blur-[2px]"
       onMouseDown={onClose}
       role="dialog"
       aria-modal="true"
@@ -309,13 +310,23 @@ export function CommandPalette({
             spellCheck={false}
             autoComplete="off"
             aria-label="Command line"
+            role="combobox"
+            aria-expanded
+            aria-controls="pal-list"
+            aria-activedescendant={rows[sel] ? `pal-opt-${sel}` : undefined}
             placeholder="Search markets, or type a function code…"
             className="min-w-0 flex-1 text-sm2 placeholder:text-faint"
           />
           {remote.refreshing ? <span className="dot animate-pulse text-accent" /> : null}
         </div>
 
-        <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto py-1">
+        <div
+          ref={listRef}
+          id="pal-list"
+          role="listbox"
+          aria-label="Results"
+          className="min-h-0 flex-1 overflow-y-auto py-1"
+        >
           {rows.length === 0 ? (
             <div className="px-3.5 py-6 text-center text-tiny text-faint">
               No matches — press Enter to search markets for “{query}”
@@ -329,14 +340,18 @@ export function CommandPalette({
                   {header ? <div className="eyebrow px-3.5 pt-2 pb-1">{header}</div> : null}
                   <button
                     data-row={i}
+                    id={`pal-opt-${i}`}
+                    role="option"
+                    aria-selected={i === sel}
                     onMouseEnter={() => setSel(i)}
                     // Preventing mousedown keeps focus in the search field, so
                     // a prefilling row leaves the caret ready for its argument.
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={(e) => run(row, e.metaKey || e.ctrlKey)}
-                    className={`flex w-full items-center gap-2.5 px-3.5 py-[6px] text-left ${
-                      i === sel ? "bg-surface-2" : ""
-                    }`}
+                    className={cn(
+                      "flex w-full items-center gap-2.5 px-3.5 py-[6px] text-left",
+                      i === sel && "row-sel"
+                    )}
                   >
                     <span className="min-w-0 flex-1 truncate text-tiny">
                       {highlight(row.label, row.positions).map((part, k) => (

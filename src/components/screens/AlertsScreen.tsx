@@ -228,7 +228,7 @@ function ArmForm({
 
           <button
             type="submit"
-            className="rounded-sm bg-accent-soft px-2.5 py-[3px] text-[11px] font-medium text-[#1a0e1e] hover:brightness-95"
+            className="rounded-sm bg-accent-soft px-2.5 py-[3px] text-[11px] font-medium text-accent-ink hover:brightness-95"
           >
             Arm
           </button>

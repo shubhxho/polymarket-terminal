@@ -43,7 +43,7 @@ export function Sparkline({
   const first = points[0].p;
   const last = points[points.length - 1].p;
   const stroke =
-    last > first ? "var(--color-up)" : last < first ? "var(--color-down)" : "var(--color-dim)";
+    last > first ? "var(--color-up)" : last < first ? "var(--color-down)" : "var(--color-faint)";
 
   return (
     <svg

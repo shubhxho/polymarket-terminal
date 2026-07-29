@@ -22,16 +22,17 @@ export function TickerTape({ summary }: { summary: Summary | null }) {
   }, [summary]);
 
   if (items.length === 0) {
+    // A not-yet-loaded tape isn't an offline one — don't cry error before data.
     return (
       <div className="flex h-[30px] shrink-0 items-center border-t border-edge bg-surface px-2 text-[10px] tracking-widest text-faint uppercase">
-        tape offline
+        {summary ? "no movers" : "tape loading"}
       </div>
     );
   }
 
   return (
     <div className="flex h-[30px] shrink-0 items-center overflow-hidden border-t border-edge bg-surface">
-      <span className="z-10 h-full shrink-0 bg-accent-soft px-2 text-[10px] leading-[30px] font-medium tracking-wide text-[#1a0e1e]">
+      <span className="z-10 h-full shrink-0 bg-accent-soft px-2 text-[10px] leading-[30px] font-medium tracking-wide text-accent-ink">
         MOVERS
       </span>
       <div className="min-w-0 flex-1 overflow-hidden whitespace-nowrap">
