@@ -8,9 +8,13 @@ Read-only: it quotes, charts and analyses markets. It does not place orders and
 never touches a private key — connecting a wallet only reads its public address.
 
 ```bash
-npm install
-npm run dev      # http://localhost:3000
+bun install
+bun dev          # http://localhost:3000
 ```
+
+Runs on [Bun](https://bun.sh): the dev/build/start scripts drive Next through
+`bun --bun`, and the unit suite is Bun's native test runner (`bun test`) — no
+Node or extra test framework in the loop.
 
 No API keys or environment variables — every upstream endpoint is public.
 

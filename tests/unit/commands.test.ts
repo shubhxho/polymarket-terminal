@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { defaultScreenFor, lookupCommand, parseCommand, screenTitle } from "@/lib/commands";
 
 /** Narrowing helper — every happy-path case expects a screen, not an error. */

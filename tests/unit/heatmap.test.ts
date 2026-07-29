@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { buildCells, gridLayout, heatColor, intensity } from "@/lib/heatmap";
 
 describe("gridLayout", () => {
