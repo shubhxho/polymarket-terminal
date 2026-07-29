@@ -1,0 +1,3 @@
+# Apple MLX — the training runtime. Everything else (data fetch, features,
+# metrics) is Python stdlib on purpose, so only this one wheel is needed.
+mlx>=0.29
