@@ -1,5 +1,6 @@
 "use client";
 
+import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect } from "react";
 import type { Summary } from "@/app/api/summary/route";
 import { AlertEngine } from "@/components/AlertEngine";
@@ -25,6 +26,7 @@ import { shortAddress, WalletProvider } from "@/hooks/useWallet";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { usePoll } from "@/hooks/usePoll";
 import type { Screen } from "@/lib/commands";
+import { screenVariants } from "@/lib/motion";
 
 type Theme = "light" | "dark";
 
@@ -68,9 +70,23 @@ function Shell() {
         <div className="flex min-h-0 flex-1">
           <Sidebar />
           {/* `key` remounts on navigation so each screen starts from a clean
-              slate instead of inheriting the last one's selection and scroll. */}
-          <main key={screenKey(screen)} className="min-w-0 flex-1 overflow-hidden p-2">
-            <Workspace screen={screen} />
+              slate instead of inheriting the last one's selection and scroll.
+              `AnimatePresence` crossfades the swap; `popLayout` takes the
+              outgoing screen out of flow so the two never reflow each other
+              mid-flight. */}
+          <main className="min-w-0 flex-1 overflow-hidden p-2">
+            <AnimatePresence mode="popLayout" initial={false}>
+              <motion.div
+                key={screenKey(screen)}
+                variants={screenVariants}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                className="h-full min-h-0"
+              >
+                <Workspace screen={screen} />
+              </motion.div>
+            </AnimatePresence>
           </main>
         </div>
 

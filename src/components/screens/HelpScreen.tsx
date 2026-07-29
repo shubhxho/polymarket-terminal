@@ -1,8 +1,10 @@
 "use client";
 
+import { motion } from "motion/react";
 import { useTerminal } from "@/components/TerminalProvider";
 import { Panel } from "@/components/ui/Panel";
 import { COMMANDS, SECTORS, type Screen, type ScreenName } from "@/lib/commands";
+import { staggerContainer, tapScale } from "@/lib/motion";
 
 /** Keyboard map. Documented here only — the handlers live with their widgets. */
 const KEYS: { keys: string[]; action: string }[] = [
@@ -57,9 +59,17 @@ export default function HelpScreen() {
   const { go } = useTerminal();
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2">
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-auto lg:grid-cols-3">
-        <Panel title="Function Codes" right={`${COMMANDS.length} codes`} flush>
+    <motion.div
+      className="flex h-full min-h-0 flex-col gap-2"
+      variants={staggerContainer}
+      initial="initial"
+      animate="animate"
+    >
+      <motion.div
+        variants={staggerContainer}
+        className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-auto lg:grid-cols-3"
+      >
+        <Panel title="Function Codes" right={`${COMMANDS.length} codes`} flush animate>
           <div className="text-tiny">
             <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-edge-strong bg-surface-2 px-1 py-[3px] text-[10px] tracking-wide text-accent-weak uppercase">
               <span className="w-[40px] shrink-0">Code</span>
@@ -94,7 +104,7 @@ export default function HelpScreen() {
           </div>
         </Panel>
 
-        <Panel title="Keyboard" flush>
+        <Panel title="Keyboard" flush animate>
           <div className="text-tiny">
             {KEYS.map((k) => (
               <div
@@ -117,17 +127,18 @@ export default function HelpScreen() {
           </div>
         </Panel>
 
-        <Panel title="Sectors" right={`${SECTORS.length} tags`}>
+        <Panel title="Sectors" right={`${SECTORS.length} tags`} animate>
           <div className="flex flex-wrap gap-1">
             {SECTORS.map((s) => (
-              <button
+              <motion.button
                 key={s.key}
+                whileTap={tapScale}
                 onClick={() => go({ fn: "CAT", tag: s.tag, label: s.label }, `CAT ${s.key}`)}
                 title={`Browse ${s.label}`}
                 className="border border-edge-strong bg-surface-2 px-1.5 py-[2px] text-tiny tracking-wide text-info uppercase hover:border-accent-weak hover:text-accent"
               >
                 {s.key}
-              </button>
+              </motion.button>
             ))}
           </div>
           <p className="mt-2 border-t border-edge pt-1.5 text-[10px] leading-relaxed text-muted">
@@ -136,9 +147,9 @@ export default function HelpScreen() {
             line.
           </p>
         </Panel>
-      </div>
+      </motion.div>
 
-      <Panel title="Getting Started" className="shrink-0" flush>
+      <Panel title="Getting Started" className="shrink-0" flush animate>
         <div className="text-tiny">
           {EXAMPLES.map((e) => (
             <div
@@ -153,6 +164,6 @@ export default function HelpScreen() {
           ))}
         </div>
       </Panel>
-    </div>
+    </motion.div>
   );
 }

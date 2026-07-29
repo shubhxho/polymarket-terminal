@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { motion } from "motion/react";
 import { CommandPalette } from "@/components/CommandPalette";
 import { useTerminal } from "@/components/TerminalProvider";
 import { cn } from "@/lib/cn";
+import { tapScale } from "@/lib/motion";
 
 /** Bare letters already bound to actions on the focused grid row. */
 const ROW_ACTION_KEYS = new Set(["w"]);
@@ -82,12 +84,13 @@ export function CommandBar() {
           <NavButton label="→" disabled={!canForward} onClick={forward} title="Forward (Alt+→)" />
         </div>
 
-        <button
+        <motion.button
+          whileTap={tapScale}
           onClick={() => {
             setSeed("");
             setOpen(true);
           }}
-          className="flex h-[28px] min-w-0 flex-1 items-center gap-2 rounded-md border border-edge bg-surface px-2.5 text-left transition-colors hover:border-edge-strong"
+          className="flex h-[28px] min-w-0 flex-1 items-center gap-2 rounded-md border border-edge bg-surface px-2.5 text-left transition-colors hover:border-edge-strong focus-visible:border-edge-strong"
         >
           <span className="shrink-0 text-faint">⌘</span>
           <span className="min-w-0 flex-1 truncate text-tiny text-faint">
@@ -96,7 +99,7 @@ export function CommandBar() {
           <kbd className="hidden shrink-0 rounded-sm border border-edge px-1 text-[10px] text-faint sm:inline">
             ⌘K
           </kbd>
-        </button>
+        </motion.button>
       </div>
 
       <CommandPalette open={open} seed={seed} onClose={close} />
@@ -116,7 +119,8 @@ function NavButton({
   title: string;
 }) {
   return (
-    <button
+    <motion.button
+      whileTap={disabled ? undefined : tapScale}
       onClick={onClick}
       disabled={disabled}
       title={title}
@@ -126,6 +130,6 @@ function NavButton({
       )}
     >
       {label}
-    </button>
+    </motion.button>
   );
 }

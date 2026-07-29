@@ -1,8 +1,8 @@
 "use client";
 
+import { motion } from "motion/react";
+import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
-import { OrderBookLadder } from "@/components/OrderBook";
-import { TradeTape } from "@/components/TradeTape";
 import { useTerminal } from "@/components/TerminalProvider";
 import { PriceChart, SERIES_COLORS, type Series } from "@/components/ui/PriceChart";
 import { Empty, ErrorBox, Field, Loading, Panel } from "@/components/ui/Panel";
@@ -20,6 +20,7 @@ import {
   truncate,
   usd,
 } from "@/lib/format";
+import { panelVariants, staggerContainer, tapScale } from "@/lib/motion";
 import type {
   EventSummary,
   Holder,
@@ -29,6 +30,28 @@ import type {
   PricePoint,
   Trade,
 } from "@/lib/types";
+
+/**
+ * Heavy, below-the-fold children are split out of the initial chunk and pulled
+ * in only when this screen actually mounts. The order-book ladder and the
+ * time-&-sales tape are both client-only and each its own module, so deferring
+ * them trims the entry bundle without changing what renders — a brief `Loading`
+ * placeholder stands in until the chunk arrives, matching the states these
+ * panels already show while their feeds resolve.
+ *
+ * `PriceChart` is deliberately left statically imported: `SERIES_COLORS` (a
+ * runtime value from the same module) is used in this file's `series` memo, so
+ * the module is in the bundle regardless and code-splitting the component would
+ * add a loading flicker while removing nothing.
+ */
+const OrderBookLadder = dynamic(
+  () => import("@/components/OrderBook").then((m) => m.OrderBookLadder),
+  { ssr: false, loading: () => <Loading /> }
+);
+const TradeTape = dynamic(() => import("@/components/TradeTape").then((m) => m.TradeTape), {
+  ssr: false,
+  loading: () => <Loading />,
+});
 
 const INTERVALS: { key: HistoryInterval; label: string }[] = [
   { key: "1h", label: "1H" },
@@ -209,9 +232,17 @@ export default function DetailScreen({ slug, kind }: { slug: string; kind: "even
   const watched = selected ? isWatched(selected.tokenId) : false;
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2">
+    <motion.div
+      className="flex h-full min-h-0 flex-col gap-2"
+      variants={staggerContainer}
+      initial="initial"
+      animate="animate"
+    >
       {/* ── Instrument header ─────────────────────────────────────────── */}
-      <div className="shrink-0 border-b border-edge bg-surface px-2 py-1.5">
+      <motion.div
+        variants={panelVariants}
+        className="shrink-0 border-b border-edge bg-surface px-2 py-1.5"
+      >
         <div className="flex items-start gap-2">
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-sm2 font-bold text-accent" title={title}>
@@ -234,7 +265,8 @@ export default function DetailScreen({ slug, kind }: { slug: string; kind: "even
           </div>
 
           <div className="flex shrink-0 items-center gap-1">
-            <button
+            <motion.button
+              whileTap={tapScale}
               onClick={() => {
                 if (!selected) return;
                 toggleWatch({
@@ -252,7 +284,7 @@ export default function DetailScreen({ slug, kind }: { slug: string; kind: "even
               }`}
             >
               {watched ? "★ WATCHING" : "☆ WATCH"}
-            </button>
+            </motion.button>
             <a
               href={`https://polymarket.com/event/${event?.slug ?? slug}`}
               target="_blank"
@@ -283,25 +315,29 @@ export default function DetailScreen({ slug, kind }: { slug: string; kind: "even
             tone={feed.status === "live" ? "text-up" : "text-accent-weak"}
           />
         </div>
-      </div>
+      </motion.div>
 
       {/* ── Workspace ─────────────────────────────────────────────────── */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-y-auto xl:grid-cols-[minmax(0,1fr)_300px] xl:overflow-visible">
-        <div className="flex min-h-0 min-w-0 flex-col gap-2">
+      <motion.div
+        variants={staggerContainer}
+        className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-y-auto xl:grid-cols-[minmax(0,1fr)_300px] xl:overflow-visible"
+      >
+        <motion.div variants={panelVariants} className="flex min-h-0 min-w-0 flex-col gap-2">
           <Panel
             title="PRICE HISTORY"
             right={
               <span className="flex items-center gap-1">
                 {INTERVALS.map((iv) => (
-                  <button
+                  <motion.button
                     key={iv.key}
+                    whileTap={tapScale}
                     onClick={() => setInterval(iv.key)}
                     className={`px-1 ${
                       interval === iv.key ? "font-medium text-accent" : "text-faint hover:text-ink"
                     }`}
                   >
                     {iv.label}
-                  </button>
+                  </motion.button>
                 ))}
               </span>
             }
@@ -362,9 +398,12 @@ export default function DetailScreen({ slug, kind }: { slug: string; kind: "even
               <TradeTape trades={tradesQ.data ?? []} />
             )}
           </Panel>
-        </div>
+        </motion.div>
 
-        <div className="flex min-h-0 min-w-0 flex-col gap-2 overflow-y-auto">
+        <motion.div
+          variants={panelVariants}
+          className="flex min-h-0 min-w-0 flex-col gap-2 overflow-y-auto"
+        >
           <Panel title="OUTCOMES" className="max-h-[190px] shrink-0" flush>
             <OutcomeList
               outcomes={outcomes}
@@ -420,8 +459,8 @@ export default function DetailScreen({ slug, kind }: { slug: string; kind: "even
           <Panel title="TOP HOLDERS" className="max-h-[190px] shrink-0" flush>
             <HolderList groups={holdersQ.data} loading={holdersQ.loading} />
           </Panel>
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
 
       {(primary?.description || event?.title) && (
         <details className="shrink-0 border-t border-edge bg-surface px-2 py-1">
@@ -433,7 +472,7 @@ export default function DetailScreen({ slug, kind }: { slug: string; kind: "even
           </p>
         </details>
       )}
-    </div>
+    </motion.div>
   );
 }
 
@@ -635,13 +674,14 @@ function AlertForm({
   return (
     <div className="flex items-center gap-1">
       <span className="text-[10px] tracking-wide text-muted uppercase">Alert</span>
-      <button
+      <motion.button
+        whileTap={tapScale}
         onClick={() => setOp((o) => (o === "gte" ? "lte" : "gte"))}
         className="border border-edge px-1 text-tiny text-accent hover:border-accent-weak"
         title="Toggle direction"
       >
         {op === "gte" ? "≥" : "≤"}
-      </button>
+      </motion.button>
       <input
         value={target}
         onChange={(e) => setTarget(e.target.value)}
@@ -653,13 +693,14 @@ function AlertForm({
         placeholder="cents"
         className="w-[52px] border border-edge px-1 text-tiny text-ink placeholder:text-faint"
       />
-      <button
+      <motion.button
+        whileTap={tapScale}
         onClick={submit}
         disabled={disabled}
         className="border border-accent-weak px-1.5 text-[10px] font-bold tracking-wide text-accent hover:bg-accent hover:text-canvas disabled:opacity-40"
       >
         ARM
-      </button>
+      </motion.button>
     </div>
   );
 }

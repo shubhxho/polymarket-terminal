@@ -1,11 +1,13 @@
 "use client";
 
+import { motion } from "motion/react";
 import { useMemo, useState, type ReactNode } from "react";
 import { TradeTape } from "@/components/TradeTape";
 import { useTerminal } from "@/components/TerminalProvider";
 import { Empty, ErrorBox, Field, Loading, Panel } from "@/components/ui/Panel";
 import { usePoll } from "@/hooks/usePoll";
 import { clock, compact, truncate, usd } from "@/lib/format";
+import { panelVariants, staggerContainer, tapScale } from "@/lib/motion";
 import type { Trade } from "@/lib/types";
 
 /** Size floors map straight onto the `min` notional query param. */
@@ -102,9 +104,17 @@ export default function TapeScreen() {
   const stamp = updatedAt ? clock(new Date(updatedAt)) : "--:--:--";
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2">
+    <motion.div
+      className="flex h-full min-h-0 flex-col gap-2"
+      variants={staggerContainer}
+      initial="initial"
+      animate="animate"
+    >
       {/* ── Toolbar ─────────────────────────────────────────────────────── */}
-      <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border border-edge bg-surface px-1.5 py-1">
+      <motion.div
+        variants={panelVariants}
+        className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border border-edge bg-surface px-1.5 py-1"
+      >
         <span className="text-[10px] tracking-wide text-info uppercase">Size</span>
         <div className="flex items-center gap-1">
           {SIZE_FILTERS.map((f) => (
@@ -126,14 +136,15 @@ export default function TapeScreen() {
         <span className="ml-auto text-[10px] text-muted">
           {min === 0 ? "no size floor" : `notional ≥ ${usd(min)}`}
         </span>
-      </div>
+      </motion.div>
 
       {/* ── Tape + rail ─────────────────────────────────────────────────── */}
-      <div className="flex min-h-0 flex-1 gap-2">
+      <motion.div variants={staggerContainer} className="flex min-h-0 flex-1 gap-2">
         <Panel
           title="Consolidated Tape"
           flush
           className="min-w-0 flex-1"
+          animate
           right={`${filtered.length} prints · updated ${stamp}`}
         >
           {loading ? (
@@ -147,7 +158,10 @@ export default function TapeScreen() {
           )}
         </Panel>
 
-        <aside className="hidden w-[260px] shrink-0 flex-col gap-2 lg:flex">
+        <motion.aside
+          variants={panelVariants}
+          className="hidden w-[260px] shrink-0 flex-col gap-2 lg:flex"
+        >
           <Panel title="Flow" className="shrink-0" right={`${flow.count}`}>
             <Field label="Total notional" value={usd(flow.total)} tone="text-accent" />
             <Field label="Buy notional" value={usd(flow.buy)} tone="text-up" />
@@ -205,9 +219,9 @@ export default function TapeScreen() {
               </div>
             )}
           </Panel>
-        </aside>
-      </div>
-    </div>
+        </motion.aside>
+      </motion.div>
+    </motion.div>
   );
 }
 
@@ -222,8 +236,9 @@ function Chip({
   children: ReactNode;
 }) {
   return (
-    <button
+    <motion.button
       type="button"
+      whileTap={tapScale}
       onClick={onClick}
       className={`border px-1.5 py-[1px] text-[10px] tracking-wide uppercase ${
         active
@@ -232,6 +247,6 @@ function Chip({
       }`}
     >
       {children}
-    </button>
+    </motion.button>
   );
 }

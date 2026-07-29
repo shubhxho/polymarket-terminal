@@ -1,5 +1,6 @@
 "use client";
 
+import { motion } from "motion/react";
 import { useCallback, useMemo } from "react";
 import { MarketGrid } from "@/components/MarketGrid";
 import { useTerminal } from "@/components/TerminalProvider";
@@ -7,6 +8,7 @@ import { Empty, ErrorBox, Loading, Panel } from "@/components/ui/Panel";
 import { Sparkline } from "@/components/ui/Sparkline";
 import { dirClass, signed, truncate } from "@/lib/format";
 import { usePoll } from "@/hooks/usePoll";
+import { staggerContainer, tapScale } from "@/lib/motion";
 import type { Market, PricePoint } from "@/lib/types";
 
 type Series = { tokenId: string; points: PricePoint[] };
@@ -81,35 +83,47 @@ export default function WatchlistScreen() {
 
   if (watchlist.length === 0) {
     return (
-      <div className="flex h-full min-h-0 flex-col gap-2">
-        <Panel title="Watchlist" flush className="min-h-0 flex-1">
+      <motion.div
+        className="flex h-full min-h-0 flex-col gap-2"
+        variants={staggerContainer}
+        initial="initial"
+        animate="animate"
+      >
+        <Panel title="Watchlist" flush className="min-h-0 flex-1" animate>
           <Empty text="watchlist empty — press W on any market row to pin it" />
         </Panel>
-      </div>
+      </motion.div>
     );
   }
 
   const trend = watchlist.slice(0, TREND_LIMIT);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2">
+    <motion.div
+      className="flex h-full min-h-0 flex-col gap-2"
+      variants={staggerContainer}
+      initial="initial"
+      animate="animate"
+    >
       <Panel
         title="Watchlist"
         flush
         className="min-h-0 flex-1"
+        animate
         right={
           <span className="flex items-center gap-2">
             <span>
               {watchlist.length} {watchlist.length === 1 ? "item" : "items"}
             </span>
             {refreshing ? <span className="opacity-60">···</span> : null}
-            <button
+            <motion.button
+              whileTap={tapScale}
               onClick={clearAll}
               title="Unpin every market"
               className="rounded-sm border border-edge px-1.5 text-[10px] font-medium uppercase hover:border-accent-weak hover:text-accent"
             >
               Clear All
-            </button>
+            </motion.button>
           </span>
         }
       >
@@ -144,6 +158,7 @@ export default function WatchlistScreen() {
         title="Trend · 1D"
         flush
         className="max-h-[38%] min-h-0 shrink-0"
+        animate
         right={`${trend.length}/${watchlist.length}`}
       >
         {history.loading ? (
@@ -179,6 +194,6 @@ export default function WatchlistScreen() {
           </div>
         )}
       </Panel>
-    </div>
+    </motion.div>
   );
 }

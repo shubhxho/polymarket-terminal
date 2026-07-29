@@ -1,11 +1,13 @@
 "use client";
 
+import { motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SignalsPayload } from "@/app/api/signals/route";
 import { useTerminal } from "@/components/TerminalProvider";
 import { Chip, Empty, ErrorBox, Field, Loading, Panel } from "@/components/ui/Panel";
 import { usePoll } from "@/hooks/usePoll";
 import { cents, compact, dirClass, signed, timeToExpiry, truncate, usd } from "@/lib/format";
+import { panelVariants, staggerContainer } from "@/lib/motion";
 import {
   SIGNAL_META,
   type ArbOpportunity,
@@ -138,7 +140,12 @@ export default function SignalsScreen() {
   const liveKinds = KINDS.filter((k) => (stats?.byKind[k] ?? 0) > 0);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2">
+    <motion.div
+      className="flex h-full min-h-0 flex-col gap-2"
+      variants={staggerContainer}
+      initial="initial"
+      animate="animate"
+    >
       {/* ── Scan header ────────────────────────────────────────────────── */}
       <Panel
         title="Scan"
@@ -151,6 +158,7 @@ export default function SignalsScreen() {
         }
         className="shrink-0"
         flush
+        animate
       >
         <div className="flex flex-wrap items-end gap-x-6 gap-y-3 px-2.5 py-2">
           <Stat
@@ -222,6 +230,7 @@ export default function SignalsScreen() {
           right={`${arbs.length} arb · ${drifts.length} drift`}
           className="max-h-[220px] shrink-0"
           flush
+          animate
         >
           <p className="border-b border-edge px-2.5 py-1.5 text-[11px] leading-[15px] text-faint">
             {DISLOCATION_NOTE}
@@ -258,7 +267,10 @@ export default function SignalsScreen() {
       ) : null}
 
       {/* ── Ranking + detail rail ──────────────────────────────────────── */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 xl:grid-cols-[minmax(0,1fr)_330px]">
+      <motion.div
+        variants={panelVariants}
+        className="grid min-h-0 flex-1 grid-cols-1 gap-2 xl:grid-cols-[minmax(0,1fr)_330px]"
+      >
         <Panel
           title="Ranked signals"
           right={`${rows.length}${active.length > 0 ? ` / ${data?.markets.length ?? 0}` : ""}`}
@@ -354,8 +366,8 @@ export default function SignalsScreen() {
             ))}
           </Panel>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }
 

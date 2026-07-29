@@ -1,9 +1,11 @@
 "use client";
 
 import { useMemo } from "react";
+import { motion } from "motion/react";
 import type { Summary } from "@/app/api/summary/route";
 import { useTerminal } from "@/components/TerminalProvider";
 import { cents, signed } from "@/lib/format";
+import { transition } from "@/lib/motion";
 
 /**
  * Scrolling headline tape.
@@ -31,7 +33,12 @@ export function TickerTape({ summary }: { summary: Summary | null }) {
   }
 
   return (
-    <div className="flex h-[30px] shrink-0 items-center overflow-hidden border-t border-edge bg-surface">
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={transition}
+      className="flex h-[30px] shrink-0 items-center overflow-hidden border-t border-edge bg-surface"
+    >
       <span className="z-10 h-full shrink-0 bg-accent-soft px-2 text-[10px] leading-[30px] font-medium tracking-wide text-accent-ink">
         MOVERS
       </span>
@@ -59,6 +66,6 @@ export function TickerTape({ summary }: { summary: Summary | null }) {
           ))}
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }

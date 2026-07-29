@@ -1,5 +1,6 @@
 "use client";
 
+import { motion } from "motion/react";
 import { useCallback, useMemo, useState } from "react";
 import { TradeTape } from "@/components/TradeTape";
 import { useTerminal } from "@/components/TerminalProvider";
@@ -9,6 +10,7 @@ import { cn } from "@/lib/cn";
 import { copyToClipboard } from "@/lib/clipboard";
 import { usePoll } from "@/hooks/usePoll";
 import { cents, clock, compact, dirClass, signed, truncate, usd } from "@/lib/format";
+import { panelVariants, staggerContainer, tapScale } from "@/lib/motion";
 import type { Position, Trade } from "@/lib/types";
 
 const POLL_MS = 15_000;
@@ -140,8 +142,16 @@ export default function PortfolioScreen({ user }: { user: string }) {
   const copyAddress = useCallback(() => copyToClipboard(user, toast), [user, toast]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2">
-      <div className="flex shrink-0 items-center gap-2 border border-edge bg-surface px-1.5 py-[3px]">
+    <motion.div
+      className="flex h-full min-h-0 flex-col gap-2"
+      variants={staggerContainer}
+      initial="initial"
+      animate="animate"
+    >
+      <motion.div
+        variants={panelVariants}
+        className="flex shrink-0 items-center gap-2 border border-edge bg-surface px-1.5 py-[3px]"
+      >
         <span className="shrink-0 text-[10px] tracking-wide text-info uppercase">Wallet</span>
         {isOwn && (
           <span
@@ -154,19 +164,23 @@ export default function PortfolioScreen({ user }: { user: string }) {
         <span className="mono min-w-0 truncate text-tiny text-ink" title={user}>
           {user}
         </span>
-        <button
+        <motion.button
+          whileTap={tapScale}
           onClick={copyAddress}
           title="Copy address to clipboard"
           className="shrink-0 border border-edge-strong px-1.5 py-[1px] text-[10px] tracking-wide text-muted uppercase hover:border-accent-weak hover:text-accent"
         >
           Copy
-        </button>
+        </motion.button>
         <span className="ml-auto shrink-0 text-[10px] text-faint">
           {positions.updatedAt ? `UPD ${clock(new Date(positions.updatedAt))}` : "--"}
         </span>
-      </div>
+      </motion.div>
 
-      <div className="grid shrink-0 grid-cols-3 gap-2 md:grid-cols-6">
+      <motion.div
+        variants={panelVariants}
+        className="grid shrink-0 grid-cols-3 gap-2 md:grid-cols-6"
+      >
         <Stat label="Market Value" value={usd(totals.value)} />
         <Stat label="Unrealised P&L" value={usd(totals.cashPnl)} tone={dirClass(totals.cashPnl)} />
         <Stat
@@ -181,9 +195,15 @@ export default function PortfolioScreen({ user }: { user: string }) {
           value={compact(totals.redeemable)}
           tone={totals.redeemable > 0 ? "text-accent" : "text-ink"}
         />
-      </div>
+      </motion.div>
 
-      <Panel title="Open Positions" right={`${sorted.length} pos`} className="min-h-0 flex-1" flush>
+      <Panel
+        title="Open Positions"
+        right={`${sorted.length} pos`}
+        className="min-h-0 flex-1"
+        flush
+        animate
+      >
         {positions.error ? (
           <div className="p-1.5">
             <ErrorBox message={positions.error} />
@@ -196,8 +216,9 @@ export default function PortfolioScreen({ user }: { user: string }) {
           <div className="min-w-[760px] text-tiny">
             <div className="sticky top-0 z-10 flex items-center gap-1 border-b border-edge-strong bg-surface-2 px-1 py-[3px] text-[10px] tracking-wide text-accent-weak uppercase">
               {COLUMNS.map((c) => (
-                <button
+                <motion.button
                   key={c.key}
+                  whileTap={tapScale}
                   onClick={() => toggleSort(c.key)}
                   title={c.title}
                   className={`${c.width} truncate uppercase hover:text-accent ${
@@ -206,7 +227,7 @@ export default function PortfolioScreen({ user }: { user: string }) {
                 >
                   {c.label}
                   {sort.key === c.key ? (sort.dir === "asc" ? " ▲" : " ▼") : ""}
-                </button>
+                </motion.button>
               ))}
               <span className="w-[52px] shrink-0" />
             </div>
@@ -278,6 +299,7 @@ export default function PortfolioScreen({ user }: { user: string }) {
         right={trades.data ? `${trades.data.length} prints` : undefined}
         className="h-[30%] min-h-[96px] shrink-0"
         flush
+        animate
       >
         {trades.error ? (
           <div className="p-1.5">
@@ -289,7 +311,7 @@ export default function PortfolioScreen({ user }: { user: string }) {
           <TradeTape trades={trades.data ?? []} showMarket />
         )}
       </Panel>
-    </div>
+    </motion.div>
   );
 }
 

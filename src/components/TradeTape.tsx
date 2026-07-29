@@ -1,8 +1,10 @@
 "use client";
 
+import { AnimatePresence, motion } from "motion/react";
 import { useTerminal } from "@/components/TerminalProvider";
 import { Empty } from "@/components/ui/Panel";
 import { cents, compact, shortAddr, timeOfDay, truncate } from "@/lib/format";
+import { tapeRowVariants } from "@/lib/motion";
 import type { Trade } from "@/lib/types";
 
 /**
@@ -39,52 +41,58 @@ export function TradeTape({
         <span className="hidden w-[86px] shrink-0 text-right md:inline">Trader</span>
       </div>
 
-      {trades.map((t) => {
-        const notional = t.size * t.price;
-        const buy = t.side === "BUY";
-        return (
-          <div
-            key={t.id}
-            onClick={() => {
-              if (t.slug) go({ fn: "DES", slug: t.slug, kind: "market" }, `DES ${t.slug}`);
-            }}
-            className={`flex items-center gap-1 border-b border-edge/30 px-1 ${
-              dense ? "py-0" : "py-[2px]"
-            } ${t.slug ? "cursor-pointer hover:bg-surface-2" : ""} ${
-              // Prints above $10k get a persistent wash, not just a flash.
-              notional >= 10_000 ? (buy ? "bg-up/8" : "bg-down/8") : ""
-            }`}
-          >
-            <span className="w-[52px] shrink-0 text-muted">{timeOfDay(t.timestamp)}</span>
-            <span className={`w-[34px] shrink-0 font-bold ${buy ? "text-up" : "text-down"}`}>
-              {buy ? "BUY" : "SELL"}
-            </span>
-            {showMarket ? (
-              <span className="min-w-0 flex-1 truncate text-ink/80" title={t.title}>
-                {truncate(t.title, 52)}
-              </span>
-            ) : null}
-            <span
-              className={`${showMarket ? "w-[74px]" : "min-w-0 flex-1"} shrink-0 truncate text-info`}
-              title={t.outcome}
-            >
-              {t.outcome}
-            </span>
-            <span className="w-[48px] shrink-0 text-right text-ink">{cents(t.price)}</span>
-            <span className="w-[60px] shrink-0 text-right text-muted">{compact(t.size)}</span>
-            <span
-              className={`w-[64px] shrink-0 text-right ${
-                notional >= 10_000 ? "font-bold text-accent" : "text-ink/85"
+      <AnimatePresence initial={false}>
+        {trades.map((t) => {
+          const notional = t.size * t.price;
+          const buy = t.side === "BUY";
+          return (
+            <motion.div
+              key={t.id}
+              variants={tapeRowVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              onClick={() => {
+                if (t.slug) go({ fn: "DES", slug: t.slug, kind: "market" }, `DES ${t.slug}`);
+              }}
+              className={`flex items-center gap-1 border-b border-edge/30 px-1 ${
+                dense ? "py-0" : "py-[2px]"
+              } ${t.slug ? "cursor-pointer hover:bg-surface-2" : ""} ${
+                // Prints above $10k get a persistent wash, not just a flash.
+                notional >= 10_000 ? (buy ? "bg-up/8" : "bg-down/8") : ""
               }`}
             >
-              ${compact(notional)}
-            </span>
-            <span className="hidden w-[86px] shrink-0 truncate text-right text-faint md:inline">
-              {t.name ? truncate(t.name, 11) : shortAddr(t.wallet)}
-            </span>
-          </div>
-        );
-      })}
+              <span className="w-[52px] shrink-0 text-muted">{timeOfDay(t.timestamp)}</span>
+              <span className={`w-[34px] shrink-0 font-bold ${buy ? "text-up" : "text-down"}`}>
+                {buy ? "BUY" : "SELL"}
+              </span>
+              {showMarket ? (
+                <span className="min-w-0 flex-1 truncate text-ink/80" title={t.title}>
+                  {truncate(t.title, 52)}
+                </span>
+              ) : null}
+              <span
+                className={`${showMarket ? "w-[74px]" : "min-w-0 flex-1"} shrink-0 truncate text-info`}
+                title={t.outcome}
+              >
+                {t.outcome}
+              </span>
+              <span className="w-[48px] shrink-0 text-right text-ink">{cents(t.price)}</span>
+              <span className="w-[60px] shrink-0 text-right text-muted">{compact(t.size)}</span>
+              <span
+                className={`w-[64px] shrink-0 text-right ${
+                  notional >= 10_000 ? "font-bold text-accent" : "text-ink/85"
+                }`}
+              >
+                ${compact(notional)}
+              </span>
+              <span className="hidden w-[86px] shrink-0 truncate text-right text-faint md:inline">
+                {t.name ? truncate(t.name, 11) : shortAddr(t.wallet)}
+              </span>
+            </motion.div>
+          );
+        })}
+      </AnimatePresence>
     </div>
   );
 }

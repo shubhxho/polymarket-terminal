@@ -1,9 +1,11 @@
 "use client";
 
+import { motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { MarketGrid, type GridColumn } from "@/components/MarketGrid";
 import { ErrorBox, Loading, Panel } from "@/components/ui/Panel";
 import { usePoll } from "@/hooks/usePoll";
+import { panelVariants, staggerContainer, tapScale } from "@/lib/motion";
 import type { Market } from "@/lib/types";
 
 type Timeframe = "1H" | "24H" | "1W";
@@ -87,14 +89,23 @@ export default function MoversScreen() {
   const stale = !!error && !!data;
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2">
-      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border border-edge bg-surface px-1.5 py-[3px] text-[10px] tracking-wide uppercase">
+    <motion.div
+      className="flex h-full min-h-0 flex-col gap-2"
+      variants={staggerContainer}
+      initial="initial"
+      animate="animate"
+    >
+      <motion.div
+        variants={panelVariants}
+        className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border border-edge bg-surface px-1.5 py-[3px] text-[10px] tracking-wide uppercase"
+      >
         <span className="shrink-0 text-info">Movers</span>
 
         <span className="flex shrink-0 items-center gap-2">
           {TIMEFRAMES.map((t) => (
-            <button
+            <motion.button
               key={t}
+              whileTap={tapScale}
               onClick={() => setTf(t)}
               title={`Rank by change over ${t}`}
               className={`border px-1.5 py-[1px] text-[10px] tracking-wide uppercase ${
@@ -104,7 +115,7 @@ export default function MoversScreen() {
               }`}
             >
               {t}
-            </button>
+            </motion.button>
           ))}
         </span>
 
@@ -134,22 +145,39 @@ export default function MoversScreen() {
           {stale ? <span className="text-warn">stale</span> : null}
           {refreshing ? <span className="text-accent-weak">···</span> : null}
         </span>
-      </div>
+      </motion.div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-y-auto xl:grid-cols-2 xl:overflow-visible">
-        <Panel title={`Top Gainers · ${tf}`} right={`${gainers.length}`} flush className="min-h-0">
-          <Body loading={loading} error={error} hasData={!!data}>
-            <MarketGrid markets={gainers} columns={columns} emptyText="no advancers" />
-          </Body>
-        </Panel>
+      <motion.div
+        variants={staggerContainer}
+        className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-y-auto xl:grid-cols-2 xl:overflow-visible"
+      >
+        <motion.div variants={panelVariants} className="flex min-h-0 min-w-0 flex-col">
+          <Panel
+            title={`Top Gainers · ${tf}`}
+            right={`${gainers.length}`}
+            flush
+            className="min-h-0 flex-1"
+          >
+            <Body loading={loading} error={error} hasData={!!data}>
+              <MarketGrid markets={gainers} columns={columns} emptyText="no advancers" />
+            </Body>
+          </Panel>
+        </motion.div>
 
-        <Panel title={`Top Losers · ${tf}`} right={`${losers.length}`} flush className="min-h-0">
-          <Body loading={loading} error={error} hasData={!!data}>
-            <MarketGrid markets={losers} columns={columns} emptyText="no decliners" />
-          </Body>
-        </Panel>
-      </div>
-    </div>
+        <motion.div variants={panelVariants} className="flex min-h-0 min-w-0 flex-col">
+          <Panel
+            title={`Top Losers · ${tf}`}
+            right={`${losers.length}`}
+            flush
+            className="min-h-0 flex-1"
+          >
+            <Body loading={loading} error={error} hasData={!!data}>
+              <MarketGrid markets={losers} columns={columns} emptyText="no decliners" />
+            </Body>
+          </Panel>
+        </motion.div>
+      </motion.div>
+    </motion.div>
   );
 }
 

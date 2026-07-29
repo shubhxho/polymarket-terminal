@@ -1,10 +1,12 @@
 "use client";
 
+import { motion } from "motion/react";
 import { useMemo, useState, type FormEvent } from "react";
 import { useTerminal } from "@/components/TerminalProvider";
 import { Empty, Panel } from "@/components/ui/Panel";
 import { useMarketSocket } from "@/hooks/useMarketSocket";
 import { cents, clock, signed, truncate } from "@/lib/format";
+import { staggerContainer, tapScale } from "@/lib/motion";
 import type { Alert } from "@/lib/types";
 
 /** How close (in probability points) an alert has to be before it reads hot. */
@@ -48,12 +50,18 @@ export default function AlertsScreen() {
   }, [alerts, feed.quotes, feed.version]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2">
+    <motion.div
+      className="flex h-full min-h-0 flex-col gap-2"
+      variants={staggerContainer}
+      initial="initial"
+      animate="animate"
+    >
       <Panel
         title="Price Alerts"
         flush
         className="min-h-0 flex-1"
         right={`${alerts.length} armed · feed ${feed.status}`}
+        animate
       >
         {rows.length === 0 ? (
           <Empty text="no alerts armed" />
@@ -109,14 +117,15 @@ export default function AlertsScreen() {
                   >
                     {triggered ? "TRIGGERED" : "ARMED"}
                   </span>
-                  <button
+                  <motion.button
                     type="button"
+                    whileTap={tapScale}
                     onClick={() => removeAlert(alert.id)}
                     title="Disarm alert"
                     className="w-[16px] shrink-0 text-center text-faint hover:text-down"
                   >
                     ✕
-                  </button>
+                  </motion.button>
                 </div>
               );
             })}
@@ -125,7 +134,7 @@ export default function AlertsScreen() {
       </Panel>
 
       <ArmForm watchlist={watchlist} onArm={addAlert} onError={(m) => toast(m, "error")} />
-    </div>
+    </motion.div>
   );
 }
 
@@ -172,7 +181,7 @@ function ArmForm({
   };
 
   return (
-    <Panel title="Arm New Alert" className="shrink-0">
+    <Panel title="Arm New Alert" className="shrink-0" animate>
       {watchlist.length === 0 ? (
         <Empty text="add markets to your watchlist first (press W on any row)" />
       ) : (
@@ -196,9 +205,10 @@ function ArmForm({
           <span className="text-[10px] tracking-wide text-info uppercase">Op</span>
           <div className="flex items-center gap-1">
             {(["gte", "lte"] as const).map((o) => (
-              <button
+              <motion.button
                 key={o}
                 type="button"
+                whileTap={tapScale}
                 onClick={() => setOp(o)}
                 title={o === "gte" ? "Fire at or above target" : "Fire at or below target"}
                 className={`border px-2 py-[1px] text-tiny ${
@@ -208,7 +218,7 @@ function ArmForm({
                 }`}
               >
                 {o === "gte" ? "≥" : "≤"}
-              </button>
+              </motion.button>
             ))}
           </div>
 
@@ -226,12 +236,13 @@ function ArmForm({
             className="w-[64px] border border-edge bg-surface-2 px-1 py-[1px] text-right text-tiny text-ink focus:border-accent"
           />
 
-          <button
+          <motion.button
             type="submit"
+            whileTap={tapScale}
             className="rounded-sm bg-accent-soft px-2.5 py-[3px] text-[11px] font-medium text-accent-ink hover:brightness-95"
           >
             Arm
-          </button>
+          </motion.button>
         </form>
       )}
 

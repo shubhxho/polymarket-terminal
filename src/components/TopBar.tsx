@@ -1,5 +1,6 @@
 "use client";
 
+import { motion } from "motion/react";
 import type { Summary } from "@/app/api/summary/route";
 import { useClock } from "@/hooks/useClock";
 import { useTerminal } from "@/components/TerminalProvider";
@@ -7,6 +8,7 @@ import { WalletButton } from "@/components/WalletButton";
 import { cn } from "@/lib/cn";
 import { screenTitle } from "@/lib/commands";
 import { clock, compact } from "@/lib/format";
+import { tapScale, transition } from "@/lib/motion";
 import type { PollState } from "@/hooks/usePoll";
 
 /**
@@ -34,7 +36,12 @@ export function TopBar({
   const decPct = s && breadth > 0 ? (s.decliners / breadth) * 100 : 0;
 
   return (
-    <header className="flex h-[46px] shrink-0 items-center gap-3 border-b border-edge bg-canvas px-3">
+    <motion.header
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={transition}
+      className="flex h-[46px] shrink-0 items-center gap-3 border-b border-edge bg-canvas px-3"
+    >
       <div className="flex shrink-0 items-center gap-2">
         <span className="flex h-[22px] w-[22px] items-center justify-center rounded-md bg-ink text-[11px] font-bold text-canvas">
           P
@@ -68,16 +75,17 @@ export function TopBar({
         </span>
         <span className="h-4 w-px shrink-0 bg-edge" />
         <WalletButton />
-        <button
+        <motion.button
+          whileTap={tapScale}
           onClick={onToggleTheme}
           title={`Switch to ${theme === "light" ? "dark" : "light"} theme`}
           aria-label="Toggle theme"
           className="flex h-[24px] w-[24px] items-center justify-center rounded-md border border-edge text-muted hover:border-edge-strong hover:text-ink"
         >
           {theme === "light" ? "☾" : "☀"}
-        </button>
+        </motion.button>
       </div>
-    </header>
+    </motion.header>
   );
 }
 

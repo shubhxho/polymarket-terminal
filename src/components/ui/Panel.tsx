@@ -1,6 +1,8 @@
 "use client";
 
+import { motion } from "motion/react";
 import type { ReactNode } from "react";
+import { panelVariants, tapScale } from "@/lib/motion";
 
 /**
  * Standard panel chrome: a hairline card with a quiet header row.
@@ -17,6 +19,7 @@ export function Panel({
   className = "",
   bodyClassName = "",
   flush = false,
+  animate = false,
 }: {
   title: ReactNode;
   right?: ReactNode;
@@ -25,11 +28,23 @@ export function Panel({
   bodyClassName?: string;
   /** Drop body padding — for tables that draw their own gutters. */
   flush?: boolean;
+  /**
+   * Opt into the shared panel mount animation (a fade-and-lift via
+   * `panelVariants`). Off by default, so every existing caller renders the
+   * identical plain `<section>` — no public prop changes behaviour.
+   *
+   * When on, the panel becomes a `motion.section` that carries the variants but
+   * *inherits its animation state* from the nearest ancestor motion container
+   * (typically a `staggerContainer` at the screen root), rather than driving
+   * its own initial/animate. That keeps the same element — className, flex
+   * sizing and all — so no wrapper node disturbs the layout, and it lets a row
+   * of panels stagger in together. Outside a motion container it is an inert
+   * no-op.
+   */
+  animate?: boolean;
 }) {
-  return (
-    <section
-      className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border border-edge bg-surface ${className}`}
-    >
+  const content = (
+    <>
       <header className="flex h-[26px] shrink-0 items-center justify-between gap-2 border-b border-edge px-2.5">
         <span className="eyebrow truncate">{title}</span>
         {right ? <span className="shrink-0 text-[11px] text-faint">{right}</span> : null}
@@ -39,8 +54,21 @@ export function Panel({
       >
         {children}
       </div>
-    </section>
+    </>
   );
+
+  const base =
+    "flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border border-edge bg-surface";
+
+  if (animate) {
+    return (
+      <motion.section variants={panelVariants} className={`${base} ${className}`}>
+        {content}
+      </motion.section>
+    );
+  }
+
+  return <section className={`${base} ${className}`}>{content}</section>;
 }
 
 /**
@@ -125,8 +153,9 @@ export function Segmented<T extends string>({
       {options.map((o) => {
         const active = o.value === value;
         return (
-          <button
+          <motion.button
             key={o.value}
+            whileTap={tapScale}
             onClick={() => onChange(o.value)}
             title={o.title}
             className={`rounded-sm font-medium transition-colors ${pad} ${
@@ -136,7 +165,7 @@ export function Segmented<T extends string>({
             }`}
           >
             {o.label}
-          </button>
+          </motion.button>
         );
       })}
     </div>
@@ -165,16 +194,20 @@ export function Chip({
     info: "border-info-weak text-info",
     warn: "border-warn/40 text-warn",
   };
-  const Tag = onClick ? "button" : "span";
+  const cls = `inline-flex shrink-0 items-center gap-1 rounded-sm border px-1.5 py-[1px] text-[11px] font-medium whitespace-nowrap ${
+    active ? "border-accent bg-accent/8 text-accent" : tones[tone]
+  } ${onClick ? "hover:border-accent-weak hover:text-accent" : ""}`;
+
+  if (onClick) {
+    return (
+      <motion.button whileTap={tapScale} onClick={onClick} title={title} className={cls}>
+        {children}
+      </motion.button>
+    );
+  }
   return (
-    <Tag
-      onClick={onClick}
-      title={title}
-      className={`inline-flex shrink-0 items-center gap-1 rounded-sm border px-1.5 py-[1px] text-[11px] font-medium whitespace-nowrap ${
-        active ? "border-accent bg-accent/8 text-accent" : tones[tone]
-      } ${onClick ? "hover:border-accent-weak hover:text-accent" : ""}`}
-    >
+    <span title={title} className={cls}>
       {children}
-    </Tag>
+    </span>
   );
 }

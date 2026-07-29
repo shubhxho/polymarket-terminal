@@ -1,5 +1,6 @@
 "use client";
 
+import { motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { MarketGrid } from "@/components/MarketGrid";
 import { MarketHeatmap } from "@/components/MarketHeatmap";
@@ -7,6 +8,7 @@ import { useTerminal } from "@/components/TerminalProvider";
 import { Empty, ErrorBox, Loading, Panel, Segmented } from "@/components/ui/Panel";
 import { usePoll } from "@/hooks/usePoll";
 import { clock, compact, truncate } from "@/lib/format";
+import { panelVariants, staggerContainer, tapScale } from "@/lib/motion";
 import type { EventSummary, Market, Trade } from "@/lib/types";
 
 const SORTS = [
@@ -38,13 +40,19 @@ export default function MonitorScreen() {
   );
 
   return (
-    <div className="flex h-full min-h-0 gap-2">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
+    <motion.div
+      className="flex h-full min-h-0 gap-2"
+      variants={staggerContainer}
+      initial="initial"
+      animate="animate"
+    >
+      <motion.div variants={panelVariants} className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
         <div className="flex shrink-0 flex-wrap items-center gap-x-1 gap-y-1 border border-edge bg-surface px-1.5 py-[3px]">
           <span className="mr-1 text-[10px] tracking-wide text-info uppercase">Rank by</span>
           {SORTS.map((s) => (
-            <button
+            <motion.button
               key={s.key}
+              whileTap={tapScale}
               onClick={() => setSort(s.key)}
               className={`border px-1.5 py-[1px] text-[10px] tracking-wide ${
                 sort === s.key
@@ -53,7 +61,7 @@ export default function MonitorScreen() {
               }`}
             >
               {s.label}
-            </button>
+            </motion.button>
           ))}
           <span className="ml-auto text-[10px] text-faint">
             {rows.length} markets · as of {asOf} UTC
@@ -97,9 +105,12 @@ export default function MonitorScreen() {
             <MarketGrid markets={rows} />
           )}
         </Panel>
-      </div>
+      </motion.div>
 
-      <aside className="hidden w-[286px] shrink-0 flex-col gap-2 xl:flex">
+      <motion.aside
+        variants={panelVariants}
+        className="hidden w-[286px] shrink-0 flex-col gap-2 xl:flex"
+      >
         <Panel title="EVENT LEADERS" className="min-h-0 flex-1" flush>
           {events.loading ? (
             <Loading />
@@ -168,7 +179,7 @@ export default function MonitorScreen() {
             </div>
           )}
         </Panel>
-      </aside>
-    </div>
+      </motion.aside>
+    </motion.div>
   );
 }
