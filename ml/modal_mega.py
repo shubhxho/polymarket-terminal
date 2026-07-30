@@ -722,7 +722,7 @@ def _bucket_market_trades(rows, bar_seconds=BAR_SECONDS):
 # ── Modal H100 job — the culmination ───────────────────────────────────────────
 @_remote(image=image, gpu="H100", cpu=16.0, memory=131072, timeout=14400)
 def run(max_rows: int = 20_000_000, top_tokens: int = 6000, epochs: int = 60,
-        push: bool = False, hf_token: str = "") -> dict:
+        bar_seconds: int = BAR_SECONDS, push: bool = False, hf_token: str = "") -> dict:
     """Stream trades + markets → per-market world → unified six-family features →
     LightGBM + multi-task torch MLP ensemble, PAV-calibrated, out-of-time eval."""
     import base64
@@ -813,7 +813,7 @@ def run(max_rows: int = 20_000_000, top_tokens: int = 6000, epochs: int = 60,
     world, by_id = [], {}
     for mk, rows in ranked:
         rows.sort(key=lambda r: r[0])
-        bars, tape, close, sflow = _bucket_market_trades(rows)
+        bars, tape, close, sflow = _bucket_market_trades(rows, bar_seconds)
         if len(bars) < MIN_CANDLES:
             continue
         meta = meta_by_id.get(mk, {"market_id": mk, "event_id": mk, "neg_risk": False,
@@ -859,7 +859,7 @@ def run(max_rows: int = 20_000_000, top_tokens: int = 6000, epochs: int = 60,
         "families": [f for f, _ in FAMILIES], "unified_features": N_FEATURES,
         "feature_names": UNIFIED_FEATURE_NAMES,
         "trades_streamed": int(seen), "markets": len(world), "windows": int(len(ydir)),
-        "window": WINDOW, "horizon": HORIZON, "bar_seconds": BAR_SECONDS,
+        "window": WINDOW, "horizon": HORIZON, "bar_seconds": bar_seconds,
         "train_windows": int(len(tr_i)), "val_windows": int(len(va_i)),
         "up_rate": round(float(ydir.mean()), 4),
         "majority_baseline_acc": round(float(max(ydir[tr_i].mean(), 1 - ydir[tr_i].mean())), 4),
@@ -1000,7 +1000,7 @@ def run(max_rows: int = 20_000_000, top_tokens: int = 6000, epochs: int = 60,
     norm = {"fmean": fmean.tolist(), "fstd": fstd.tolist(), "features": UNIFIED_FEATURE_NAMES,
             "families": {fam: FAMILY_SPANS[fam] for fam, _ in FAMILIES},
             "arch": {"type": "multitask_mlp", "hidden": 256, "heads": ["direction", "resolution"]},
-            "window": WINDOW, "horizon": HORIZON, "bar_seconds": BAR_SECONDS,
+            "window": WINDOW, "horizon": HORIZON, "bar_seconds": bar_seconds,
             "calibration": {"type": "isotonic_pav", "xs": cal[0], "ys": cal[1]}}
     bst.save_model("/tmp/mega_gbdt.txt")
     artifacts = {"mega_normalizer.json": json.dumps(norm).encode(),
@@ -1093,12 +1093,13 @@ Trained self-contained on a Modal H100 via `ml/modal_mega.py`.
 
 
 @_entrypoint()
-def main(max_rows: int = 20_000_000, top_tokens: int = 6000, epochs: int = 60, push: bool = False):
+def main(max_rows: int = 20_000_000, top_tokens: int = 6000, epochs: int = 60,
+         bar_seconds: int = BAR_SECONDS, push: bool = False):
     import base64
 
     token = os.environ.get("HF_TOKEN", "")
     report = run.remote(max_rows=max_rows, top_tokens=top_tokens, epochs=epochs,
-                        push=push, hf_token=token)
+                        bar_seconds=bar_seconds, push=push, hf_token=token)
     data_dir = os.path.join(os.path.dirname(__file__), "data")
     os.makedirs(data_dir, exist_ok=True)
     for name, b64 in report.pop("_artifacts_b64", {}).items():
@@ -1109,6 +1110,52 @@ def main(max_rows: int = 20_000_000, top_tokens: int = 6000, epochs: int = 60, p
         json.dump(report, f, indent=2)
     print(json.dumps(report, indent=2))
     print(f"\nwrote {data_dir}/mega_metrics.json")
+
+
+@_entrypoint()
+def parallel(max_rows: int = 30_000_000, top_tokens: int = 3000, epochs: int = 40, push: bool = False):
+    """Train the mega model across resolutions on PARALLEL H100s.
+
+    Fans `run` out over three bar sizes (5-min / 15-min / 1-hour) with
+    `run.spawn`, so Modal executes each on its own H100 concurrently — one
+    wall-clock, three models. Order-flow signal lives at the fine scale and
+    regime/trend signal at the coarse one; training all three in parallel gives a
+    multi-scale view instead of one hard-coded horizon. The best resolution by
+    calibrated ensemble AUC is saved + pushed; every resolution's metrics are
+    kept for comparison.
+    """
+    import base64
+
+    token = os.environ.get("HF_TOKEN", "")
+    resolutions = [300, 900, 3600]
+    print(f"spawning {len(resolutions)} H100 workers: bar_seconds={resolutions}", flush=True)
+    calls = {bs: run.spawn(max_rows=max_rows, top_tokens=top_tokens, epochs=epochs,
+                           bar_seconds=bs, push=False, hf_token=token) for bs in resolutions}
+
+    reports, best_key, best_auc, best_art = {}, None, -1.0, {}
+    for bs, c in calls.items():
+        rep = c.get()                       # blocks until this H100 finishes
+        art = rep.pop("_artifacts_b64", {})
+        auc = rep.get("ensemble", {}).get("val_auc", 0.0)
+        sp = rep.get("ensemble", {}).get("backtest", {}).get("up_rate_spread")
+        print(f"  bar_seconds={bs}: ensemble AUC {auc}  spread {sp}", flush=True)
+        reports[str(bs)] = rep
+        if auc > best_auc:
+            best_auc, best_key, best_art = auc, str(bs), art
+
+    data_dir = os.path.join(os.path.dirname(__file__), "data")
+    os.makedirs(data_dir, exist_ok=True)
+    for name, b64 in best_art.items():       # save the winning resolution's artifacts
+        with open(os.path.join(data_dir, "mega_" + name.replace("/", "_")), "wb") as f:
+            f.write(base64.b64decode(b64))
+        print(f"saved data/mega_{name.replace('/', '_')}")
+    combined = {"runtime": "modal parallel H100s / multi-resolution mega",
+                "best_resolution": best_key, "best_ensemble_auc": best_auc,
+                "by_resolution": reports}
+    with open(os.path.join(data_dir, "mega_parallel_metrics.json"), "w") as f:
+        json.dump(combined, f, indent=2)
+    print(f"\nbest resolution: bar_seconds={best_key} (ensemble AUC {best_auc})")
+    print(f"wrote {data_dir}/mega_parallel_metrics.json")
 
 
 if __name__ == "__main__":
