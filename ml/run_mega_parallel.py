@@ -52,7 +52,7 @@ def _collect(calls: dict) -> None:
     with open(os.path.join(DATA, "mega_parallel_metrics.json"), "w") as f:
         json.dump({"runtime": "modal parallel H100s / multi-resolution mega (deployed)",
                    "best_resolution": best, "best_ensemble_auc": best_auc,
-                   "by_resolution": reports}, f, indent=2)
+                   "by_resolution": reports}, f, indent=2, default=lambda o: o.tolist())
     print(f"\nbest resolution: bar_seconds={best} (ensemble AUC {best_auc})", flush=True)
     print(f"wrote {DATA}/mega_parallel_metrics.json", flush=True)
 

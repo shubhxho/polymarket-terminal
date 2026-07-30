@@ -1003,14 +1003,17 @@ def run(max_rows: int = 20_000_000, top_tokens: int = 6000, epochs: int = 60,
             "window": WINDOW, "horizon": HORIZON, "bar_seconds": bar_seconds,
             "calibration": {"type": "isotonic_pav", "xs": cal[0], "ys": cal[1]}}
     bst.save_model("/tmp/mega_gbdt.txt")
-    artifacts = {"mega_normalizer.json": json.dumps(norm).encode(),
+    # numpy scalars/arrays are not JSON-serializable; .tolist() maps np scalars
+    # to python scalars and np arrays to lists, so every metrics dump is safe.
+    _jsafe = lambda o: o.tolist()  # noqa: E731
+    artifacts = {"mega_normalizer.json": json.dumps(norm, default=_jsafe).encode(),
                  "mega_gbdt.txt": open("/tmp/mega_gbdt.txt", "rb").read()}
     if best_state is not None:
         from safetensors.torch import save_file
         save_file({k: v.contiguous() for k, v in best_state.items()}, "/tmp/mega_mlp.safetensors")
         artifacts["mega_mlp.safetensors"] = open("/tmp/mega_mlp.safetensors", "rb").read()
     artifacts["mega_metrics.json"] = json.dumps(
-        {k: v for k, v in result.items() if not k.startswith("_")}, indent=2).encode()
+        {k: v for k, v in result.items() if not k.startswith("_")}, indent=2, default=_jsafe).encode()
     artifacts["README.md"] = _model_card(result).encode()
     result["_artifacts_b64"] = {k: base64.b64encode(v).decode() for k, v in artifacts.items()}
 
