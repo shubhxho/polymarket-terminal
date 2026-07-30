@@ -32,7 +32,7 @@ ARTIFACTS = [
     ("data/ohlcv_metrics.json", "metrics/ohlcv_metrics.json"),
     # flagship big-data model (1.2B trades, true order-flow) — from modal_bigdata.py
     ("data/bigdata_model.safetensors", "bigdata/bigdata_model.safetensors"),
-    ("data/bigdata_gbdt.txt", "bigdata/bigdata_gbdt.txt"),
+    ("data/bigdata_gbdt.json", "bigdata/bigdata_gbdt.json"),
     ("data/bigdata_normalizer.json", "bigdata/bigdata_normalizer.json"),
     ("data/bigdata_metrics.json", "metrics/bigdata_metrics.json"),
     # H100 experiment reports

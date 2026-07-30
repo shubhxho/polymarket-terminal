@@ -54,3 +54,7 @@ __pycache__/
 ml/data/ohlcv.json
 ml/data/series_100kb.json
 ml/data/bigdata_gbdt.txt
+
+# Claude Code agent worktrees / orchestration scratch — never commit
+.claude/worktrees/
+.conductor/
