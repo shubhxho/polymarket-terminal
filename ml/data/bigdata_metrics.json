@@ -1,10 +1,10 @@
 {
-  "runtime": "modal H100 / bigdata",
+  "runtime": "modal H100 / bigdata (all-GPU: XGBoost-CUDA + bi-GRU fusion)",
   "dataset": "TimeSeventeen/Polymarket-v1",
   "source": "orderfilled tape (1.2B trades) \u2192 hourly OHLCV + true order-flow",
   "files_processed": 42,
   "tokens": 8000,
-  "bars": 7391436,
+  "bars": 7391433,
   "windows": 7168511,
   "features": [
     "last",
@@ -30,104 +30,115 @@
     "log_trades",
     "win_len"
   ],
+  "seq_channels": [
+    "ret",
+    "range",
+    "body",
+    "log_vol",
+    "flow",
+    "log_trades"
+  ],
+  "window": 16,
   "horizon": 4,
   "train_windows": 5759303,
   "val_windows": 1409208,
   "majority_baseline_acc": 0.5847,
   "gbdt": {
-    "val_auc": 0.5866,
+    "impl": "xgboost-cuda",
+    "best_iteration": 961,
+    "val_auc": 0.5867,
     "brier": 0.2423,
     "backtest": {
-      "top_up_rate": 0.541,
-      "bottom_up_rate": 0.476,
-      "up_rate_spread": 0.065,
+      "top_up_rate": 0.542,
+      "bottom_up_rate": 0.475,
+      "up_rate_spread": 0.067,
       "slice": 189009
     }
   },
   "feature_importance_gbdt": [
     [
       "vol",
-      794611.5
+      72.2
     ],
     [
       "extremeness",
-      498549.0
+      59.0
     ],
     [
       "last",
-      473443.2
+      51.8
     ],
     [
       "momentum",
-      211535.4
-    ],
-    [
-      "band_z",
-      141770.6
-    ],
-    [
-      "atr",
-      115610.8
-    ],
-    [
-      "parkinson_vol",
-      113288.2
-    ],
-    [
-      "log_avg_trade",
-      111015.9
+      29.3
     ],
     [
       "williams_r",
-      109828.3
-    ],
-    [
-      "stoch_k",
-      100683.8
-    ],
-    [
-      "mean_ret",
-      95395.9
-    ],
-    [
-      "log_trades",
-      85832.5
-    ],
-    [
-      "cci",
-      83399.9
-    ],
-    [
-      "log_volume",
-      77826.0
-    ],
-    [
-      "ofi_trend",
-      75825.1
+      28.9
     ],
     [
       "drift",
-      70945.2
+      26.0
     ],
     [
-      "ofi_window",
-      63308.3
+      "mean_ret",
+      21.0
+    ],
+    [
+      "stoch_k",
+      18.6
+    ],
+    [
+      "band_z",
+      17.4
+    ],
+    [
+      "atr",
+      16.1
+    ],
+    [
+      "parkinson_vol",
+      14.9
+    ],
+    [
+      "log_avg_trade",
+      13.7
+    ],
+    [
+      "cci",
+      12.9
     ],
     [
       "ofi_last",
-      61902.5
+      12.0
+    ],
+    [
+      "log_volume",
+      11.7
     ],
     [
       "rsi",
-      55473.3
+      11.4
     ],
     [
-      "trade_intensity",
-      46837.3
+      "ofi_trend",
+      11.3
+    ],
+    [
+      "log_trades",
+      11.3
+    ],
+    [
+      "ofi_window",
+      10.2
     ],
     [
       "vol_z",
-      43882.0
+      9.4
+    ],
+    [
+      "trade_intensity",
+      9.4
     ],
     [
       "win_len",
@@ -135,49 +146,52 @@
     ]
   ],
   "neural": {
-    "val_auc": 0.581,
-    "brier": 0.237,
+    "impl": "bi-GRU+feat-MLP fusion (fp32, cosine LR)",
+    "val_auc": 0.5814,
+    "brier": 0.2425,
     "backtest": {
-      "top_up_rate": 0.538,
-      "bottom_up_rate": 0.48,
-      "up_rate_spread": 0.058,
+      "top_up_rate": 0.545,
+      "bottom_up_rate": 0.477,
+      "up_rate_spread": 0.068,
       "slice": 189009
     }
   },
   "ensemble": {
-    "val_auc": 0.5856,
-    "brier": 0.2378,
+    "gbdt_weight": 0.75,
+    "val_auc": 0.5872,
+    "brier": 0.2421,
     "backtest": {
-      "top_up_rate": 0.54,
-      "bottom_up_rate": 0.476,
-      "up_rate_spread": 0.064,
+      "top_up_rate": 0.544,
+      "bottom_up_rate": 0.475,
+      "up_rate_spread": 0.069,
       "slice": 189009
     }
   },
-  "overall_best": "gbdt",
+  "overall_best": "ensemble",
   "walk_forward": {
     "folds": [
       {
         "fold": 1,
-        "val_auc": 0.5715,
-        "up_rate_spread": 0.055
+        "val_auc": 0.5714,
+        "up_rate_spread": 0.057
       },
       {
         "fold": 2,
-        "val_auc": 0.575,
-        "up_rate_spread": 0.062
+        "val_auc": 0.5754,
+        "up_rate_spread": 0.064
       },
       {
         "fold": 3,
-        "val_auc": 0.5765,
-        "up_rate_spread": 0.061
+        "val_auc": 0.5769,
+        "up_rate_spread": 0.063
       },
       {
         "fold": 4,
-        "val_auc": 0.5858,
-        "up_rate_spread": 0.062
+        "val_auc": 0.5864,
+        "up_rate_spread": 0.066
       }
     ],
-    "mean_auc": 0.5772
-  }
+    "mean_auc": 0.5775
+  },
+  "hf_repo": "https://huggingface.co/shubhxho/polymarket-signal-model"
 }
