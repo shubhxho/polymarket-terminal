@@ -259,7 +259,10 @@ def _load() -> tuple:
     else:
         norm = _synthetic_norm(n_in)
         if isinstance(disk_norm, dict):          # preserve usable metadata
-            if isinstance(disk_norm.get("calibration"), dict):
+            # Keep any calibration spec — parametric dict *or* isotonic table
+            # (list of [pred, actual]) — so the identity-stats fallback still
+            # calibrates through the shipped map.
+            if disk_norm.get("calibration") is not None:
                 norm["calibration"] = disk_norm["calibration"]
             if isinstance(disk_norm.get("features"), list):
                 norm["features"] = disk_norm["features"]
@@ -281,24 +284,77 @@ _FSTD = mx.array([s if s else 1.0 for s in _NORM["fstd"]], dtype=mx.float32)
 _N_IN = int(_META["n_in"])
 
 
+def _sigmoid(z: float) -> float:
+    return 1.0 / (1.0 + math.exp(-max(-60.0, min(60.0, z))))
+
+
+def _isotonic(x: float, table: List) -> float:
+    """Piecewise-linear interpolation of `x` through an isotonic calibration
+    table of `[pred, actual]` pairs (as the shipped resolve model ships it). The
+    table is sorted by `pred` and clamped at both endpoints; malformed or
+    non-finite entries are skipped, and an empty/unusable table returns `x`
+    unchanged rather than raising."""
+    pts = []
+    for p in table:
+        if not (isinstance(p, (list, tuple)) and len(p) >= 2):
+            continue
+        a, b = p[0], p[1]
+        if isinstance(a, bool) or isinstance(b, bool):
+            continue
+        if not (isinstance(a, (int, float)) and isinstance(b, (int, float))):
+            continue
+        a, b = float(a), float(b)
+        if math.isfinite(a) and math.isfinite(b):
+            pts.append((a, b))
+    if not pts:
+        return x
+    pts.sort(key=lambda t: t[0])
+    if x <= pts[0][0]:
+        return pts[0][1]
+    if x >= pts[-1][0]:
+        return pts[-1][1]
+    for i in range(1, len(pts)):
+        x0, y0 = pts[i - 1]
+        x1, y1 = pts[i]
+        if x <= x1:
+            span = x1 - x0
+            return y0 if span < 1e-12 else y0 + (y1 - y0) * (x - x0) / span
+    return pts[-1][1]
+
+
 def _calibrate(logit: float) -> float:
     """Map a raw logit to a calibrated probability.
 
-    Honours calibration params baked into the normalizer:
+    Honours the calibration spec baked into the normalizer, in either form:
+      list of [pred, actual] pairs                  → isotonic map of sigmoid(logit)
       {"method": "temperature", "temperature": T}   → sigmoid(logit / T)
       {"method": "platt", "a": a, "b": b}            → sigmoid(a·logit + b)
-    Anything else (or absent) falls back to the plain sigmoid.
+    Anything else (or absent) falls back to the plain sigmoid. The isotonic
+    table is what the shipped resolve model actually stores, so this must never
+    call dict methods on it.
     """
-    cal = _NORM.get("calibration") or {}
-    method = cal.get("method")
-    if method == "temperature":
-        t = float(cal.get("temperature", 1.0)) or 1.0
-        z = logit / t
-    elif method == "platt":
-        z = float(cal.get("a", 1.0)) * logit + float(cal.get("b", 0.0))
-    else:
-        z = logit
-    return 1.0 / (1.0 + math.exp(-max(-60.0, min(60.0, z))))
+    cal = _NORM.get("calibration")
+    if isinstance(cal, list) and cal:
+        return max(0.0, min(1.0, _isotonic(_sigmoid(logit), cal)))
+    if isinstance(cal, dict):
+        method = cal.get("method")
+        if method == "temperature":
+            t = float(cal.get("temperature", 1.0)) or 1.0
+            return _sigmoid(logit / t)
+        if method == "platt":
+            return _sigmoid(float(cal.get("a", 1.0)) * logit + float(cal.get("b", 0.0)))
+    return _sigmoid(logit)
+
+
+def _calibration_kind() -> str:
+    """Human-readable name of the active calibration map (never raises on the
+    isotonic-table form)."""
+    cal = _NORM.get("calibration")
+    if isinstance(cal, list) and cal:
+        return "isotonic"
+    if isinstance(cal, dict):
+        return str(cal.get("method", "sigmoid"))
+    return "sigmoid"
 
 
 def _fit_len(vec: List[float], n: int) -> List[float]:
@@ -344,7 +400,7 @@ def _score(prices: List[float]) -> Optional[dict]:
         "conviction": round(conviction, 4),
         "confidence": confidence,
         "recommendation": rec,
-        "calibrated": _NORM.get("calibration", {}).get("method", "sigmoid"),
+        "calibrated": _calibration_kind(),
         "snapshot": feat_map,
     }
 
@@ -477,6 +533,31 @@ def _selftest() -> int:
     Never starts the server and never touches the network.
     """
     mx.random.seed(7)
+
+    # Regression: the shipped resolve model stores calibration as an ISOTONIC
+    # TABLE (list of [pred, actual] pairs), not a {"method": ...} dict. Exercise
+    # that branch directly — feed a synthetic table (plus a malformed row) and
+    # assert every calibrated prob is finite and in [0, 1] with no crash. This
+    # guards the crash that used to happen when `_calibrate` called dict methods
+    # on the list.
+    _saved_cal = _NORM.get("calibration", "__absent__")
+    try:
+        _NORM["calibration"] = [
+            [0.0, 0.0], [0.25, 0.20], [0.5, 0.55], [0.75, 0.80], [1.0, 1.0],
+            ["bad", None],          # malformed row — must be skipped, not fatal
+        ]
+        assert _calibration_kind() == "isotonic"
+        for lg in (-40.0, -2.5, 0.0, 1.3, 40.0):
+            p = _calibrate(lg)
+            assert isinstance(p, float) and math.isfinite(p) and 0.0 <= p <= 1.0, (
+                f"isotonic calibration produced bad prob {p!r} for logit {lg}"
+            )
+    finally:
+        if _saved_cal == "__absent__":
+            _NORM.pop("calibration", None)
+        else:
+            _NORM["calibration"] = _saved_cal
+
     # Synthetic YES-token path drifting up toward resolution.
     prices = [0.42 + 0.02 * i + 0.01 * math.sin(i / 2.0) for i in range(SNAP_WINDOW + 4)]
     sig = _score(prices)
