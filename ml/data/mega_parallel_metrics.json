@@ -1,0 +1,910 @@
+{
+  "runtime": "modal parallel H100s / multi-resolution mega (deployed)",
+  "best_resolution": "300",
+  "best_ensemble_auc": 0.6137,
+  "by_resolution": {
+    "300": {
+      "runtime": "modal H100 / mega unified (LightGBM + multi-task torch MLP)",
+      "dataset": "SII-WANGZJ/Polymarket_data",
+      "trades_file": "trades.parquet",
+      "markets_file": "markets.parquet",
+      "source": "union of all six feature families (flow+resolve+smart+crossmarket+event+micro)",
+      "families": [
+        "flow",
+        "resolve",
+        "smart",
+        "crossmarket",
+        "event",
+        "micro"
+      ],
+      "unified_features": 66,
+      "feature_names": [
+        "flow__signed_imbalance",
+        "flow__vpin",
+        "flow__toxicity",
+        "flow__trade_intensity",
+        "flow__flow_autocorr",
+        "flow__whale_ratio",
+        "flow__buy_pressure",
+        "flow__last",
+        "flow__mean_ret",
+        "flow__vol",
+        "flow__momentum",
+        "resolve__price",
+        "resolve__dist_from_half",
+        "resolve__logit_price",
+        "resolve__time_to_resolution",
+        "resolve__age_fraction",
+        "resolve__momentum",
+        "resolve__realized_vol",
+        "resolve__flow_imbalance",
+        "resolve__volume_maturity",
+        "resolve__trade_count_z",
+        "resolve__calib_bucket",
+        "resolve__price_x_time",
+        "smart__smart_net_flow",
+        "smart__smart_share",
+        "smart__smart_minus_dumb",
+        "smart__herding",
+        "smart__flow_imbalance",
+        "smart__crowding",
+        "smart__maker_taker_ratio",
+        "smart__whale_concentration",
+        "smart__last",
+        "smart__extremeness",
+        "crossmarket__basket_sum",
+        "crossmarket__basket_residual",
+        "crossmarket__share_of_basket",
+        "crossmarket__sibling_count",
+        "crossmarket__rank_in_basket",
+        "crossmarket__favorite_gap",
+        "crossmarket__dispersion",
+        "crossmarket__is_neg_risk",
+        "event__beta_to_event",
+        "event__idio_return",
+        "event__event_momentum",
+        "event__rel_strength",
+        "event__lead_lag",
+        "event__event_vol",
+        "event__flow_divergence",
+        "event__peer_count",
+        "event__last",
+        "event__self_momentum",
+        "event__self_vol",
+        "micro__effective_spread",
+        "micro__realized_spread",
+        "micro__fill_size_mean",
+        "micro__fill_size_cv",
+        "micro__large_fill_ratio",
+        "micro__maker_concentration",
+        "micro__taker_concentration",
+        "micro__fill_rate",
+        "micro__price_impact",
+        "micro__fee_intensity",
+        "micro__last",
+        "micro__mean_ret",
+        "micro__vol",
+        "micro__momentum"
+      ],
+      "trades_streamed": 30501903,
+      "markets": 3000,
+      "windows": 5141633,
+      "window": 16,
+      "horizon": 4,
+      "bar_seconds": 300,
+      "train_windows": 4048894,
+      "val_windows": 989122,
+      "up_rate": 0.3345,
+      "majority_baseline_acc": 0.6657,
+      "gbdt": {
+        "val_auc": 0.6151,
+        "brier": 0.238,
+        "backtest": {
+          "top_up_rate": 0.453,
+          "bottom_up_rate": 0.213,
+          "up_rate_spread": 0.24,
+          "top_median_pts": 0.0,
+          "bottom_median_pts": 0.0,
+          "slice": 197824
+        }
+      },
+      "family_importance": [
+        {
+          "family": "resolve",
+          "gain_share": 0.463,
+          "gain": 2559882.5,
+          "top_feature": "resolve__realized_vol"
+        },
+        {
+          "family": "flow",
+          "gain_share": 0.361,
+          "gain": 1994645.4,
+          "top_feature": "flow__vol"
+        },
+        {
+          "family": "micro",
+          "gain_share": 0.129,
+          "gain": 715157.1,
+          "top_feature": "micro__fill_size_cv"
+        },
+        {
+          "family": "event",
+          "gain_share": 0.038,
+          "gain": 208291.1,
+          "top_feature": "event__self_vol"
+        },
+        {
+          "family": "smart",
+          "gain_share": 0.009,
+          "gain": 48609.7,
+          "top_feature": "smart__extremeness"
+        },
+        {
+          "family": "crossmarket",
+          "gain_share": 0.0,
+          "gain": 18.8,
+          "top_feature": "crossmarket__basket_sum"
+        }
+      ],
+      "feature_importance_gbdt": [
+        [
+          "resolve__realized_vol",
+          1541914.6
+        ],
+        [
+          "flow__vol",
+          659287.1
+        ],
+        [
+          "flow__momentum",
+          261161.6
+        ],
+        [
+          "resolve__momentum",
+          186752.8
+        ],
+        [
+          "resolve__dist_from_half",
+          178810.9
+        ],
+        [
+          "flow__last",
+          163905.9
+        ],
+        [
+          "flow__vpin",
+          155898.6
+        ],
+        [
+          "flow__mean_ret",
+          152531.8
+        ],
+        [
+          "micro__fill_size_cv",
+          141690.9
+        ],
+        [
+          "flow__signed_imbalance",
+          139096.5
+        ],
+        [
+          "flow__buy_pressure",
+          138089.7
+        ],
+        [
+          "event__self_vol",
+          128853.0
+        ],
+        [
+          "resolve__flow_imbalance",
+          123887.1
+        ],
+        [
+          "micro__effective_spread",
+          123449.0
+        ],
+        [
+          "micro__realized_spread",
+          123258.8
+        ],
+        [
+          "resolve__trade_count_z",
+          118155.0
+        ],
+        [
+          "flow__toxicity",
+          112129.1
+        ],
+        [
+          "resolve__volume_maturity",
+          108169.4
+        ],
+        [
+          "flow__whale_ratio",
+          102303.5
+        ],
+        [
+          "micro__fill_size_mean",
+          97205.0
+        ],
+        [
+          "resolve__price_x_time",
+          89940.6
+        ],
+        [
+          "micro__price_impact",
+          82515.4
+        ],
+        [
+          "resolve__time_to_resolution",
+          81129.5
+        ],
+        [
+          "flow__flow_autocorr",
+          77804.4
+        ],
+        [
+          "micro__large_fill_ratio",
+          71900.5
+        ]
+      ],
+      "mlp": {
+        "val_auc": 0.5976,
+        "brier": 0.2171,
+        "backtest": {
+          "top_up_rate": 0.445,
+          "bottom_up_rate": 0.232,
+          "up_rate_spread": 0.213,
+          "top_median_pts": 0.0,
+          "bottom_median_pts": 0.0,
+          "slice": 197824
+        }
+      },
+      "ensemble": {
+        "val_auc": 0.6137,
+        "brier": 0.2205,
+        "brier_calibrated": 0.215,
+        "backtest": {
+          "top_up_rate": 0.452,
+          "bottom_up_rate": 0.214,
+          "up_rate_spread": 0.237,
+          "top_median_pts": 0.0,
+          "bottom_median_pts": 0.0,
+          "slice": 197824
+        }
+      },
+      "overall_best": "gbdt",
+      "resolution": {
+        "val_auc": null,
+        "note": "too few resolved val markets"
+      },
+      "walk_forward": {
+        "folds": [
+          {
+            "fold": 1,
+            "val_auc": 0.6081,
+            "up_rate_spread": 0.23
+          },
+          {
+            "fold": 2,
+            "val_auc": 0.6083,
+            "up_rate_spread": 0.232
+          },
+          {
+            "fold": 3,
+            "val_auc": 0.6123,
+            "up_rate_spread": 0.239
+          },
+          {
+            "fold": 4,
+            "val_auc": 0.6141,
+            "up_rate_spread": 0.239
+          }
+        ],
+        "mean_auc": 0.6107
+      }
+    },
+    "900": {
+      "runtime": "modal H100 / mega unified (LightGBM + multi-task torch MLP)",
+      "dataset": "SII-WANGZJ/Polymarket_data",
+      "trades_file": "trades.parquet",
+      "markets_file": "markets.parquet",
+      "source": "union of all six feature families (flow+resolve+smart+crossmarket+event+micro)",
+      "families": [
+        "flow",
+        "resolve",
+        "smart",
+        "crossmarket",
+        "event",
+        "micro"
+      ],
+      "unified_features": 66,
+      "feature_names": [
+        "flow__signed_imbalance",
+        "flow__vpin",
+        "flow__toxicity",
+        "flow__trade_intensity",
+        "flow__flow_autocorr",
+        "flow__whale_ratio",
+        "flow__buy_pressure",
+        "flow__last",
+        "flow__mean_ret",
+        "flow__vol",
+        "flow__momentum",
+        "resolve__price",
+        "resolve__dist_from_half",
+        "resolve__logit_price",
+        "resolve__time_to_resolution",
+        "resolve__age_fraction",
+        "resolve__momentum",
+        "resolve__realized_vol",
+        "resolve__flow_imbalance",
+        "resolve__volume_maturity",
+        "resolve__trade_count_z",
+        "resolve__calib_bucket",
+        "resolve__price_x_time",
+        "smart__smart_net_flow",
+        "smart__smart_share",
+        "smart__smart_minus_dumb",
+        "smart__herding",
+        "smart__flow_imbalance",
+        "smart__crowding",
+        "smart__maker_taker_ratio",
+        "smart__whale_concentration",
+        "smart__last",
+        "smart__extremeness",
+        "crossmarket__basket_sum",
+        "crossmarket__basket_residual",
+        "crossmarket__share_of_basket",
+        "crossmarket__sibling_count",
+        "crossmarket__rank_in_basket",
+        "crossmarket__favorite_gap",
+        "crossmarket__dispersion",
+        "crossmarket__is_neg_risk",
+        "event__beta_to_event",
+        "event__idio_return",
+        "event__event_momentum",
+        "event__rel_strength",
+        "event__lead_lag",
+        "event__event_vol",
+        "event__flow_divergence",
+        "event__peer_count",
+        "event__last",
+        "event__self_momentum",
+        "event__self_vol",
+        "micro__effective_spread",
+        "micro__realized_spread",
+        "micro__fill_size_mean",
+        "micro__fill_size_cv",
+        "micro__large_fill_ratio",
+        "micro__maker_concentration",
+        "micro__taker_concentration",
+        "micro__fill_rate",
+        "micro__price_impact",
+        "micro__fee_intensity",
+        "micro__last",
+        "micro__mean_ret",
+        "micro__vol",
+        "micro__momentum"
+      ],
+      "trades_streamed": 30501903,
+      "markets": 3000,
+      "windows": 3214306,
+      "window": 16,
+      "horizon": 4,
+      "bar_seconds": 900,
+      "train_windows": 2532365,
+      "val_windows": 617053,
+      "up_rate": 0.3488,
+      "majority_baseline_acc": 0.6512,
+      "gbdt": {
+        "val_auc": 0.6088,
+        "brier": 0.2388,
+        "backtest": {
+          "top_up_rate": 0.464,
+          "bottom_up_rate": 0.228,
+          "up_rate_spread": 0.235,
+          "top_median_pts": 0.0,
+          "bottom_median_pts": 0.0,
+          "slice": 123410
+        }
+      },
+      "family_importance": [
+        {
+          "family": "resolve",
+          "gain_share": 0.462,
+          "gain": 1546377.0,
+          "top_feature": "resolve__realized_vol"
+        },
+        {
+          "family": "flow",
+          "gain_share": 0.358,
+          "gain": 1197490.6,
+          "top_feature": "flow__vol"
+        },
+        {
+          "family": "micro",
+          "gain_share": 0.13,
+          "gain": 435011.4,
+          "top_feature": "micro__realized_spread"
+        },
+        {
+          "family": "event",
+          "gain_share": 0.039,
+          "gain": 131153.6,
+          "top_feature": "event__self_vol"
+        },
+        {
+          "family": "smart",
+          "gain_share": 0.01,
+          "gain": 33982.9,
+          "top_feature": "smart__extremeness"
+        },
+        {
+          "family": "crossmarket",
+          "gain_share": 0.0,
+          "gain": 0.0,
+          "top_feature": "crossmarket__basket_sum"
+        }
+      ],
+      "feature_importance_gbdt": [
+        [
+          "resolve__realized_vol",
+          877950.8
+        ],
+        [
+          "flow__vol",
+          350027.7
+        ],
+        [
+          "flow__momentum",
+          184783.1
+        ],
+        [
+          "flow__toxicity",
+          145407.9
+        ],
+        [
+          "flow__last",
+          119458.7
+        ],
+        [
+          "resolve__dist_from_half",
+          112471.3
+        ],
+        [
+          "resolve__flow_imbalance",
+          111805.5
+        ],
+        [
+          "flow__vpin",
+          104637.4
+        ],
+        [
+          "resolve__momentum",
+          103706.2
+        ],
+        [
+          "flow__mean_ret",
+          91753.1
+        ],
+        [
+          "micro__realized_spread",
+          81029.3
+        ],
+        [
+          "resolve__volume_maturity",
+          78574.3
+        ],
+        [
+          "micro__fill_size_cv",
+          74558.9
+        ],
+        [
+          "event__self_vol",
+          69667.3
+        ],
+        [
+          "micro__effective_spread",
+          66647.2
+        ],
+        [
+          "micro__fill_size_mean",
+          64291.8
+        ],
+        [
+          "resolve__price_x_time",
+          62927.3
+        ],
+        [
+          "flow__whale_ratio",
+          61557.3
+        ],
+        [
+          "resolve__trade_count_z",
+          59075.7
+        ],
+        [
+          "micro__price_impact",
+          56981.4
+        ],
+        [
+          "resolve__time_to_resolution",
+          53930.2
+        ],
+        [
+          "micro__large_fill_ratio",
+          48716.6
+        ],
+        [
+          "resolve__age_fraction",
+          42877.5
+        ],
+        [
+          "flow__signed_imbalance",
+          40837.9
+        ],
+        [
+          "flow__buy_pressure",
+          39180.7
+        ]
+      ],
+      "mlp": {
+        "val_auc": 0.5962,
+        "brier": 0.2215,
+        "backtest": {
+          "top_up_rate": 0.457,
+          "bottom_up_rate": 0.246,
+          "up_rate_spread": 0.21,
+          "top_median_pts": 0.0,
+          "bottom_median_pts": 0.0,
+          "slice": 123410
+        }
+      },
+      "ensemble": {
+        "val_auc": 0.6077,
+        "brier": 0.2244,
+        "brier_calibrated": 0.2199,
+        "backtest": {
+          "top_up_rate": 0.463,
+          "bottom_up_rate": 0.232,
+          "up_rate_spread": 0.231,
+          "top_median_pts": 0.0,
+          "bottom_median_pts": 0.0,
+          "slice": 123410
+        }
+      },
+      "overall_best": "gbdt",
+      "resolution": {
+        "val_auc": null,
+        "note": "too few resolved val markets"
+      },
+      "walk_forward": {
+        "folds": [
+          {
+            "fold": 1,
+            "val_auc": 0.5999,
+            "up_rate_spread": 0.219
+          },
+          {
+            "fold": 2,
+            "val_auc": 0.604,
+            "up_rate_spread": 0.227
+          },
+          {
+            "fold": 3,
+            "val_auc": 0.6094,
+            "up_rate_spread": 0.241
+          },
+          {
+            "fold": 4,
+            "val_auc": 0.6081,
+            "up_rate_spread": 0.234
+          }
+        ],
+        "mean_auc": 0.6053
+      }
+    },
+    "3600": {
+      "runtime": "modal H100 / mega unified (LightGBM + multi-task torch MLP)",
+      "dataset": "SII-WANGZJ/Polymarket_data",
+      "trades_file": "trades.parquet",
+      "markets_file": "markets.parquet",
+      "source": "union of all six feature families (flow+resolve+smart+crossmarket+event+micro)",
+      "families": [
+        "flow",
+        "resolve",
+        "smart",
+        "crossmarket",
+        "event",
+        "micro"
+      ],
+      "unified_features": 66,
+      "feature_names": [
+        "flow__signed_imbalance",
+        "flow__vpin",
+        "flow__toxicity",
+        "flow__trade_intensity",
+        "flow__flow_autocorr",
+        "flow__whale_ratio",
+        "flow__buy_pressure",
+        "flow__last",
+        "flow__mean_ret",
+        "flow__vol",
+        "flow__momentum",
+        "resolve__price",
+        "resolve__dist_from_half",
+        "resolve__logit_price",
+        "resolve__time_to_resolution",
+        "resolve__age_fraction",
+        "resolve__momentum",
+        "resolve__realized_vol",
+        "resolve__flow_imbalance",
+        "resolve__volume_maturity",
+        "resolve__trade_count_z",
+        "resolve__calib_bucket",
+        "resolve__price_x_time",
+        "smart__smart_net_flow",
+        "smart__smart_share",
+        "smart__smart_minus_dumb",
+        "smart__herding",
+        "smart__flow_imbalance",
+        "smart__crowding",
+        "smart__maker_taker_ratio",
+        "smart__whale_concentration",
+        "smart__last",
+        "smart__extremeness",
+        "crossmarket__basket_sum",
+        "crossmarket__basket_residual",
+        "crossmarket__share_of_basket",
+        "crossmarket__sibling_count",
+        "crossmarket__rank_in_basket",
+        "crossmarket__favorite_gap",
+        "crossmarket__dispersion",
+        "crossmarket__is_neg_risk",
+        "event__beta_to_event",
+        "event__idio_return",
+        "event__event_momentum",
+        "event__rel_strength",
+        "event__lead_lag",
+        "event__event_vol",
+        "event__flow_divergence",
+        "event__peer_count",
+        "event__last",
+        "event__self_momentum",
+        "event__self_vol",
+        "micro__effective_spread",
+        "micro__realized_spread",
+        "micro__fill_size_mean",
+        "micro__fill_size_cv",
+        "micro__large_fill_ratio",
+        "micro__maker_concentration",
+        "micro__taker_concentration",
+        "micro__fill_rate",
+        "micro__price_impact",
+        "micro__fee_intensity",
+        "micro__last",
+        "micro__mean_ret",
+        "micro__vol",
+        "micro__momentum"
+      ],
+      "trades_streamed": 30501903,
+      "markets": 2973,
+      "windows": 1552218,
+      "window": 16,
+      "horizon": 4,
+      "bar_seconds": 3600,
+      "train_windows": 1223441,
+      "val_windows": 297170,
+      "up_rate": 0.3756,
+      "majority_baseline_acc": 0.6244,
+      "gbdt": {
+        "val_auc": 0.5966,
+        "brier": 0.2419,
+        "backtest": {
+          "top_up_rate": 0.484,
+          "bottom_up_rate": 0.259,
+          "up_rate_spread": 0.226,
+          "top_median_pts": 0.0,
+          "bottom_median_pts": 0.0,
+          "slice": 59434
+        }
+      },
+      "family_importance": [
+        {
+          "family": "resolve",
+          "gain_share": 0.469,
+          "gain": 566706.4,
+          "top_feature": "resolve__realized_vol"
+        },
+        {
+          "family": "flow",
+          "gain_share": 0.362,
+          "gain": 436767.5,
+          "top_feature": "flow__vol"
+        },
+        {
+          "family": "micro",
+          "gain_share": 0.123,
+          "gain": 147895.8,
+          "top_feature": "micro__realized_spread"
+        },
+        {
+          "family": "event",
+          "gain_share": 0.04,
+          "gain": 47846.2,
+          "top_feature": "event__rel_strength"
+        },
+        {
+          "family": "smart",
+          "gain_share": 0.006,
+          "gain": 7844.2,
+          "top_feature": "smart__extremeness"
+        },
+        {
+          "family": "crossmarket",
+          "gain_share": 0.0,
+          "gain": 0.0,
+          "top_feature": "crossmarket__basket_sum"
+        }
+      ],
+      "feature_importance_gbdt": [
+        [
+          "resolve__realized_vol",
+          272498.2
+        ],
+        [
+          "flow__vol",
+          94643.7
+        ],
+        [
+          "flow__toxicity",
+          75519.9
+        ],
+        [
+          "resolve__dist_from_half",
+          73171.7
+        ],
+        [
+          "flow__last",
+          63763.0
+        ],
+        [
+          "flow__momentum",
+          58291.0
+        ],
+        [
+          "resolve__momentum",
+          55029.5
+        ],
+        [
+          "resolve__volume_maturity",
+          39592.7
+        ],
+        [
+          "flow__mean_ret",
+          36386.6
+        ],
+        [
+          "flow__vpin",
+          29751.8
+        ],
+        [
+          "micro__realized_spread",
+          29218.9
+        ],
+        [
+          "resolve__flow_imbalance",
+          27173.3
+        ],
+        [
+          "micro__fill_size_mean",
+          26872.0
+        ],
+        [
+          "flow__whale_ratio",
+          26711.6
+        ],
+        [
+          "resolve__price_x_time",
+          26081.7
+        ],
+        [
+          "micro__price_impact",
+          23318.6
+        ],
+        [
+          "micro__effective_spread",
+          22586.6
+        ],
+        [
+          "resolve__trade_count_z",
+          20513.3
+        ],
+        [
+          "micro__large_fill_ratio",
+          18850.3
+        ],
+        [
+          "micro__fill_size_cv",
+          18652.0
+        ],
+        [
+          "event__rel_strength",
+          17713.4
+        ],
+        [
+          "resolve__time_to_resolution",
+          17193.2
+        ],
+        [
+          "resolve__age_fraction",
+          16587.1
+        ],
+        [
+          "flow__buy_pressure",
+          16577.7
+        ],
+        [
+          "event__self_vol",
+          15970.5
+        ]
+      ],
+      "mlp": {
+        "val_auc": 0.5925,
+        "brier": 0.2288,
+        "backtest": {
+          "top_up_rate": 0.482,
+          "bottom_up_rate": 0.271,
+          "up_rate_spread": 0.211,
+          "top_median_pts": 0.0,
+          "bottom_median_pts": 0.0,
+          "slice": 59434
+        }
+      },
+      "ensemble": {
+        "val_auc": 0.5988,
+        "brier": 0.2307,
+        "brier_calibrated": 0.2277,
+        "backtest": {
+          "top_up_rate": 0.487,
+          "bottom_up_rate": 0.257,
+          "up_rate_spread": 0.229,
+          "top_median_pts": 0.0,
+          "bottom_median_pts": 0.0,
+          "slice": 59434
+        }
+      },
+      "overall_best": "ensemble",
+      "resolution": {
+        "val_auc": null,
+        "note": "too few resolved val markets"
+      },
+      "walk_forward": {
+        "folds": [
+          {
+            "fold": 1,
+            "val_auc": 0.5768,
+            "up_rate_spread": 0.179
+          },
+          {
+            "fold": 2,
+            "val_auc": 0.5886,
+            "up_rate_spread": 0.206
+          },
+          {
+            "fold": 3,
+            "val_auc": 0.5924,
+            "up_rate_spread": 0.214
+          },
+          {
+            "fold": 4,
+            "val_auc": 0.5966,
+            "up_rate_spread": 0.226
+          }
+        ],
+        "mean_auc": 0.5886
+      }
+    }
+  }
+}

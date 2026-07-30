@@ -60,3 +60,4 @@ ml/data/bigdata_gbdt.txt
 .conductor/
 ml/data/bigdata_gbdt.json
 ml/data/mega_call_ids.json
+ml/data/mega_mega_gbdt.txt
