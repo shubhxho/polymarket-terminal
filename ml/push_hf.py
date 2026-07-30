@@ -35,6 +35,11 @@ ARTIFACTS = [
     ("data/bigdata_gbdt.json", "bigdata/bigdata_gbdt.json"),
     ("data/bigdata_normalizer.json", "bigdata/bigdata_normalizer.json"),
     ("data/bigdata_metrics.json", "metrics/bigdata_metrics.json"),
+    # parallel multi-resolution mega model (six families, best of 5m/15m/1h)
+    ("data/mega_mega_mlp.safetensors", "mega/mega_mlp.safetensors"),
+    ("data/mega_mega_normalizer.json", "mega/mega_normalizer.json"),
+    ("data/mega_mega_metrics.json", "metrics/mega_metrics.json"),
+    ("data/mega_parallel_metrics.json", "metrics/mega_parallel_metrics.json"),
     # H100 experiment reports
     ("data/distill_metrics.json", "metrics/distill_metrics.json"),
     ("data/multilingual_metrics.json", "metrics/multilingual_metrics.json"),
