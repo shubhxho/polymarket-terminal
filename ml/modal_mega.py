@@ -113,9 +113,11 @@ TRADES_FILE = "trades.parquet"
 MARKETS_FILE = "markets.parquet"
 HF_MODEL_REPO = "shubhxho/polymarket-mega-model"
 
-BAR_SECONDS = 3600     # hourly buckets
+BAR_SECONDS = 3600     # hourly buckets (300 = 5-min, where order-flow signal lives)
 MIN_CANDLES = WINDOW + HORIZON + 4   # need enough bars to slide at least a few windows
 MIN_STD = 1e-4         # skip dead (flat) windows — no direction to learn
+TB_K = 1.5             # triple-barrier width in window-return σ
+EMBARGO = 0.02         # purge/embargo gap (fraction of each market's timeline)
 MICRO_FEE_BPS = 0.001  # synthetic per-fill fee fraction for micro Fill construction
 
 
@@ -315,11 +317,30 @@ def iter_examples(world: list):
         m["_prefix_users"] = prefix_users
         for i in range(WINDOW, N - HORIZON):
             rets = [close[k] - close[k - 1] for k in range(i - WINDOW + 1, i)]
-            if features_flow._std(rets) < MIN_STD:
+            sigma = features_flow._std(rets)
+            if sigma < MIN_STD:
                 continue
-            fwd = close[i + HORIZON] - close[i]
+            # Triple-barrier direction label (López de Prado): the first of
+            # ±TB_K·σ to be touched within HORIZON bars sets the sign; a vertical
+            # (neither touched) falls back to the net move's sign. A cleaner
+            # target than the sign of a possibly-tiny noise move, and on the raw
+            # order-flow model this roughly doubled the top-vs-bottom spread.
+            base = close[i]
+            bar = TB_K * sigma
+            dir_label, fwd = None, 0.0
+            for t in range(1, HORIZON + 1):
+                px = close[i + t]
+                if px - base >= bar:
+                    dir_label, fwd = 1, bar
+                    break
+                if base - px >= bar:
+                    dir_label, fwd = 0, -bar
+                    break
+            if dir_label is None:
+                fwd = close[i + HORIZON] - base
+                dir_label = 1 if fwd > 0 else 0
             ctx = context_from_market(m, i, smart_set)
-            yield unified_features(ctx), (1 if fwd > 0 else 0), res_label, fwd, i / N
+            yield unified_features(ctx), dir_label, res_label, fwd, i / N
 
 
 def _tag_smart_cohort(world: list):
@@ -823,8 +844,11 @@ def run(max_rows: int = 20_000_000, top_tokens: int = 6000, epochs: int = 60,
     tfrac = np.asarray(tfrac, np.float32)
     print(f"windows {len(ydir)}, features {X.shape[1]}, dir up-rate {ydir.mean():.3f}", flush=True)
 
-    val = tfrac >= 0.8
-    tr_i, va_i = np.where(~val)[0], np.where(val)[0]
+    # Out-of-time split with an EMBARGO: validate on each market's last 20% and
+    # drop the band just before it from train, so no window's forward label
+    # overlaps the val region (purged, López de Prado).
+    va_i = np.where(tfrac >= 0.8)[0]
+    tr_i = np.where(tfrac < 0.8 - EMBARGO)[0]
     fmean, fstd = X[tr_i].mean(0), X[tr_i].std(0) + 1e-6
     Xn = (X - fmean) / fstd
 
@@ -960,7 +984,7 @@ def run(max_rows: int = 20_000_000, top_tokens: int = 6000, epochs: int = 60,
     for kf in range(1, 5):
         lo, hi = 0.2 * kf, 0.2 * (kf + 1)
         vmask = (tfrac >= lo) & (tfrac < hi)
-        tmask = tfrac < lo - HORIZON / 1000.0
+        tmask = tfrac < lo - EMBARGO          # purged: real embargo gap, not a token-scaled hack
         if vmask.sum() < 50 or tmask.sum() < 200:
             continue
         d1 = lgb.Dataset(X[tmask], label=ydir[tmask], feature_name=list(UNIFIED_FEATURE_NAMES))
