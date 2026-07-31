@@ -22,8 +22,35 @@ import base64
 import json
 import os
 import sys
+import time
 
 import modal
+
+# Network errors that mean "the client's stream dropped" — retry, don't die. My
+# local connection to Modal blips (StreamTerminatedError / Connection lost); the
+# workers run server-side and results stay retrievable, so reconnecting is always
+# safe. Matched by class-name substring so grpclib need not be importable.
+_NET = ("StreamTerminated", "Connection", "Cancelled", "Broken", "Unavailable", "GOAWAY")
+
+
+def _robust_get(cid, poll=30, backoff=5):
+    """Block until this FunctionCall finishes, surviving client network drops by
+    reconnecting. TimeoutError = still running; a network error = reconnect;
+    anything else (a real worker exception) propagates."""
+    while True:
+        try:
+            return modal.FunctionCall.from_id(cid).get(timeout=poll)
+        except TimeoutError:
+            continue
+        except (ConnectionError, OSError):
+            print(f"  net drop; reconnecting in {backoff}s…", flush=True)
+            time.sleep(backoff)
+        except Exception as e:  # noqa: BLE001
+            if any(s in type(e).__name__ for s in _NET):
+                print(f"  net drop ({type(e).__name__}); reconnecting in {backoff}s…", flush=True)
+                time.sleep(backoff)
+                continue
+            raise
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(HERE, "data")
@@ -37,10 +64,10 @@ TOP_TOKENS = {60: 1200, 300: 2500, 900: 3500}
 KW = dict(max_rows=30_000_000, epochs=40)
 
 
-def _collect(calls: dict) -> None:
+def _collect(ids: dict) -> None:
     reports, best, best_auc, best_art = {}, None, -1.0, {}
-    for bs, call in calls.items():
-        rep = call.get()                          # blocks; server-side, survives client blips
+    for bs, cid in ids.items():
+        rep = _robust_get(cid)                     # blocks; reconnects across client network drops
         art = rep.pop("_artifacts_b64", {})
         auc = rep.get("ensemble", {}).get("val_auc", 0.0)
         sp = rep.get("ensemble", {}).get("backtest", {}).get("up_rate_spread")
@@ -65,7 +92,6 @@ def main() -> None:
     fn = modal.Function.from_name(APP, FN)
     if "--collect" in sys.argv and os.path.exists(IDS):
         ids = json.load(open(IDS))
-        calls = {int(bs): modal.FunctionCall.from_id(cid) for bs, cid in ids.items()}
         print(f"re-attached to {ids}", flush=True)
     else:
         hf = os.environ.get("HF_TOKEN", "")
@@ -75,7 +101,7 @@ def main() -> None:
         os.makedirs(DATA, exist_ok=True)
         json.dump(ids, open(IDS, "w"))
         print(f"spawned {len(calls)} H100 workers (deployed app), ids → {IDS}: {ids}", flush=True)
-    _collect(calls)
+    _collect(ids)
 
 
 if __name__ == "__main__":
