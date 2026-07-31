@@ -29,8 +29,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(HERE, "data")
 IDS = os.path.join(DATA, "mega_call_ids.json")
 APP, FN = "pmt-mega", "run"
-RESOLUTIONS = [300, 900, 3600]
-KW = dict(max_rows=30_000_000, top_tokens=3000, epochs=40)
+# Probe the finer frontier — 5-min beat 15-min beat 1-hour monotonically, so test
+# 1-min too. Finer bars explode the window count, so cap tokens tighter the finer
+# we go (keeps each worker's in-memory dataset bounded).
+RESOLUTIONS = [60, 300, 900]
+TOP_TOKENS = {60: 1200, 300: 2500, 900: 3500}
+KW = dict(max_rows=30_000_000, epochs=40)
 
 
 def _collect(calls: dict) -> None:
@@ -65,7 +69,8 @@ def main() -> None:
         print(f"re-attached to {ids}", flush=True)
     else:
         hf = os.environ.get("HF_TOKEN", "")
-        calls = {bs: fn.spawn(bar_seconds=bs, push=False, hf_token=hf, **KW) for bs in RESOLUTIONS}
+        calls = {bs: fn.spawn(bar_seconds=bs, top_tokens=TOP_TOKENS[bs], push=False, hf_token=hf, **KW)
+                 for bs in RESOLUTIONS}
         ids = {str(bs): c.object_id for bs, c in calls.items()}
         os.makedirs(DATA, exist_ok=True)
         json.dump(ids, open(IDS, "w"))

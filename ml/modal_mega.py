@@ -1031,7 +1031,17 @@ def run(max_rows: int = 20_000_000, top_tokens: int = 6000, epochs: int = 60,
             result["push_error"] = f"{type(e).__name__}: {e}"[:300]
             print("push failed:", result["push_error"], flush=True)
 
-    return result
+    # Return a pure-python dict: the raw result carries numpy scalars/arrays, and
+    # a collector without numpy can't cloudpickle-deserialize them. Recurse and
+    # map np scalars/arrays to python via .tolist(), so ANY env can .get() it.
+    def _pyify(o):
+        if isinstance(o, dict):
+            return {k: _pyify(v) for k, v in o.items()}
+        if isinstance(o, (list, tuple)):
+            return [_pyify(v) for v in o]
+        return o.tolist() if hasattr(o, "tolist") else o
+
+    return _pyify(result)
 
 
 def _model_card(result):
