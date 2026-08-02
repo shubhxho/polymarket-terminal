@@ -6,6 +6,9 @@ import type { SignalsPayload } from "@/app/api/signals/route";
 import { useTerminal } from "@/components/TerminalProvider";
 import { Chip, Empty, ErrorBox, Field, Loading, Panel } from "@/components/ui/Panel";
 import { usePoll } from "@/hooks/usePoll";
+import { useMarketSocket } from "@/hooks/useMarketSocket";
+import { useLiveModel } from "@/hooks/useLiveModel";
+import type { LiveRead } from "@/lib/liveModel";
 import { cents, compact, dirClass, signed, timeToExpiry, truncate, usd } from "@/lib/format";
 import { panelVariants, staggerContainer } from "@/lib/motion";
 import { clamp } from "@/lib/quant";
@@ -56,6 +59,21 @@ const MODEL_NOTE = `A trained network scores each deep-scanned market's own pric
 export default function SignalsScreen() {
   const { go } = useTerminal();
   const { data, error, loading, refreshing } = usePoll<SignalsPayload>("/api/signals", 20000);
+
+  // Live model overlay: subscribe to the ranked markets' tokens and re-score the
+  // model between polls off the socket. The poll stays the source of truth for
+  // heat, bias, arbs and the cross-section; only the model read and its blended
+  // value tick live. Capped so a huge scan doesn't open hundreds of subscriptions.
+  const liveTokens = useMemo(
+    () =>
+      (data?.markets ?? [])
+        .map((m) => m.market.outcomes[0]?.tokenId)
+        .filter((t): t is string => Boolean(t))
+        .slice(0, 60),
+    [data]
+  );
+  const feed = useMarketSocket(liveTokens, liveTokens.length > 0);
+  const liveModel = useLiveModel(data?.markets ?? [], feed);
 
   const [active, setActive] = useState<readonly SignalKind[]>([]);
   const [sel, setSel] = useState(0);
@@ -147,8 +165,20 @@ export default function SignalsScreen() {
   const directional = bullish + bearish;
   const bullPct = directional === 0 ? 50 : (bullish / directional) * 100;
 
-  const confirms = stats?.modelConfirms ?? 0;
-  const conflicts = stats?.modelConflicts ?? 0;
+  // Confirm/conflict split recomputed from the live overlay, so the header tracks
+  // the model as price moves rather than freezing at the last poll. Falls back to
+  // the poll's own numbers exactly when no live tick has landed yet.
+  const { confirms, conflicts } = useMemo(() => {
+    let c = 0;
+    let x = 0;
+    for (const m of data?.markets ?? []) {
+      const lv = liveModel.get(m.market.id);
+      const a = modelAgreement(lv ? { ...m, model: lv.model } : m);
+      if (a === "confirms") c++;
+      else if (a === "conflicts") x++;
+    }
+    return { confirms: c, conflicts: x };
+  }, [data, liveModel]);
   const modelCalls = confirms + conflicts;
   const confirmPct = modelCalls === 0 ? 50 : (confirms / modelCalls) * 100;
 
@@ -168,6 +198,14 @@ export default function SignalsScreen() {
           <span className="flex items-center gap-2">
             {stale ? <span className="text-warn">stale</span> : null}
             {refreshing ? <span className="text-accent">···</span> : null}
+            {feed.status === "live" ? (
+              <span
+                className="flex items-center gap-1 text-up"
+                title="Model is re-scoring live off the market socket between the 20-second polls."
+              >
+                <span className="dot" /> live
+              </span>
+            ) : null}
             <span>every 20s</span>
           </span>
         }
@@ -371,6 +409,7 @@ export default function SignalsScreen() {
                   key={m.market.id || m.market.slug || i}
                   index={i}
                   row={m}
+                  live={liveModel.get(m.market.id)}
                   selected={i === sel}
                   onSelect={() => setSel(i)}
                   onOpen={() => openMarket(m)}
@@ -382,7 +421,7 @@ export default function SignalsScreen() {
 
         <div className="hidden min-h-0 flex-col gap-2 overflow-auto xl:flex">
           {selected ? (
-            <DetailRail row={selected} />
+            <DetailRail row={selected} live={liveModel.get(selected.market.id)} />
           ) : (
             <Panel title="Detail" className="shrink-0">
               <Empty text="select a market" />
@@ -508,17 +547,22 @@ function DriftRow({ drift, onOpen }: { drift: BasketDrift; onOpen: () => void })
 function SignalRow({
   index,
   row,
+  live,
   selected,
   onSelect,
   onOpen,
 }: {
   index: number;
   row: MarketSignals;
+  live?: LiveRead;
   selected: boolean;
   onSelect: () => void;
   onOpen: () => void;
 }) {
   const m = row.market;
+  // Overlay the live model read onto the poll row for the model column only —
+  // heat, bias and the badges stay as the scan computed them.
+  const modelRow = live ? { ...row, model: live.model } : row;
   const label = m.groupItemTitle || m.question;
   const context = m.eventTitle;
 
@@ -552,7 +596,7 @@ function SignalRow({
       <span className="w-[58px] shrink-0 text-right text-muted">{compact(m.volume24h)}</span>
       <Bias value={row.bias} />
       <Conviction value={row.conviction} />
-      <ModelCell row={row} />
+      <ModelCell row={modelRow} />
       {/* Signals are pre-sorted by weighted strength, so the leading few are
           the ones worth the width. Overflow is counted rather than clipped —
           a badge sliced in half reads as a rendering bug, and the rail shows
@@ -720,10 +764,11 @@ function Badge({ signal }: { signal: Signal }) {
 
 /* ── Detail rail ──────────────────────────────────────────────────────── */
 
-function DetailRail({ row }: { row: MarketSignals }) {
+function DetailRail({ row, live }: { row: MarketSignals; live?: LiveRead }) {
   const m = row.market;
   const s = row.stats;
   const book = s.book;
+  const modelRow = live ? { ...row, model: live.model } : row;
 
   return (
     <>
@@ -750,7 +795,7 @@ function DetailRail({ row }: { row: MarketSignals }) {
         </div>
       </Panel>
 
-      {row.model ? <ModelPanel row={row} /> : null}
+      {modelRow.model ? <ModelPanel row={modelRow} /> : null}
 
       <Panel title="Quant" className="shrink-0">
         <QuantField

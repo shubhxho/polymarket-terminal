@@ -161,7 +161,22 @@ function dense(x: readonly number[], w: number[][], b: number[]): number[] {
  */
 export function modelSignal(history: readonly PricePoint[] | undefined): ModelRead | null {
   if (!history || history.length < MODEL_WINDOW) return null;
-  const window = history.slice(-MODEL_WINDOW).map((p) => p.p);
+  return modelSignalFromPrices(history.map((p) => p.p));
+}
+
+/**
+ * Same read, straight off a probability array.
+ *
+ * The live path on the client keeps a rolling window of raw prices (not
+ * `PricePoint`s) and appends the socket's last trade to it on every tick, so it
+ * wants to score without first re-wrapping each number — this is that entry
+ * point, and `modelSignal` is a thin adapter over it. Only the last
+ * `MODEL_WINDOW` prices matter; anything earlier is ignored exactly as the
+ * trained model ignored it.
+ */
+export function modelSignalFromPrices(prices: readonly number[]): ModelRead | null {
+  if (prices.length < MODEL_WINDOW) return null;
+  const window = prices.slice(-MODEL_WINDOW);
 
   const raw = windowFeatures(window);
   // Standardise against the training distribution before the frozen weights.

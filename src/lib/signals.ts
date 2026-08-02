@@ -33,7 +33,7 @@ import {
   volCompression,
   type BookStats,
 } from "./quant";
-import { modelSignal, type ModelRead } from "./mlSignal";
+import { MODEL_WINDOW, modelSignal, type ModelRead } from "./mlSignal";
 import type { EventSummary, Market, OrderBook, PricePoint, Trade } from "./types";
 
 export type SignalKind =
@@ -94,6 +94,14 @@ export type MarketSignals = {
    * when the market was not deep-scanned. See `blendedScore`.
    */
   readonly model?: ModelRead;
+  /**
+   * The exact price window the model scored, newest last — carried in the scan
+   * payload only when there was a model read. The client seeds a rolling buffer
+   * from it and appends live socket ticks, so the model can be re-scored between
+   * polls without shipping the whole history or re-fetching anything. Omitted
+   * server-side callers can ignore it.
+   */
+  readonly recent?: readonly number[];
   readonly stats: MarketStats;
 };
 
@@ -570,6 +578,7 @@ export function scoreMarket(market: Market, ctx: ScoreContext = {}): MarketSigna
     heat: clamp(heat, 0, 100),
     conviction,
     model: modelSignal(history) ?? undefined,
+    recent: history ? history.slice(-MODEL_WINDOW).map((p) => p.p) : undefined,
     stats: {
       realisedVol: vol,
       driftPerDay: drift,
