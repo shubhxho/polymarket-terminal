@@ -6,6 +6,9 @@ import {
   encodeMessage,
   encodePing,
   encodePong,
+  MAX_MARKET_ID_LEN,
+  MAX_QUESTION_LEN,
+  MAX_SIGNALS,
   mergeRemote,
   MESH_PROTOCOL_VERSION,
   parseSignaling,
@@ -82,6 +85,46 @@ describe("encode / decode", () => {
     const s = decodeMessage(raw)!.signals[0];
     expect(s.prob).toBe(1);
     expect(s.conviction).toBe(0);
+  });
+
+  test("clamps heat and bias into their own ranges", () => {
+    const raw = JSON.stringify({
+      v: MESH_PROTOCOL_VERSION,
+      peer: "p",
+      ts: 1,
+      signals: [sig({ heat: 99999, bias: -5000 })],
+    });
+    const s = decodeMessage(raw)!.signals[0];
+    expect(s.heat).toBe(100);
+    expect(s.bias).toBe(-100);
+  });
+
+  test("caps a signal flood at MAX_SIGNALS", () => {
+    const flood = Array.from({ length: MAX_SIGNALS + 500 }, (_, i) => sig({ marketId: `m${i}` }));
+    const raw = JSON.stringify({ v: MESH_PROTOCOL_VERSION, peer: "p", ts: 1, signals: flood });
+    expect(decodeMessage(raw)!.signals.length).toBe(MAX_SIGNALS);
+  });
+
+  test("truncates an oversized question and market id", () => {
+    const raw = JSON.stringify({
+      v: MESH_PROTOCOL_VERSION,
+      peer: "p",
+      ts: 1,
+      signals: [sig({ marketId: "x".repeat(500), question: "q".repeat(500) })],
+    });
+    const s = decodeMessage(raw)!.signals[0];
+    expect(s.marketId.length).toBe(MAX_MARKET_ID_LEN);
+    expect(s.question.length).toBe(MAX_QUESTION_LEN);
+  });
+
+  test("rejects an absurdly long peer id", () => {
+    const raw = JSON.stringify({
+      v: MESH_PROTOCOL_VERSION,
+      peer: "p".repeat(500),
+      ts: 1,
+      signals: [],
+    });
+    expect(decodeMessage(raw)).toBeNull();
   });
 });
 

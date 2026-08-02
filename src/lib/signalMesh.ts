@@ -22,6 +22,11 @@ export const MESH_PROTOCOL_VERSION = 1;
 /** How long a peer's share stays live before it is pruned as stale, in ms. */
 export const PEER_TTL_MS = 45_000;
 
+/** Hard caps on an inbound frame, so a hostile peer cannot flood or bloat us. */
+export const MAX_SIGNALS = 200;
+export const MAX_QUESTION_LEN = 120;
+export const MAX_MARKET_ID_LEN = 96;
+
 /** One market's read, compacted for the wire — only what a peer can act on. */
 export type SharedSignal = {
   readonly marketId: string;
@@ -50,6 +55,7 @@ export type MeshState = ReadonlyMap<string, PeerState>;
 
 const isNum = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x);
 const clampUnit = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x);
+const clampRange = (x: number, lo: number, hi: number) => (x < lo ? lo : x > hi ? hi : x);
 
 function validSignal(s: unknown): s is SharedSignal {
   if (!s || typeof s !== "object") return false;
@@ -157,6 +163,12 @@ export function encodeMessage(peer: string, ts: number, signals: readonly Shared
  * anything we would not want to merge: bad JSON, a version we do not speak, a
  * missing peer id, or a signals array with junk in it. Individual bad signals
  * are dropped; the message survives if any remain.
+ *
+ * Because the sender is an untrusted browser, values are not just type-checked
+ * but **bounded**: the array is capped before any work is done (flood defence),
+ * strings are truncated, and every number is clamped to the range its consumer
+ * assumes (`prob`/`conviction` to 0..1, `heat` to 0..100, `bias` to ±100). A
+ * peer cannot make a market look 99999-hot or push a bias off the dial.
  */
 export function decodeMessage(raw: string): MeshMessage | null {
   let parsed: unknown;
@@ -168,17 +180,22 @@ export function decodeMessage(raw: string): MeshMessage | null {
   if (!parsed || typeof parsed !== "object") return null;
   const o = parsed as Record<string, unknown>;
   if (o.v !== MESH_PROTOCOL_VERSION) return null;
-  if (typeof o.peer !== "string" || o.peer.length === 0) return null;
+  if (typeof o.peer !== "string" || o.peer.length === 0 || o.peer.length > MAX_MARKET_ID_LEN) {
+    return null;
+  }
   if (!isNum(o.ts) || !Array.isArray(o.signals)) return null;
-  const signals = o.signals.filter(validSignal).map((s) => ({
-    marketId: s.marketId,
-    question: s.question,
-    prob: clampUnit(s.prob),
-    direction: s.direction,
-    conviction: clampUnit(s.conviction),
-    heat: s.heat,
-    bias: s.bias,
-  }));
+  const signals = o.signals
+    .slice(0, MAX_SIGNALS) // cap before filtering so a huge array can't burn CPU
+    .filter(validSignal)
+    .map((s) => ({
+      marketId: s.marketId.slice(0, MAX_MARKET_ID_LEN),
+      question: s.question.slice(0, MAX_QUESTION_LEN),
+      prob: clampUnit(s.prob),
+      direction: s.direction,
+      conviction: clampUnit(s.conviction),
+      heat: clampRange(s.heat, 0, 100),
+      bias: clampRange(s.bias, -100, 100),
+    }));
   return { v: MESH_PROTOCOL_VERSION, peer: o.peer, ts: o.ts, signals };
 }
 
