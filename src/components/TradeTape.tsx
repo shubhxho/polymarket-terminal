@@ -55,6 +55,14 @@ export function TradeTape({
               onClick={() => {
                 if (t.slug) go({ fn: "DES", slug: t.slug, kind: "market" }, `DES ${t.slug}`);
               }}
+              role={t.slug ? "button" : undefined}
+              tabIndex={t.slug ? 0 : undefined}
+              onKeyDown={(e) => {
+                if ((e.key === "Enter" || e.key === " ") && t.slug) {
+                  e.preventDefault();
+                  go({ fn: "DES", slug: t.slug, kind: "market" }, `DES ${t.slug}`);
+                }
+              }}
               className={`flex items-center gap-1 border-b border-edge/30 px-1 ${
                 dense ? "py-0" : "py-[2px]"
               } ${t.slug ? "cursor-pointer hover:bg-surface-2" : ""} ${
