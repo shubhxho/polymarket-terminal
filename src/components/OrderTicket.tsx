@@ -60,6 +60,8 @@ export function OrderTicket({
 
   const [side, setSide] = useState<Side>("BUY");
   const [orderType, setOrderType] = useState<OrderType>("GTC");
+  /** Minutes until a GTD order expires; ignored for GTC/FOK. */
+  const [gtdMins, setGtdMins] = useState("60");
   const [priceCents, setPriceCents] = useState("");
   const [size, setSize] = useState("");
   const [live, setLive] = useState(false);
@@ -82,6 +84,8 @@ export function OrderTicket({
   const shares = parseFloat(size);
   const notional = Number.isFinite(price) && Number.isFinite(shares) ? price * shares : NaN;
 
+  const gtdMinutes = parseFloat(gtdMins);
+
   const connected = status === "connected" && !!address;
 
   const problem = useMemo(() => {
@@ -90,8 +94,9 @@ export function OrderTicket({
     if (!Number.isFinite(price) || price <= 0 || price >= 1) return "price must be 1–99¢";
     if (!Number.isFinite(shares) || shares <= 0) return "enter a share size";
     if (!Number.isFinite(notional) || notional < MIN_NOTIONAL) return "min order is $1";
+    if (orderType === "GTD" && !(gtdMinutes > 0)) return "set a GTD expiry in minutes";
     return null;
-  }, [tokenId, acceptingOrders, price, shares, notional]);
+  }, [tokenId, acceptingOrders, price, shares, notional, orderType, gtdMinutes]);
 
   /** Requirements that only matter once you actually go live. */
   const liveProblem = useMemo(() => {
@@ -114,6 +119,12 @@ export function OrderTicket({
     signer: address ?? "",
     negRisk,
     signatureType: sigType,
+    // GTD only: unix seconds when the resting order should expire. Left off for
+    // GTC/FOK so buildOrder emits "0".
+    expiration:
+      orderType === "GTD" && gtdMinutes > 0
+        ? Math.floor(Date.now() / 1000) + Math.round(gtdMinutes * 60)
+        : undefined,
   });
 
   const doPreview = () => {
@@ -201,9 +212,32 @@ export function OrderTicket({
           options={[
             { value: "GTC", label: "GTC", title: "Good-til-cancelled limit" },
             { value: "FOK", label: "FOK", title: "Fill-or-kill (marketable)" },
+            { value: "GTD", label: "GTD", title: "Good-til-date — expires after the set minutes" },
           ]}
         />
       </div>
+
+      {/* GTD expiry — only when the order type actually needs one. */}
+      {orderType === "GTD" ? (
+        <label className="flex items-center gap-2">
+          <span className="w-[38px] shrink-0 text-[10px] tracking-wide text-muted uppercase">
+            Expiry
+          </span>
+          <input
+            inputMode="numeric"
+            value={gtdMins}
+            onChange={(e) => setGtdMins(e.target.value)}
+            className="w-[70px] border border-edge bg-surface-2 px-1.5 py-[3px] text-tiny text-ink"
+            aria-label="GTD expiry in minutes"
+          />
+          <span className="text-[10px] text-faint">
+            minutes
+            {gtdMinutes > 0
+              ? ` · ~${new Date(Date.now() + gtdMinutes * 60000).toLocaleTimeString()}`
+              : ""}
+          </span>
+        </label>
+      ) : null}
 
       {/* Price */}
       <label className="flex items-center gap-2">

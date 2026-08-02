@@ -109,6 +109,19 @@ describe("buildOrder", () => {
     expect(built.post.salt).toBeLessThan(Number.MAX_SAFE_INTEGER);
   });
 
+  it("carries a GTD expiration in the POST body but never in the signed struct", () => {
+    const built = buildOrder(draft({ expiration: 1_900_000_000 }));
+    expect(built.post.expiration).toBe("1900000000");
+    const names = (built.typedData as { types: { Order: { name: string }[] } }).types.Order.map(
+      (t) => t.name
+    );
+    expect(names).not.toContain("expiration");
+  });
+
+  it("defaults expiration to 0 when none is given (GTC/FOK)", () => {
+    expect(buildOrder(draft()).post.expiration).toBe("0");
+  });
+
   it("routes neg-risk markets to the V2 neg-risk exchange", () => {
     const std = buildOrder(draft({ negRisk: false }));
     const neg = buildOrder(draft({ negRisk: true }));
