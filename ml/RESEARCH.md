@@ -1,8 +1,8 @@
 # Deep research → what changed in the pipeline
 
 A 97-agent deep-research pass (fan-out web search → source fetch → 3-vote
-adversarial verification → synthesis) on *how to predict short-horizon direction
-in prediction markets*. Findings below are the ones that survived verification,
+adversarial verification → synthesis) on _how to predict short-horizon direction
+in prediction markets_. Findings below are the ones that survived verification,
 each tagged with confidence and the vote, and mapped to the code change it drove.
 
 ## 1. Features — order-flow imbalance is the strongest microstructure signal `[high, 3-0]`
@@ -23,7 +23,7 @@ few minutes**.
 **→ Done:** `features_ohlcv.py` adds `signed_flow` (volume-weighted order-flow
 imbalance, sign from each candle's close-vs-open) and `intrabar_pressure`.
 **Honest result:** at the **1-hour** horizon of our best public OHLCV data,
-order-flow is *not* the top feature by GBDT gain — `extremeness`, `stoch_k`,
+order-flow is _not_ the top feature by GBDT gain — `extremeness`, `stoch_k`,
 `last`, `vol` dominate. That's consistent with the research caveat: OFI's edge
 lives at seconds-minutes; by 1h it has decayed and price-level / vol-regime
 effects take over. To exploit OFI properly needs the tick datasets in §3.
@@ -31,11 +31,11 @@ effects take over. To exploit OFI properly needs the tick datasets in §3.
 ## 2. Model class — GBDTs beat small MLP/GRU on tabular market data `[high, 3-0]`
 
 Gradient-boosted trees (XGBoost/LightGBM/CatBoost) match or beat small MLPs/GRUs
-and bespoke deep-tabular nets — including on the deep models' *own* benchmark
+and bespoke deep-tabular nets — including on the deep models' _own_ benchmark
 datasets — and win especially on the skewed, heavy-tailed feature distributions
 typical of markets.
 
-- Shwartz-Ziv & Armon, *Information Fusion* 2022 (arXiv 2106.03253): "XGBoost
+- Shwartz-Ziv & Armon, _Information Fusion_ 2022 (arXiv 2106.03253): "XGBoost
   outperforms these deep models across the datasets, including the datasets used
   in the papers that proposed the deep models."
 - McElfresh et al., NeurIPS 2023 (arXiv 2305.02997): across 19 algos × 176
@@ -52,7 +52,7 @@ ensemble member — exactly what the evidence prescribes.
 ## 3. Time-series foundation models are a baseline, not the primary `[medium, 2-1]`
 
 Chronos/TimesFM/Moirai were **not** shown to beat strong baselines. One MDPI
-benchmark ranked the Chronos family top *internally* (Chronos-Bolt-Base/Large >
+benchmark ranked the Chronos family top _internally_ (Chronos-Bolt-Base/Large >
 Tiny > TimesFM), but the "FMs beat baselines" claim was **refuted 0-3**.
 
 **→ Confirms our own result:** the H100 distillation ablation
@@ -70,7 +70,7 @@ backtest/PnL diagnostics, under rolling-origin (walk-forward) evaluation.
 
 **→ Done:** every model now reports **Brier score** (calibration) alongside AUC
 and the up-rate-spread backtest, all under the existing temporal + walk-forward
-split. *Evidence gap (honest):* no verified source in this corpus directly
+split. _Evidence gap (honest):_ no verified source in this corpus directly
 benchmarked López de Prado **purging/embargo** or **triple-barrier** labeling for
 prediction markets — so those remain standard-practice recommendations, not
 things this pass proved. The temporal split already purges HORIZON windows; a
@@ -80,17 +80,17 @@ full embargo + triple-barrier is the next step, not a claimed win.
 
 Ranked by usefulness for a microstructure direction model:
 
-| dataset | size | what it adds | access |
-|---|---|---|---|
-| **TimeSeventeen/Polymarket-v1** (HF) | ~1.2B OrderFilled trades (~2.64B rows, 49 GB) | **ground-truth on-chain aggressor direction** → real trade sign for true OFI | HF parquet |
-| **ImpliedData/prediction-markets** (HF) | 272k rows sample (of 404M fills) | 1h **OHLCV** + volume + trade_count, Polymarket + Manifold, polarity-aligned | HF parquet — **used here** |
-| BrockMisner / Mindbyte-89 crypto up/down (HF) | ~27M rows | 5m/15m crypto markets with **L1 order-book + tick fills** | HF parquet |
-| Mithilss/polymarket_minute_parquet (HF) | 192M rows | minute trade prints with **side** (buy/sell) → OFI | HF parquet |
-| thomaswmitch/kalshi-prediction-markets-betting (HF) | 1–10M | Kalshi trade tape (microstructure/price-impact) | HF parquet |
-| Oddpool (institutional) | full tape | millisecond orderbook deltas + trades, Kalshi + Polymarket, one schema | commercial |
+| dataset                                             | size                                          | what it adds                                                                 | access                     |
+| --------------------------------------------------- | --------------------------------------------- | ---------------------------------------------------------------------------- | -------------------------- |
+| **TimeSeventeen/Polymarket-v1** (HF)                | ~1.2B OrderFilled trades (~2.64B rows, 49 GB) | **ground-truth on-chain aggressor direction** → real trade sign for true OFI | HF parquet                 |
+| **ImpliedData/prediction-markets** (HF)             | 272k rows sample (of 404M fills)              | 1h **OHLCV** + volume + trade_count, Polymarket + Manifold, polarity-aligned | HF parquet — **used here** |
+| BrockMisner / Mindbyte-89 crypto up/down (HF)       | ~27M rows                                     | 5m/15m crypto markets with **L1 order-book + tick fills**                    | HF parquet                 |
+| Mithilss/polymarket_minute_parquet (HF)             | 192M rows                                     | minute trade prints with **side** (buy/sell) → OFI                           | HF parquet                 |
+| thomaswmitch/kalshi-prediction-markets-betting (HF) | 1–10M                                         | Kalshi trade tape (microstructure/price-impact)                              | HF parquet                 |
+| Oddpool (institutional)                             | full tape                                     | millisecond orderbook deltas + trades, Kalshi + Polymarket, one schema       | commercial                 |
 
-**→ Done:** `fetch_hf.py` pulls the ImpliedData OHLCV set (best *immediately
-usable* one — true OHLCV, small, permissive). The tick sets (TimeSeventeen with
+**→ Done:** `fetch_hf.py` pulls the ImpliedData OHLCV set (best _immediately
+usable_ one — true OHLCV, small, permissive). The tick sets (TimeSeventeen with
 aggressor direction; the 5m/15m order-book sets) are the upgrade path to exploit
 §1's order-flow edge at the horizon where it actually lives.
 
@@ -115,9 +115,9 @@ whether that text channel adds signal.
   English **0.892** (zh/ar 0.93, pt 0.92, hi 0.89, es 0.79). The channel is
   genuinely language-agnostic.
 - **Ablation (text vs price vs fusion), out-of-time on 596 markets / 93k
-  windows:** text-only AUC **0.610** — the question *alone* beats chance (it
+  windows:** text-only AUC **0.610** — the question _alone_ beats chance (it
   encodes category / favorite-longshot base rates). But price-only is **0.636**
-  and fusion **0.634**, so **text adds −0.002**: for *short-horizon direction*
+  and fusion **0.634**, so **text adds −0.002**: for _short-horizon direction_
   the price features already contain what the text knows. Kept as an honest
   negative — the multilingual model works, the text signal is real standalone but
   redundant with price here. It would matter more for longer-horizon / resolution

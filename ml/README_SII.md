@@ -18,13 +18,13 @@ to reproduce locally, where the models live, and how to serve them over MCP.
 markets**, CLOB history **2022-11-21 → 2026-03-04** (the `OrderFilled` era; no
 pre-Nov-2022 FPMM/AMM trades).
 
-| file | size | rows | what it gives us |
-|---|---|---|---|
-| `trades.parquet` | 28 GB | 418.3 M | processed trades, market-linked, `taker_direction` (true aggressor) + `nonusdc_side` |
-| `orderfilled.parquet` | 84 GB | 689 M | raw `OrderFilled` fills — the finest microstructure view |
-| `markets.parquet` | 85 MB | 538,587 | market metadata incl. `outcome_prices` (**resolution labels**) |
-| `quant.parquet` | 28 GB | 418.2 M | YES-normalized trade series |
-| `users.parquet` | 23 GB | 340.6 M | per-user maker/taker split, signed `token_amount` (**who** traded) |
+| file                  | size  | rows    | what it gives us                                                                     |
+| --------------------- | ----- | ------- | ------------------------------------------------------------------------------------ |
+| `trades.parquet`      | 28 GB | 418.3 M | processed trades, market-linked, `taker_direction` (true aggressor) + `nonusdc_side` |
+| `orderfilled.parquet` | 84 GB | 689 M   | raw `OrderFilled` fills — the finest microstructure view                             |
+| `markets.parquet`     | 85 MB | 538,587 | market metadata incl. `outcome_prices` (**resolution labels**)                       |
+| `quant.parquet`       | 28 GB | 418.2 M | YES-normalized trade series                                                          |
+| `users.parquet`       | 23 GB | 340.6 M | per-user maker/taker split, signed `token_amount` (**who** traded)                   |
 
 ## Architecture at a glance
 
@@ -61,54 +61,60 @@ pre-Nov-2022 FPMM/AMM trades).
 ## File → role
 
 ### Loader
-| file | role |
-|---|---|
+
+| file           | role                                                                                                                                                                                                                     |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `fetch_sii.py` | Stream `trades` + `markets` from HF into `ml/data/`: `sii_series.json` (time-bucketed OHLCV + flow per token) and `sii_resolve.json` (labeled resolution snapshots). `--sample` for a fast ~2000-row pull used by tests. |
 
 ### Feature families (6) → unified builder
-| file | family |
-|---|---|
-| `features_flow.py` | true-aggressor order flow (bucketed `taker_direction`): imbalance, VPIN-style toxicity, buy-pressure |
-| `features_resolve.py` | resolution snapshot: mid-life price / time-remaining / momentum / flow → terminal YES/NO |
-| `features_smart.py` | smart-money / behavioral features from the `users.parquet` tape (who is on each side) |
-| `features_crossmarket.py` | neg-risk basket / cross-market arb — sibling legs of one event should sum to ~1 |
-| `features_event.py` | event-level relative-value / co-movement — a market's move *relative to its peers* |
-| `features_micro.py` | book-free microstructure from raw `orderfilled` fills (effective spread, Kyle's λ, toxicity) |
-| `features_all.py` | composes all six into **66** namespaced features (`flow.vpin`, `micro.kyle_lambda`, …) with per-family spans; the seam the mega trainer consumes |
+
+| file                      | family                                                                                                                                           |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `features_flow.py`        | true-aggressor order flow (bucketed `taker_direction`): imbalance, VPIN-style toxicity, buy-pressure                                             |
+| `features_resolve.py`     | resolution snapshot: mid-life price / time-remaining / momentum / flow → terminal YES/NO                                                         |
+| `features_smart.py`       | smart-money / behavioral features from the `users.parquet` tape (who is on each side)                                                            |
+| `features_crossmarket.py` | neg-risk basket / cross-market arb — sibling legs of one event should sum to ~1                                                                  |
+| `features_event.py`       | event-level relative-value / co-movement — a market's move _relative to its peers_                                                               |
+| `features_micro.py`       | book-free microstructure from raw `orderfilled` fills (effective spread, Kyle's λ, toxicity)                                                     |
+| `features_all.py`         | composes all six into **66** namespaced features (`flow.vpin`, `micro.kyle_lambda`, …) with per-family spans; the seam the mega trainer consumes |
 
 ### Base models (Modal H100, one specialist each)
-| file | model | HF repo |
-|---|---|---|
+
+| file               | model                                                                                                | HF repo                                |
+| ------------------ | ---------------------------------------------------------------------------------------------------- | -------------------------------------- |
 | `modal_resolve.py` | calibrated **resolution probability** — P(market resolves YES) from mid-market state (flagship base) | `shubhxho/polymarket-resolution-model` |
-| `modal_flow.py` | short-horizon **direction** from true order-flow imbalance at 418 M-trade scale | `shubhxho/polymarket-flow-model` |
-| `modal_smart.py` | **smart-money** lean — forward-return signal from the profitable-wallet cohort | `shubhxho/polymarket-smartmoney-model` |
+| `modal_flow.py`    | short-horizon **direction** from true order-flow imbalance at 418 M-trade scale                      | `shubhxho/polymarket-flow-model`       |
+| `modal_smart.py`   | **smart-money** lean — forward-return signal from the profitable-wallet cohort                       | `shubhxho/polymarket-smartmoney-model` |
 
 ### Advanced models
-| file | model | HF repo |
-|---|---|---|
-| `modal_ensemble.py` + `ensemble.py` | calibrated **meta-stacker** blending the three base models; `ensemble.py` is the pure-stdlib combiner (`blend`) reused everywhere | `shubhxho/polymarket-ensemble-model` |
-| `modal_mega.py` | **mega unified trainer** over the union of all six feature families; reports which family earns its place | `shubhxho/polymarket-mega-model` |
-| `modal_transformer.py` | **trade-tape Transformer** — causal self-attention over the raw per-trade tape (multi-task direction head) | `shubhxho/polymarket-transformer-model` |
+
+| file                                | model                                                                                                                             | HF repo                                 |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| `modal_ensemble.py` + `ensemble.py` | calibrated **meta-stacker** blending the three base models; `ensemble.py` is the pure-stdlib combiner (`blend`) reused everywhere | `shubhxho/polymarket-ensemble-model`    |
+| `modal_mega.py`                     | **mega unified trainer** over the union of all six feature families; reports which family earns its place                         | `shubhxho/polymarket-mega-model`        |
+| `modal_transformer.py`              | **trade-tape Transformer** — causal self-attention over the raw per-trade tape (multi-task direction head)                        | `shubhxho/polymarket-transformer-model` |
 
 ### Tooling
-| file | role |
-|---|---|
-| `signal_engine.py` | best-signal composer: `ensemble.blend` → edge vs. live price → BUY_YES / BUY_NO / HOLD gated by `MIN_EDGE`, with confidence fused from backtested reliability |
-| `backtest.py` | signal-quality harness — realized PnL, hit-rate, Sharpe, drawdown, calibration/decile, no-lookahead threshold sweep |
-| `evaluate_all.py` | model leaderboard — runs every model's reported metrics *and* re-reproduces them through the same `backtest.run_backtest` holdout (AUC / Brier / log-loss / ECE) |
-| `train_resolve.py` | laptop-sized **local MLX** counterpart to `modal_resolve.py`; out-of-time split by market end time, reuses `train_seq` model + eval |
+
+| file               | role                                                                                                                                                             |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `signal_engine.py` | best-signal composer: `ensemble.blend` → edge vs. live price → BUY_YES / BUY_NO / HOLD gated by `MIN_EDGE`, with confidence fused from backtested reliability    |
+| `backtest.py`      | signal-quality harness — realized PnL, hit-rate, Sharpe, drawdown, calibration/decile, no-lookahead threshold sweep                                              |
+| `evaluate_all.py`  | model leaderboard — runs every model's reported metrics _and_ re-reproduces them through the same `backtest.run_backtest` holdout (AUC / Brier / log-loss / ECE) |
+| `train_resolve.py` | laptop-sized **local MLX** counterpart to `modal_resolve.py`; out-of-time split by market end time, reuses `train_seq` model + eval                              |
 
 ### Serving
-| file | role |
-|---|---|
-| `mcp_signals_pro.py` | MCP server **`pmt-signals-pro`** — the resolution model. Tools: `resolution_signal`, `scan_resolution`, `model_info` |
-| `mcp_ensemble.py` | MCP server **`pmt-ensemble`** — the fused best-signal. Tools: `best_signal`, `scan_best`, `model_info` |
-| `push_sii.py` | upload the suite to the Hub (resolution is primary; ships `RESEARCH_SII.md` alongside it). `--dry-run`, `--only <model>` |
+
+| file                 | role                                                                                                                     |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `mcp_signals_pro.py` | MCP server **`pmt-signals-pro`** — the resolution model. Tools: `resolution_signal`, `scan_resolution`, `model_info`     |
+| `mcp_ensemble.py`    | MCP server **`pmt-ensemble`** — the fused best-signal. Tools: `best_signal`, `scan_best`, `model_info`                   |
+| `push_sii.py`        | upload the suite to the Hub (resolution is primary; ships `RESEARCH_SII.md` alongside it). `--dry-run`, `--only <model>` |
 
 ## Honest-evaluation stance (shared by every model above)
 
 - **Walk-forward split by market `end_date`** — training markets resolve strictly
-  *before* test markets, so no resolved outcome leaks backward.
+  _before_ test markets, so no resolved outcome leaks backward.
 - **Calibration over accuracy** — Brier, log-loss and an ECE / reliability table
   are the product for the resolution and ensemble models; a well-calibrated 0.65
   beats an over-confident 0.75. Resolution predictions are isotonic-calibrated
@@ -118,7 +124,7 @@ pre-Nov-2022 FPMM/AMM trades).
   Anything printing 0.9+ is leakage, not edge.
 - **Smoke AUCs are not edge.** Every `modal_*.py` has a `--smoke` path that runs
   the full pipeline on **synthetic, planted-signal** data with pure stdlib (no
-  GPU, no Modal). Those numbers prove the *code path*, not real predictive power.
+  GPU, no Modal). Those numbers prove the _code path_, not real predictive power.
   Real metrics are **pending the H100 runs** and land in `ml/data/*_metrics.json`
   and on the model cards.
 
@@ -170,13 +176,13 @@ python  ml/push_sii.py           # or push any present artifacts to their repos
 
 ## Model repos (HF Hub)
 
-| model | repo |
-|---|---|
-| resolution (primary) | [`shubhxho/polymarket-resolution-model`](https://huggingface.co/shubhxho/polymarket-resolution-model) |
-| order-flow direction | [`shubhxho/polymarket-flow-model`](https://huggingface.co/shubhxho/polymarket-flow-model) |
-| smart-money | [`shubhxho/polymarket-smartmoney-model`](https://huggingface.co/shubhxho/polymarket-smartmoney-model) |
-| meta-ensemble | [`shubhxho/polymarket-ensemble-model`](https://huggingface.co/shubhxho/polymarket-ensemble-model) |
-| mega unified | [`shubhxho/polymarket-mega-model`](https://huggingface.co/shubhxho/polymarket-mega-model) |
+| model                  | repo                                                                                                    |
+| ---------------------- | ------------------------------------------------------------------------------------------------------- |
+| resolution (primary)   | [`shubhxho/polymarket-resolution-model`](https://huggingface.co/shubhxho/polymarket-resolution-model)   |
+| order-flow direction   | [`shubhxho/polymarket-flow-model`](https://huggingface.co/shubhxho/polymarket-flow-model)               |
+| smart-money            | [`shubhxho/polymarket-smartmoney-model`](https://huggingface.co/shubhxho/polymarket-smartmoney-model)   |
+| meta-ensemble          | [`shubhxho/polymarket-ensemble-model`](https://huggingface.co/shubhxho/polymarket-ensemble-model)       |
+| mega unified           | [`shubhxho/polymarket-mega-model`](https://huggingface.co/shubhxho/polymarket-mega-model)               |
 | trade-tape transformer | [`shubhxho/polymarket-transformer-model`](https://huggingface.co/shubhxho/polymarket-transformer-model) |
 
 ## Serving over MCP
