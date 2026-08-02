@@ -169,8 +169,74 @@ def train_trader_gpu(series):
     return out
 
 
+tabpfn_image = (
+    modal.Image.debian_slim()
+    .pip_install("numpy>=1.26", "lightgbm>=4.0", "torch", "tabpfn")
+    .add_local_python_source(*_SRC)
+)
+
+
+@app.function(image=tabpfn_image, gpu="T4", timeout=1800)
+def train_tabpfn(series, horizon: int = 16):
+    """SOTA tabular foundation model: TabPFN v2 on the derivative family. TabPFN
+    is a prior-data-fitted transformer that in-context-learns a small tabular set
+    in one forward pass — the current SOTA on small tabular. Subsample train to its
+    supported size and compare out-of-time AUC to the GBDT (0.651 at H=4)."""
+    import numpy as np
+    from tabpfn import TabPFNClassifier
+    import train_deriv_trader as T
+
+    T.HORIZON = horizon
+    rbs = [r for r in (T._rows(p) for p in series) if len(r) >= 5]
+
+    def carve(rbs, frac):
+        a, b = [], []
+        for r in rbs:
+            c = int(len(r) * (1 - frac))
+            a += r[: max(0, c - horizon)]
+            b += r[c:]
+        return a, b
+
+    tr, va = carve(rbs, 0.2)
+
+    def M(rs):
+        return (np.array([x[0] for x in rs]), np.array([x[1] for x in rs]),
+                np.array([x[2] for x in rs], float))
+
+    Xtr, ytr, _ = M(tr)
+    Xva, yva, fva = M(va)
+
+    # TabPFN caps context; subsample a class-balanced 10k train slice.
+    rng = np.random.RandomState(0)
+    idx = rng.permutation(len(Xtr))[:10000]
+    clf = TabPFNClassifier(device="cuda")
+    clf.fit(Xtr[idx], ytr[idx])
+    prob = clf.predict_proba(Xva)[:, 1]
+
+    def auc(s, y):
+        o = np.argsort(s, kind="mergesort"); ss = s[o]; rr = np.empty(len(s)); i = 0
+        while i < len(s):
+            j = i
+            while j < len(s) and ss[j] == ss[i]:
+                j += 1
+            rr[i:j] = (i + j - 1) / 2 + 1; i = j
+        rk = np.empty(len(s)); rk[o] = rr
+        P = y.sum(); N = len(y) - P
+        return 0.5 if P == 0 or N == 0 else float((rk[y > 0].sum() - P * (P + 1) / 2) / (P * N))
+
+    order = np.argsort(prob)
+    k = max(1, int(len(fva) * 0.2))
+    ss = [-float(fva[i]) - 0.005 for i in order[-k:]]
+    m = sum(ss) / len(ss)
+    sd = (sum((x - m) ** 2 for x in ss) / len(ss)) ** 0.5
+    sharpe = m / sd * (len(ss) ** 0.5) if sd > 0 else 0.0
+    return {"model": "TabPFNv2", "horizon": horizon, "n_train_used": len(idx),
+            "oot_auc": round(auc(prob, yva), 4),
+            "selective_short_sharpe_fee0.005": round(sharpe, 3)}
+
+
 @app.local_entrypoint()
-def main(horizons: str = "4,8,16,32", gpu: bool = False):
+def main(horizons: str = "4,8,16,32", gpu: bool = False, tabpfn: bool = False):
     import json
     import os
 
@@ -195,6 +261,13 @@ def main(horizons: str = "4,8,16,32", gpu: bool = False):
     print(f"\ntrader (CPU/LightGBM) H={trader['horizon']} thr={trader['short_threshold']}: "
           f"fee 0.005 Sharpe {op['sharpe']:+.2f} (pnl {op['pnl']:+.1f}, "
           f"{op['n_trades']} shorts) vs always-short {op['always_short_sharpe']:+.2f}")
+
+    if tabpfn:
+        for h in (4, 16):
+            t = train_tabpfn.remote(series, h)
+            print(f"\nSOTA {t['model']} H={t['horizon']}: OOT AUC {t['oot_auc']} "
+                  f"(train {t['n_train_used']}), selective-short Sharpe "
+                  f"{t['selective_short_sharpe_fee0.005']:+.2f} @0.5% fee")
 
     if gpu:
         g = train_trader_gpu.remote(series)
