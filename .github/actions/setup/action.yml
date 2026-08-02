@@ -1,0 +1,24 @@
+name: Setup bun + deps
+description: Pinned bun toolchain with a cached, frozen install. Assumes the repo
+  is already checked out.
+
+inputs:
+  bun-version:
+    description: Bun version to pin.
+    default: "1.3.14"
+
+runs:
+  using: composite
+  steps:
+    - uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: ${{ inputs.bun-version }}
+    - name: Cache bun install
+      uses: actions/cache@v4
+      with:
+        path: ~/.bun/install/cache
+        key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+        restore-keys: bun-${{ runner.os }}-
+    - name: Install (frozen)
+      shell: bash
+      run: bun install --frozen-lockfile
