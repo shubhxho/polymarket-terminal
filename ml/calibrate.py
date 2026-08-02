@@ -94,6 +94,23 @@ def _brier(probs: list[float], labels: list[float]) -> float:
     return sum((p - y) ** 2 for p, y in zip(probs, labels)) / len(probs)
 
 
+def _reliability_curve(probs: list[float], labels: list[float], bins: int = 10) -> list[dict]:
+    """Per-bin (mean confidence, empirical accuracy, count) — the points a
+    reliability diagram plots against the diagonal. Only populated bins are
+    emitted so the web side can render without null-handling."""
+    acc = [[0.0, 0.0, 0] for _ in range(bins)]  # sum(conf), sum(label), n
+    for p, y in zip(probs, labels):
+        b = min(bins - 1, int(p * bins))
+        acc[b][0] += p
+        acc[b][1] += y
+        acc[b][2] += 1
+    return [
+        {"conf": round(s / n, 4), "acc": round(h / n, 4), "n": n}
+        for s, h, n in acc
+        if n > 0
+    ]
+
+
 def main() -> None:
     mx.random.seed(SEED)
     with open(os.path.join(DATA, "series.json")) as f:
@@ -115,18 +132,32 @@ def main() -> None:
     logits = model(seq, feat).reshape(-1).tolist()
     labels = y.tolist()
 
+    # Deployed temperature: fit on all of validation (1 parameter, so no
+    # meaningful overfit from re-using the same set).
     t = _fit_temperature(logits, labels)
     raw = [_sigmoid(z) for z in logits]
     cal = [_sigmoid(z / t) for z in logits]
+
+    # Honest held-out ECE: fit the temperature on the first time-half of
+    # validation and score it on the second. `ece_after` on the full set can
+    # only flatter the fit; this is the number to trust — and it is reported
+    # alongside so the two can be compared.
+    mid = len(logits) // 2
+    t_held = _fit_temperature(logits[:mid], labels[:mid])
+    ece_heldout = _ece([_sigmoid(z / t_held) for z in logits[mid:]], labels[mid:])
+
     report = {
         "temperature": t,
         "val_n": len(labels),
         "ece_before": round(_ece(raw, labels), 5),
         "ece_after": round(_ece(cal, labels), 5),
+        "ece_heldout": round(ece_heldout, 5),
         "brier_before": round(_brier(raw, labels), 5),
         "brier_after": round(_brier(cal, labels), 5),
+        "reliability": _reliability_curve(cal, labels),
     }
-    print(json.dumps(report, indent=2))
+    print(json.dumps({k: v for k, v in report.items() if k != "reliability"}, indent=2))
+    print(f"reliability bins: {len(report['reliability'])}")
 
     # Merge temperature + report into the exported model the web bundle loads.
     doc = json.load(open(OUT))

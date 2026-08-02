@@ -22,7 +22,12 @@ import {
   type Signal,
   type SignalKind,
 } from "@/lib/signals";
-import { MODEL_AUC, MODEL_CALIBRATION } from "@/lib/mlSignal";
+import {
+  MODEL_AUC,
+  MODEL_CALIBRATION,
+  type Calibration,
+  type ReliabilityBin,
+} from "@/lib/mlSignal";
 
 /** Declared order of the union, so the chip row and the legend never reshuffle. */
 const KINDS = Object.keys(SIGNAL_META) as SignalKind[];
@@ -953,19 +958,89 @@ function ModelPanel({ row }: { row: MarketSignals }) {
           />
         </div>
 
+        {MODEL_CALIBRATION ? <ReliabilityDiagram cal={MODEL_CALIBRATION} /> : null}
+
         <p className="text-[11px] leading-[15px] text-faint">
           {(m.auc * 100).toFixed(0)}% AUC out of sample — a real but weak edge, so it only tilts the
           ranking toward markets it agrees with. It never overrides the book.
           {MODEL_CALIBRATION ? (
             <>
               {" "}
-              Probability is temperature-calibrated on validation (reliability error{" "}
-              {(MODEL_CALIBRATION.ece_after * 100).toFixed(1)}%), so the number means what it says.
+              Probability is temperature-calibrated on validation; held-out reliability error{" "}
+              {(MODEL_CALIBRATION.ece_heldout * 100).toFixed(1)}% (down from{" "}
+              {(MODEL_CALIBRATION.ece_before * 100).toFixed(1)}%), so the number means what it says.
             </>
           ) : null}
         </p>
       </div>
     </Panel>
+  );
+}
+
+/**
+ * Reliability diagram — the "does 70% mean 70%?" chart.
+ *
+ * Predicted probability runs along x, the empirical hit rate up y, both on the
+ * same 0..1 scale, so a perfectly calibrated model traces the dotted diagonal.
+ * The model's line is drawn over it and each point is sized by how many
+ * validation windows fell in that bin, so a wobble on a bin of four is visibly
+ * lighter than a true miss on a bin of ten thousand. This is the picture behind
+ * the single ECE number — the honest bridge from what the model claims to what
+ * actually happened.
+ */
+function ReliabilityDiagram({ cal }: { cal: Calibration }) {
+  const bins = cal.reliability;
+  if (bins.length < 2) return null;
+
+  const S = 100;
+  const P = 9;
+  const toX = (v: number) => P + clamp(v, 0, 1) * (S - 2 * P);
+  const toY = (v: number) => S - (P + clamp(v, 0, 1) * (S - 2 * P));
+  const maxN = Math.max(...bins.map((b) => b.n));
+  const line = bins.map(
+    (b: ReliabilityBin) => `${toX(b.conf).toFixed(1)},${toY(b.acc).toFixed(1)}`
+  );
+
+  return (
+    <div title="Reliability diagram: predicted probability (x) against the actual hit rate on validation (y). The dotted line is perfect calibration; the model's line hugging it is what the low ECE measures. Points are sized by how many windows landed in each bin.">
+      <div className="eyebrow mb-1">Reliability</div>
+      <svg viewBox={`0 0 ${S} ${S}`} className="w-full" style={{ maxHeight: 132 }} aria-hidden>
+        <rect
+          x={P}
+          y={P}
+          width={S - 2 * P}
+          height={S - 2 * P}
+          fill="none"
+          strokeWidth={0.5}
+          className="stroke-current text-faint"
+        />
+        <line
+          x1={toX(0)}
+          y1={toY(0)}
+          x2={toX(1)}
+          y2={toY(1)}
+          strokeWidth={0.7}
+          strokeDasharray="2 2"
+          className="stroke-current text-faint"
+        />
+        <polyline
+          points={line.join(" ")}
+          fill="none"
+          strokeWidth={1.1}
+          strokeLinejoin="round"
+          className="stroke-current text-accent"
+        />
+        {bins.map((b, i) => (
+          <circle
+            key={i}
+            cx={toX(b.conf)}
+            cy={toY(b.acc)}
+            r={1 + 2.6 * Math.sqrt(b.n / maxN)}
+            className="fill-current text-accent"
+          />
+        ))}
+      </svg>
+    </div>
   );
 }
 

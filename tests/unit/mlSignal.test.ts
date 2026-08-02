@@ -49,6 +49,28 @@ describe("temperature calibration", () => {
     expect(MODEL_CALIBRATION!.ece_after).toBeLessThanOrEqual(MODEL_CALIBRATION!.ece_before);
   });
 
+  test("held-out ECE is reported and still beats the raw model", () => {
+    // The honest number — fit on one half, scored on the other — must be present
+    // and better than uncalibrated, even if looser than the in-fit figure.
+    expect(MODEL_CALIBRATION!.ece_heldout).toBeGreaterThan(0);
+    expect(MODEL_CALIBRATION!.ece_heldout).toBeLessThan(MODEL_CALIBRATION!.ece_before);
+  });
+
+  test("the reliability curve is well-formed and accounts for every validation window", () => {
+    const bins = MODEL_CALIBRATION!.reliability;
+    expect(bins.length).toBeGreaterThanOrEqual(2);
+    let total = 0;
+    for (const b of bins) {
+      expect(b.conf).toBeGreaterThanOrEqual(0);
+      expect(b.conf).toBeLessThanOrEqual(1);
+      expect(b.acc).toBeGreaterThanOrEqual(0);
+      expect(b.acc).toBeLessThanOrEqual(1);
+      expect(b.n).toBeGreaterThan(0);
+      total += b.n;
+    }
+    expect(total).toBe(MODEL_CALIBRATION!.val_n);
+  });
+
   // The parity fixtures above already encode the temperature: they were captured
   // WITH `logit / T`, so if the forward pass ever stopped applying it every one
   // of them would fail. This is the guard that the calibration is actually live.

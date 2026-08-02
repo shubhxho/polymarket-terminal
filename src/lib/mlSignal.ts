@@ -36,8 +36,25 @@ export const MODEL_AUC = model.val_auc;
  */
 export const MODEL_TEMPERATURE: number = (model as { temperature?: number }).temperature ?? 1;
 
+/** One point of the reliability diagram: mean predicted confidence vs the
+ *  empirical hit rate in that bin, and how many validation windows landed in it. */
+export type ReliabilityBin = { readonly conf: number; readonly acc: number; readonly n: number };
+
+export type Calibration = {
+  readonly temperature: number;
+  readonly val_n: number;
+  readonly ece_before: number;
+  readonly ece_after: number;
+  /** ECE from fitting T on the first time-half of validation and scoring the
+   *  second — the honest number, free of the calibrator's own overfit. */
+  readonly ece_heldout: number;
+  readonly brier_before: number;
+  readonly brier_after: number;
+  readonly reliability: readonly ReliabilityBin[];
+};
+
 /** Reliability of the calibrated probabilities, straight from validation. */
-export const MODEL_CALIBRATION = (model as { calibration?: Record<string, number> }).calibration;
+export const MODEL_CALIBRATION = (model as { calibration?: Calibration }).calibration;
 
 export type ModelRead = {
   /** Probability that YES drifts up over the next few hours, 0..1. */
