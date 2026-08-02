@@ -8,6 +8,7 @@ import { Chip, Empty, ErrorBox, Field, Loading, Panel } from "@/components/ui/Pa
 import { usePoll } from "@/hooks/usePoll";
 import { cents, compact, dirClass, signed, timeToExpiry, truncate, usd } from "@/lib/format";
 import { panelVariants, staggerContainer } from "@/lib/motion";
+import { clamp } from "@/lib/quant";
 import {
   SIGNAL_META,
   type ArbOpportunity,
@@ -544,7 +545,7 @@ function Heat({ value }: { value: number }) {
   return (
     <span className="flex w-[58px] shrink-0 items-center justify-end gap-1.5">
       <span className="h-[6px] w-[28px] shrink-0 overflow-hidden rounded-sm border border-edge bg-surface-2">
-        <span className="block h-full bg-accent" style={{ width: `${clampPct(value)}%` }} />
+        <span className="block h-full bg-accent" style={{ width: `${clamp(value, 0, 100)}%` }} />
       </span>
       <span className="w-[20px] text-right text-accent">{value}</span>
     </span>
@@ -581,7 +582,7 @@ function Conviction({ value }: { value: number }) {
       title="Conviction, 0-100: how much the directional signals agree with each other. High heat with low conviction means a busy market with no consensus."
     >
       <span className="h-[6px] w-[22px] shrink-0 overflow-hidden rounded-sm border border-edge bg-surface-2">
-        <span className="block h-full bg-accent-2" style={{ width: `${clampPct(value)}%` }} />
+        <span className="block h-full bg-accent-2" style={{ width: `${clamp(value, 0, 100)}%` }} />
       </span>
       <span className="w-[20px] text-right text-muted">{value}</span>
     </span>
@@ -607,12 +608,12 @@ function Badge({ signal }: { signal: Signal }) {
   return (
     <span
       className="inline-flex shrink-0"
-      style={{ opacity: 0.35 + 0.65 * clamp01(signal.confidence) }}
+      style={{ opacity: 0.35 + 0.65 * clamp(signal.confidence, 0, 1) }}
     >
       <Chip
         tone={badgeTone(signal)}
         title={`${meta.label} · ${signal.headline} — ${signal.detail} Confidence ${(
-          clamp01(signal.confidence) * 100
+          clamp(signal.confidence, 0, 1) * 100
         ).toFixed(0)}%.`}
       >
         {meta.label}
@@ -746,7 +747,7 @@ function QuantField({
 
 function SignalDetail({ signal }: { signal: Signal }) {
   const meta = SIGNAL_META[signal.kind];
-  const confidence = clamp01(signal.confidence);
+  const confidence = clamp(signal.confidence, 0, 1);
 
   return (
     <div className="border-t border-edge pt-2 first:border-0 first:pt-0">
@@ -758,7 +759,7 @@ function SignalDetail({ signal }: { signal: Signal }) {
         >
           <span
             className="block h-full bg-accent"
-            style={{ width: `${clampPct(signal.strength)}%` }}
+            style={{ width: `${clamp(signal.strength, 0, 100)}%` }}
           />
         </span>
         <span className="w-[20px] shrink-0 text-[11px] text-faint">{signal.strength}</span>
@@ -807,14 +808,4 @@ function ConfidenceDots({ value }: { value: number }) {
       ))}
     </span>
   );
-}
-
-/* ── Helpers ──────────────────────────────────────────────────────────── */
-
-function clampPct(n: number): number {
-  return Math.max(0, Math.min(100, n));
-}
-
-function clamp01(n: number): number {
-  return Math.max(0, Math.min(1, n));
 }

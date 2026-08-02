@@ -88,6 +88,8 @@ export function useLocalStorage<T>(
       }
       notify(key);
     },
+    // Reads `initial` as a first-write fallback but keys only on `key`: callers
+    // pass a fresh `initial` literal each render, so depending on it would churn.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [key]
   );
