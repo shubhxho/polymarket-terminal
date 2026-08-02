@@ -4,6 +4,10 @@ import { buildOrder, isAddress, roundToTick, SIG_TYPE, type OrderDraft } from "@
 const EOA = "0x1111111111111111111111111111111111111111";
 const FUNDER = "0x2222222222222222222222222222222222222222";
 
+/** The EIP-712 verifying contract a built order will be signed against. */
+const addrOf = (b: ReturnType<typeof buildOrder>) =>
+  (b.typedData as { domain: { verifyingContract: string } }).domain.verifyingContract;
+
 function draft(over: Partial<OrderDraft> = {}): OrderDraft {
   return {
     side: "BUY",
@@ -86,8 +90,6 @@ describe("buildOrder", () => {
   it("routes neg-risk markets to the neg-risk exchange", () => {
     const std = buildOrder(draft({ negRisk: false }));
     const neg = buildOrder(draft({ negRisk: true }));
-    const addrOf = (b: typeof std) =>
-      (b.typedData as { domain: { verifyingContract: string } }).domain.verifyingContract;
     expect(addrOf(std)).not.toBe(addrOf(neg));
     expect(addrOf(neg)).toBe("0xC5d563A36AE78145C45a50134d48A1215220f80a");
   });
