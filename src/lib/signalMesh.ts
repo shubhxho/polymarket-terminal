@@ -105,8 +105,14 @@ export function decodeMessage(raw: string): MeshMessage | null {
 /**
  * Fold a decoded message into the mesh state and prune peers that have gone
  * quiet past `PEER_TTL_MS`. Pure: returns a new map, so React state updates
- * cleanly and a dropped peer's stale opinions never linger on screen. A peer's
- * own id is never merged (a terminal does not echo itself into the mesh).
+ * cleanly and a dropped peer's stale opinions never linger on screen.
+ *
+ * A frame is accepted only if it is strictly newer than what we already hold for
+ * that peer. That single rule does three jobs: it drops out-of-order frames,
+ * makes replays idempotent, and — crucially — lets peers **gossip** each other's
+ * frames without looping forever, because a relayed copy of a frame we have
+ * already seen carries the same `ts` and is ignored. A terminal never merges its
+ * own id, so its signals cannot echo back in through a neighbour.
  */
 export function mergeRemote(
   state: MeshState,
@@ -115,11 +121,30 @@ export function mergeRemote(
   selfId: string
 ): MeshState {
   const next = new Map(state);
-  if (msg.peer !== selfId) next.set(msg.peer, { ts: msg.ts, signals: msg.signals });
+  if (msg.peer !== selfId) {
+    const cur = next.get(msg.peer);
+    if (!cur || msg.ts > cur.ts) next.set(msg.peer, { ts: msg.ts, signals: msg.signals });
+  }
   for (const [peer, s] of next) {
     if (now - s.ts > PEER_TTL_MS) next.delete(peer);
   }
   return next;
+}
+
+/**
+ * Every peer-frame this node should forward to a neighbour so the mesh becomes
+ * transitive: a new link learns everyone we already know (minus the neighbour's
+ * own frame, which it authored). Combined with the newer-only rule in
+ * `mergeRemote`, a chain A–B–C gives A a view of C through B with no O(n²)
+ * handshakes and no relay loops.
+ */
+export function relayFrames(state: MeshState, exceptPeer?: string): MeshMessage[] {
+  const out: MeshMessage[] = [];
+  for (const [peer, s] of state) {
+    if (peer === exceptPeer) continue;
+    out.push({ v: MESH_PROTOCOL_VERSION, peer, ts: s.ts, signals: s.signals });
+  }
+  return out;
 }
 
 /** Drop every peer that has not refreshed inside the TTL. */

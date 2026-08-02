@@ -8,7 +8,9 @@ import { Chip, Empty, ErrorBox, Field, Loading, Panel } from "@/components/ui/Pa
 import { usePoll } from "@/hooks/usePoll";
 import { useMarketSocket } from "@/hooks/useMarketSocket";
 import { useLiveModel } from "@/hooks/useLiveModel";
+import { useMesh } from "@/components/MeshProvider";
 import type { LiveRead } from "@/lib/liveModel";
+import type { Consensus } from "@/lib/signalMesh";
 import { cents, compact, dirClass, signed, timeToExpiry, truncate, usd } from "@/lib/format";
 import { panelVariants, staggerContainer } from "@/lib/motion";
 import { clamp } from "@/lib/quant";
@@ -79,6 +81,10 @@ export default function SignalsScreen() {
   );
   const feed = useMarketSocket(liveTokens, liveTokens.length > 0);
   const liveModel = useLiveModel(data?.markets ?? [], feed);
+
+  // Desk consensus from the P2P mesh, when peers are connected — the scanner
+  // marks a market other terminals independently agree on.
+  const mesh = useMesh();
 
   const [active, setActive] = useState<readonly SignalKind[]>([]);
   const [sel, setSel] = useState(0);
@@ -209,6 +215,14 @@ export default function SignalsScreen() {
                 title="Model is re-scoring live off the market socket between the 20-second polls."
               >
                 <span className="dot" /> live
+              </span>
+            ) : null}
+            {mesh.peers.size > 0 ? (
+              <span
+                className="text-accent-2"
+                title={`Signal mesh: ${mesh.peers.size} peer(s) over ${mesh.links} link(s) sharing reads. Ranked rows the desk agrees on are marked.`}
+              >
+                desk {mesh.peers.size}
               </span>
             ) : null}
             <span>every 20s</span>
@@ -415,6 +429,7 @@ export default function SignalsScreen() {
                   index={i}
                   row={m}
                   live={liveModel.get(m.market.id)}
+                  desk={mesh.consensusMap.get(m.market.id || m.market.slug)}
                   selected={i === sel}
                   onSelect={() => setSel(i)}
                   onOpen={() => openMarket(m)}
@@ -553,6 +568,7 @@ function SignalRow({
   index,
   row,
   live,
+  desk,
   selected,
   onSelect,
   onOpen,
@@ -560,6 +576,7 @@ function SignalRow({
   index: number;
   row: MarketSignals;
   live?: LiveRead;
+  desk?: Consensus;
   selected: boolean;
   onSelect: () => void;
   onOpen: () => void;
@@ -585,6 +602,7 @@ function SignalRow({
       <span className="w-[22px] shrink-0 text-right text-faint">{index + 1}</span>
       <Heat value={row.heat} />
       <span className="flex min-w-0 flex-1 items-baseline gap-2">
+        <DeskDot desk={desk} />
         <span className="truncate text-ink" title={m.question}>
           {truncate(label, 54)}
         </span>
@@ -623,6 +641,23 @@ function SignalRow({
         ) : null}
       </span>
     </div>
+  );
+}
+
+/**
+ * A dot that lights only when the P2P mesh has a directional consensus on this
+ * market — green when peers lean bullish, red bearish, brighter the more of them
+ * agree. Absent entirely off the mesh, so a solo terminal's rows stay clean.
+ */
+function DeskDot({ desk }: { desk?: Consensus }) {
+  if (!desk || desk.voters === 0) return null;
+  const tone = desk.agreement > 0 ? "text-up" : desk.agreement < 0 ? "text-down" : "text-faint";
+  return (
+    <span
+      className={`dot shrink-0 ${tone}`}
+      style={{ opacity: 0.4 + 0.6 * Math.min(1, desk.voters / 3) }}
+      title={`Desk consensus: ${desk.bullish} bullish / ${desk.bearish} bearish across ${desk.voters} peer(s) — ${(desk.agreement * 100).toFixed(0)}% net.`}
+    />
   );
 }
 

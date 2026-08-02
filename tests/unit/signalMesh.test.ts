@@ -7,6 +7,7 @@ import {
   MESH_PROTOCOL_VERSION,
   PEER_TTL_MS,
   prune,
+  relayFrames,
   type MeshState,
   type SharedSignal,
 } from "@/lib/signalMesh";
@@ -104,6 +105,52 @@ describe("mergeRemote / prune", () => {
       "self"
     );
     expect([...state.keys()]).toEqual(["c"]);
+  });
+});
+
+describe("gossip / relay", () => {
+  test("a newer frame updates a peer; an older or replayed frame is ignored", () => {
+    let s: MeshState = mergeRemote(
+      new Map(),
+      { v: 1, peer: "c", ts: 10, signals: [sig({ prob: 0.8 })] },
+      10,
+      "self"
+    );
+    // Stale frame (older ts) — ignored.
+    s = mergeRemote(s, { v: 1, peer: "c", ts: 5, signals: [sig({ prob: 0.1 })] }, 10, "self");
+    expect(s.get("c")!.signals[0].prob).toBeCloseTo(0.8, 6);
+    // Exact replay (same ts) — idempotent no-op.
+    s = mergeRemote(s, { v: 1, peer: "c", ts: 10, signals: [sig({ prob: 0.1 })] }, 10, "self");
+    expect(s.get("c")!.signals[0].prob).toBeCloseTo(0.8, 6);
+    // Genuinely newer — accepted.
+    s = mergeRemote(s, { v: 1, peer: "c", ts: 11, signals: [sig({ prob: 0.2 })] }, 11, "self");
+    expect(s.get("c")!.signals[0].prob).toBeCloseTo(0.2, 6);
+  });
+
+  test("relayFrames forwards every peer except the neighbour's own frame", () => {
+    let s: MeshState = new Map();
+    s = mergeRemote(s, { v: 1, peer: "b", ts: 1, signals: [sig()] }, 1, "self");
+    s = mergeRemote(s, { v: 1, peer: "c", ts: 1, signals: [sig({ marketId: "m2" })] }, 1, "self");
+    const frames = relayFrames(s, "b");
+    expect(frames.map((f) => f.peer)).toEqual(["c"]);
+    // A relayed frame re-merges verbatim and, being same-ts, changes nothing —
+    // the gossip loop terminates.
+    const before = s;
+    const after = mergeRemote(before, frames[0], 1, "self");
+    expect(after.get("c")!.ts).toBe(before.get("c")!.ts);
+  });
+
+  test("transitive mesh: A learns C's read relayed through B", () => {
+    // A already knows B; B relays C's frame to A; A now sees C.
+    let a: MeshState = mergeRemote(new Map(), { v: 1, peer: "b", ts: 1, signals: [sig()] }, 1, "A");
+    a = mergeRemote(
+      a,
+      { v: 1, peer: "c", ts: 2, signals: [sig({ direction: "bearish", prob: 0.3 })] },
+      2,
+      "A"
+    );
+    expect([...a.keys()].sort()).toEqual(["b", "c"]);
+    expect(a.get("c")!.signals[0].direction).toBe("bearish");
   });
 });
 

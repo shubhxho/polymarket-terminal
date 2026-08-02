@@ -7,6 +7,7 @@ import {
   encodeMessage,
   mergeRemote,
   prune,
+  relayFrames,
   type Consensus,
   type MeshState,
   type SharedSignal,
@@ -15,36 +16,40 @@ import {
 /**
  * WebRTC transport for the signal mesh — the impure half of `signalMesh.ts`.
  *
- * Two terminals link directly over a data channel with **manual signaling**: the
- * host makes an offer, the guest pastes it and returns an answer, the host pastes
- * that back. No server, no account — the offer/answer blobs are the whole
- * handshake, and a public STUN server only helps punch through NAT. Once open,
- * each side streams its `SharedSignal[]` whenever they change and merges whatever
- * the other sends through the pure, validated `mergeRemote`.
+ * Terminals link directly over data channels with **manual signaling** (host
+ * offer → guest answer → host, copy-pasted out of band). No server; a public
+ * STUN only helps punch through NAT. It is a real **N-peer gossip mesh**: each
+ * link relays the frames it receives to its other links and catches a fresh link
+ * up on everyone it already knows, so a chain A–B–C gives all three a full view
+ * without every pair having to shake hands. Loops terminate because a frame is
+ * deduped by its origin peer and timestamp — a relayed copy of something already
+ * seen is dropped, never forwarded again.
  *
- * ICE is gathered non-trickle (we wait for gathering to finish) so each blob is
- * a single self-contained paste rather than a stream of candidates the UI would
- * have to shuttle across by hand.
+ * ICE is gathered non-trickle so each signaling blob is a single self-contained
+ * paste rather than a trickle of candidates.
  */
 
 const STUN: RTCConfiguration = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
 
-/** Short, human-copyable id for this terminal in the mesh. */
-function makeSelfId(): string {
-  const n = Math.floor(Math.random() * 0xffffff);
-  return `term-${n.toString(16).padStart(6, "0")}`;
+function randId(prefix: string): string {
+  return `${prefix}-${Math.floor(Math.random() * 0xffffff)
+    .toString(16)
+    .padStart(6, "0")}`;
 }
 
 export type MeshRole = "idle" | "host" | "guest";
 export type MeshStatus = RTCPeerConnectionState | "idle";
 
+type Conn = { pc: RTCPeerConnection; chan: RTCDataChannel | null };
+
 export type SignalMesh = {
   selfId: string;
   role: MeshRole;
   status: MeshStatus;
+  /** Established WebRTC links (may be fewer than peers, thanks to gossip relay). */
+  links: number;
   peers: MeshState;
   consensusMap: Map<string, Consensus>;
-  /** Signaling blob for the local side to hand across (offer if host, answer if guest). */
   localBlob: string;
   createOffer: () => Promise<void>;
   acceptOffer: (remote: string) => Promise<void>;
@@ -68,96 +73,147 @@ function whenGathered(pc: RTCPeerConnection): Promise<void> {
 
 export function useSignalMesh(localSignals: readonly SharedSignal[]): SignalMesh {
   const selfRef = useRef<string>("");
-  if (!selfRef.current) selfRef.current = makeSelfId();
+  if (!selfRef.current) selfRef.current = randId("term");
   const selfId = selfRef.current;
 
-  const pcRef = useRef<RTCPeerConnection | null>(null);
-  const chanRef = useRef<RTCDataChannel | null>(null);
+  // All live links, the pending handshake's link id, and the highest ts we have
+  // accepted per origin peer (the gossip de-dup, kept in a ref so relaying never
+  // waits on a React commit).
+  const connsRef = useRef<Map<string, Conn>>(new Map());
+  const pendingRef = useRef<string | null>(null);
+  const seenRef = useRef<Map<string, number>>(new Map());
+  const peersRef = useRef<MeshState>(new Map());
+
   const [role, setRole] = useState<MeshRole>("idle");
   const [status, setStatus] = useState<MeshStatus>("idle");
+  const [links, setLinks] = useState(0);
   const [localBlob, setLocalBlob] = useState("");
   const [peers, setPeers] = useState<MeshState>(new Map());
 
-  // Latest signals kept in a ref so the data-channel open handler always sends
-  // the current set without being recreated on every tick.
   const localRef = useRef<readonly SharedSignal[]>(localSignals);
   localRef.current = localSignals;
 
-  const send = useCallback(() => {
-    const ch = chanRef.current;
-    if (ch?.readyState === "open") {
-      ch.send(encodeMessage(selfId, Date.now(), localRef.current));
-    }
-  }, [selfId]);
-
-  const wireChannel = useCallback(
-    (ch: RTCDataChannel) => {
-      chanRef.current = ch;
-      ch.onopen = () => send();
-      ch.onmessage = (e) => {
-        const msg = decodeMessage(typeof e.data === "string" ? e.data : "");
-        if (msg) setPeers((prev) => mergeRemote(prev, msg, Date.now(), selfId));
-      };
-    },
-    [send, selfId]
-  );
-
-  const newPeer = useCallback(() => {
-    const pc = new RTCPeerConnection(STUN);
-    pc.onconnectionstatechange = () => setStatus(pc.connectionState);
-    pc.ondatachannel = (e) => wireChannel(e.channel);
-    pcRef.current = pc;
-    return pc;
-  }, [wireChannel]);
-
-  const reset = useCallback(() => {
-    chanRef.current?.close();
-    pcRef.current?.close();
-    chanRef.current = null;
-    pcRef.current = null;
-    setRole("idle");
-    setStatus("idle");
-    setLocalBlob("");
-    setPeers(new Map());
+  const setPeersBoth = useCallback((next: MeshState) => {
+    peersRef.current = next;
+    setPeers(next);
   }, []);
 
+  const refreshStatus = useCallback(() => {
+    const states = [...connsRef.current.values()].map((c) => c.pc.connectionState);
+    setLinks(states.filter((s) => s === "connected").length);
+    setStatus(
+      states.includes("connected")
+        ? "connected"
+        : (states.find((s) => s === "connecting" || s === "new") ?? "idle")
+    );
+  }, []);
+
+  /** Merge an inbound frame and, if it was genuinely new, gossip it onward. */
+  const onFrame = useCallback(
+    (raw: string, fromId: string) => {
+      const msg = decodeMessage(raw);
+      if (!msg || msg.peer === selfId) return;
+      const seen = seenRef.current.get(msg.peer);
+      if (seen !== undefined && msg.ts <= seen) return; // stale/replay — stop the loop here
+      seenRef.current.set(msg.peer, msg.ts);
+      setPeersBoth(mergeRemote(peersRef.current, msg, Date.now(), selfId));
+      for (const [id, c] of connsRef.current) {
+        if (id !== fromId && c.chan?.readyState === "open") c.chan.send(raw);
+      }
+    },
+    [selfId, setPeersBoth]
+  );
+
+  const wireChannel = useCallback(
+    (id: string, ch: RTCDataChannel) => {
+      const conn = connsRef.current.get(id);
+      if (conn) conn.chan = ch;
+      ch.onopen = () => {
+        ch.send(encodeMessage(selfId, Date.now(), localRef.current));
+        // Catch the new link up on everyone we already know.
+        for (const f of relayFrames(peersRef.current)) ch.send(JSON.stringify(f));
+        refreshStatus();
+      };
+      ch.onmessage = (e) => onFrame(typeof e.data === "string" ? e.data : "", id);
+    },
+    [selfId, onFrame, refreshStatus]
+  );
+
+  const newConn = useCallback(
+    (id: string) => {
+      const pc = new RTCPeerConnection(STUN);
+      pc.onconnectionstatechange = () => {
+        if (pc.connectionState === "failed" || pc.connectionState === "closed") {
+          connsRef.current.delete(id);
+        }
+        refreshStatus();
+      };
+      pc.ondatachannel = (e) => wireChannel(id, e.channel);
+      connsRef.current.set(id, { pc, chan: null });
+      return pc;
+    },
+    [wireChannel, refreshStatus]
+  );
+
+  const reset = useCallback(() => {
+    for (const c of connsRef.current.values()) {
+      c.chan?.close();
+      c.pc.close();
+    }
+    connsRef.current.clear();
+    seenRef.current.clear();
+    pendingRef.current = null;
+    setRole("idle");
+    setStatus("idle");
+    setLinks(0);
+    setLocalBlob("");
+    setPeersBoth(new Map());
+  }, [setPeersBoth]);
+
   const createOffer = useCallback(async () => {
-    reset();
-    const pc = newPeer();
+    const id = randId("link");
+    pendingRef.current = id;
+    const pc = newConn(id);
     setRole("host");
-    wireChannel(pc.createDataChannel("signals"));
+    wireChannel(id, pc.createDataChannel("signals"));
     await pc.setLocalDescription(await pc.createOffer());
     await whenGathered(pc);
     setLocalBlob(JSON.stringify(pc.localDescription));
-  }, [reset, newPeer, wireChannel]);
+  }, [newConn, wireChannel]);
 
   const acceptOffer = useCallback(
     async (remote: string) => {
-      reset();
-      const pc = newPeer();
+      const id = randId("link");
+      const pc = newConn(id);
       setRole("guest");
-      pc.setRemoteDescription(JSON.parse(remote) as RTCSessionDescriptionInit);
+      await pc.setRemoteDescription(JSON.parse(remote) as RTCSessionDescriptionInit);
       await pc.setLocalDescription(await pc.createAnswer());
       await whenGathered(pc);
       setLocalBlob(JSON.stringify(pc.localDescription));
     },
-    [reset, newPeer]
+    [newConn]
   );
 
   const acceptAnswer = useCallback(async (remote: string) => {
-    await pcRef.current?.setRemoteDescription(JSON.parse(remote) as RTCSessionDescriptionInit);
+    const id = pendingRef.current;
+    const conn = id ? connsRef.current.get(id) : null;
+    await conn?.pc.setRemoteDescription(JSON.parse(remote) as RTCSessionDescriptionInit);
+    pendingRef.current = null;
   }, []);
 
-  // Re-broadcast whenever the local signals change and the channel is up.
+  // Broadcast our own signals to every open link whenever they change.
   useEffect(() => {
-    send();
-  }, [localSignals, send]);
+    const raw = encodeMessage(selfId, Date.now(), localSignals);
+    for (const c of connsRef.current.values()) {
+      if (c.chan?.readyState === "open") c.chan.send(raw);
+    }
+  }, [localSignals, selfId]);
 
-  // Expire peers that go quiet even if they never send a closing frame.
+  // Expire peers that go quiet even if no closing frame ever arrives.
   useEffect(() => {
-    const t = setInterval(() => setPeers((prev) => prune(prev, Date.now())), 5000);
+    const t = setInterval(() => setPeersBoth(prune(peersRef.current, Date.now())), 5000);
     return () => clearInterval(t);
-  }, []);
+  }, [setPeersBoth]);
 
   useEffect(() => () => reset(), [reset]);
 
@@ -165,6 +221,7 @@ export function useSignalMesh(localSignals: readonly SharedSignal[]): SignalMesh
     selfId,
     role,
     status,
+    links,
     peers,
     consensusMap: consensus(peers),
     localBlob,
