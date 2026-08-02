@@ -56,6 +56,15 @@ const COLUMN_META: Record<GridColumn, { label: string; width: string; title: str
  * Keyboard navigation is vi-ish and works without the table ever taking focus
  * away from the command line.
  */
+// Which mounted grid receives global key events. Most screens show exactly one
+// grid, so a lone grid is always active — this keeps the "keys work without
+// focusing the table" model. MoversScreen shows two at once; there the hovered
+// grid wins, falling back to the first-mounted one so keyboard-only use still
+// drives a single, predictable grid instead of both in lockstep.
+let gridSeq = 0;
+const gridsMounted = new Set<number>();
+let hoveredGridId: number | null = null;
+
 export function MarketGrid({
   markets,
   columns = DEFAULT_COLUMNS,
@@ -72,6 +81,18 @@ export function MarketGrid({
   const { go, toggleWatch, isWatched } = useTerminal();
   const [sel, setSel] = useState(0);
   const bodyRef = useRef<HTMLDivElement | null>(null);
+  // Stable per-instance id; register this grid while mounted so the key handler
+  // can tell whether it is the one that should respond.
+  const gridIdRef = useRef(-1);
+  if (gridIdRef.current < 0) gridIdRef.current = gridSeq++;
+  const gridId = gridIdRef.current;
+  useEffect(() => {
+    gridsMounted.add(gridId);
+    return () => {
+      gridsMounted.delete(gridId);
+      if (hoveredGridId === gridId) hoveredGridId = null;
+    };
+  }, [gridId]);
 
   // Only the first outcome of each market is streamed; the grid quotes "Yes",
   // and subscribing to every leg of a 30-way event would flood the socket.
@@ -100,6 +121,16 @@ export function MarketGrid({
   // Bound to the window rather than the table so the command line keeps focus.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Never act on a modifier chord — ⌘W/Ctrl+W closes a tab, ⌘↑ etc. are the
+      // browser's; only bare keys drive the grid.
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      // Only the active grid responds. A lone grid is always active; with several
+      // mounted (MoversScreen) the hovered one wins, else the first-mounted.
+      const active =
+        gridsMounted.size <= 1 ||
+        hoveredGridId === gridId ||
+        (hoveredGridId === null && Math.min(...gridsMounted) === gridId);
+      if (!active) return;
       const target = e.target as HTMLElement | null;
       const typing = target?.tagName === "INPUT" || target?.tagName === "TEXTAREA";
       // Arrow keys still drive the grid while typing; letters must not.
@@ -136,7 +167,7 @@ export function MarketGrid({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [markets, sel, openMarket, toggleWatch]);
+  }, [markets, sel, openMarket, toggleWatch, gridId]);
 
   // Keep the highlighted row inside the scroll viewport.
   useEffect(() => {
@@ -153,6 +184,12 @@ export function MarketGrid({
       variants={staggerContainer}
       initial="initial"
       animate="animate"
+      onMouseEnter={() => {
+        hoveredGridId = gridId;
+      }}
+      onMouseLeave={() => {
+        if (hoveredGridId === gridId) hoveredGridId = null;
+      }}
     >
       <div className="sticky top-0 z-10 flex items-center gap-1 border-b border-edge-strong bg-surface-2 px-1 py-[3px] text-[10px] tracking-wide text-accent-weak uppercase">
         {showRank ? <span className="w-[22px] shrink-0 text-right">#</span> : null}
