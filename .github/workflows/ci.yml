@@ -39,13 +39,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install ML deps
-        run: pip install numpy lightgbm
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Create env + install ML deps (uv)
+        run: |
+          uv venv --python 3.12
+          uv pip install numpy lightgbm
       - name: ML test gate
-        run: PYTHON=python bash ml/run_tests.sh
+        run: PYTHON="$PWD/.venv/bin/python" bash ml/run_tests.sh
 
   # Playwright drives a production build in real Chromium. Kept in its own job so
   # a browser flake never blocks the unit gate.
