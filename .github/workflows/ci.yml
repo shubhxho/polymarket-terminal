@@ -1,4 +1,4 @@
-name: CI
+name: CI / CD
 
 on:
   push:
@@ -10,13 +10,9 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# Least privilege: CI only reads the repo.
+# Least privilege: CI only reads the repo. The deploy job carries its own token.
 permissions:
   contents: read
-
-env:
-  # Pinned so a bun release never silently changes the gate. Bump deliberately.
-  BUN_VERSION: "1.3.14"
 
 jobs:
   # Lint, format, types and the Vitest unit suite — the fast gate every push
@@ -26,17 +22,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: ${{ env.BUN_VERSION }}
-      - name: Cache bun install
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-          restore-keys: bun-${{ runner.os }}-
-      - name: Install
-        run: bun install --frozen-lockfile
+      - uses: ./.github/actions/setup
       - name: Lint (oxlint)
         run: bun run lint
       - name: Format check (oxfmt)
@@ -73,17 +59,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: ${{ env.BUN_VERSION }}
-      - name: Cache bun install
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-          restore-keys: bun-${{ runner.os }}-
-      - name: Install
-        run: bun install --frozen-lockfile
+      - uses: ./.github/actions/setup
       - name: Resolve Playwright version
         id: pw
         run: echo "v=$(bunx playwright --version | grep -oE '[0-9.]+')" >> "$GITHUB_OUTPUT"
@@ -102,3 +78,35 @@ jobs:
           restore-keys: next-${{ runner.os }}-
       - name: E2E tests (playwright)
         run: bun run test:e2e
+
+  # Continuous deployment to Vercel — only after unit + ml pass, only on main.
+  #
+  # OPT-IN and inert by default: it runs solely when the repo variable
+  # DEPLOY_VIA_ACTIONS == "true", so it never double-deploys against Vercel's own
+  # git integration and never fails a run when the secrets are absent. To let
+  # Actions own the deploy: turn OFF Vercel's git auto-deploy for this project,
+  # set the variable, and add the three secrets below
+  # (VERCEL_TOKEN / VERCEL_ORG_ID / VERCEL_PROJECT_ID).
+  deploy:
+    needs: [unit, ml]
+    if: ${{ github.ref == 'refs/heads/main' && vars.DEPLOY_VIA_ACTIONS == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Deploy to Vercel (production)
+        id: deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          bunx vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+          bunx vercel build --prod --token="$VERCEL_TOKEN"
+          url=$(bunx vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")
+          echo "Deployed: $url"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+      - name: Smoke check the deployment
+        run: curl -fsS --retry 5 --retry-delay 3 "${{ steps.deploy.outputs.url }}" > /dev/null && echo "smoke ok"
