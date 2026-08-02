@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { MODEL_WINDOW, modelSignal } from "@/lib/mlSignal";
 import type { PricePoint } from "@/lib/types";
 

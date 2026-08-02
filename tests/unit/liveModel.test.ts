@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { appendTick, liveModelFor } from "@/lib/liveModel";
 import { MODEL_WINDOW, modelSignal, modelSignalFromPrices } from "@/lib/mlSignal";
 import type { MarketSignals } from "@/lib/signals";
@@ -57,6 +57,19 @@ describe("liveModelFor", () => {
     const r = row({ heat: 70, bias: 80 });
     const live = liveModelFor(r, window16)!;
     expect(live.blended).toBeCloseTo(blendedScore({ ...r, model: live.model }), 12);
+  });
+
+  test("a stream of ticks keeps the buffer capped and the read valid throughout", () => {
+    let tail = window16.slice();
+    for (let i = 0; i < 100; i++) {
+      tail = appendTick(tail, 0.3 + 0.004 * i);
+      expect(tail.length).toBeLessThanOrEqual(MODEL_WINDOW);
+      const read = liveModelFor(row(), tail);
+      expect(read).not.toBeNull();
+      expect(read!.model.prob).toBeGreaterThan(0);
+      expect(read!.model.prob).toBeLessThan(1);
+    }
+    expect(tail.length).toBe(MODEL_WINDOW);
   });
 
   test("the read tracks the price path — a different live window scores differently", () => {

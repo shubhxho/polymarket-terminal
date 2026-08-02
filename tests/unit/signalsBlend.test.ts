@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { blendedScore, modelAgreement, type MarketSignals } from "@/lib/signals";
 import type { ModelRead } from "@/lib/mlSignal";
 

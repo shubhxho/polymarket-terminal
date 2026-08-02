@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# One in-flight run per ref; a new push cancels the stale one.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Lint, format, types and the Vitest unit suite — the fast gate every push
+  # must pass. Pure logic, no browser, no network.
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Lint (oxlint)
+        run: bun run lint
+      - name: Format check (oxfmt)
+        run: bun run fmt:check
+      - name: Typecheck (tsc)
+        run: bun run typecheck
+      - name: Unit tests (vitest)
+        run: bun run test
+
+  # Playwright drives a production build in real Chromium. Kept in its own job so
+  # a browser flake never blocks the unit gate.
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Install Chromium
+        run: bunx playwright install --with-deps chromium
+      - name: E2E tests (playwright)
+        run: bun run test:e2e
