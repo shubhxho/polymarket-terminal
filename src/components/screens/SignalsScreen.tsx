@@ -22,7 +22,7 @@ import {
   type Signal,
   type SignalKind,
 } from "@/lib/signals";
-import { MODEL_AUC } from "@/lib/mlSignal";
+import { MODEL_AUC, MODEL_CALIBRATION } from "@/lib/mlSignal";
 
 /** Declared order of the union, so the chip row and the legend never reshuffle. */
 const KINDS = Object.keys(SIGNAL_META) as SignalKind[];
@@ -956,6 +956,13 @@ function ModelPanel({ row }: { row: MarketSignals }) {
         <p className="text-[11px] leading-[15px] text-faint">
           {(m.auc * 100).toFixed(0)}% AUC out of sample — a real but weak edge, so it only tilts the
           ranking toward markets it agrees with. It never overrides the book.
+          {MODEL_CALIBRATION ? (
+            <>
+              {" "}
+              Probability is temperature-calibrated on validation (reliability error{" "}
+              {(MODEL_CALIBRATION.ece_after * 100).toFixed(1)}%), so the number means what it says.
+            </>
+          ) : null}
         </p>
       </div>
     </Panel>

@@ -26,6 +26,19 @@ export const MODEL_WINDOW = model.window;
 /** The model's own out-of-sample AUC, carried through so the blend can weight it. */
 export const MODEL_AUC = model.val_auc;
 
+/**
+ * Temperature that calibrates the raw logits (fit by `ml/calibrate.py` on the
+ * strictly out-of-time validation split; see `model.calibration` for the ECE
+ * it bought). Applied as `logit / T` before the sigmoid. Because the shift is
+ * zero, the 0.5 decision boundary — and therefore the direction and the AUC —
+ * is untouched; only the confidence is corrected. Defaults to 1 (a no-op) for
+ * an un-calibrated export.
+ */
+export const MODEL_TEMPERATURE: number = (model as { temperature?: number }).temperature ?? 1;
+
+/** Reliability of the calibrated probabilities, straight from validation. */
+export const MODEL_CALIBRATION = (model as { calibration?: Record<string, number> }).calibration;
+
 export type ModelRead = {
   /** Probability that YES drifts up over the next few hours, 0..1. */
   readonly prob: number;
@@ -185,7 +198,8 @@ export function modelSignalFromPrices(prices: readonly number[]): ModelRead | nu
   const h1 = dense(x, model.l1.w, model.l1.b).map(relu);
   const h2 = dense(h1, model.l2.w, model.l2.b).map(relu);
   const logit = dense(h2, model.out.w, model.out.b)[0];
-  const prob = 1 / (1 + Math.exp(-logit));
+  // Temperature-calibrated before the sigmoid — see MODEL_TEMPERATURE.
+  const prob = 1 / (1 + Math.exp(-logit / MODEL_TEMPERATURE));
 
   return {
     prob,

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { MODEL_WINDOW, modelSignal } from "@/lib/mlSignal";
+import { MODEL_CALIBRATION, MODEL_TEMPERATURE, MODEL_WINDOW, modelSignal } from "@/lib/mlSignal";
 import type { PricePoint } from "@/lib/types";
 
 /**
@@ -9,18 +9,20 @@ import type { PricePoint } from "@/lib/types";
  * `ml/`; the frozen weights only mean anything if the TypeScript features and
  * matmuls reproduce what Python computed. These expectations were captured by
  * running the actual trained `FeatureMLP` (data/seq_model.safetensors) over the
- * same series — regenerate them if the model is retrained. The tolerance is
- * loose enough to absorb float32-vs-float64 drift and nothing more.
+ * same series WITH the fitted temperature applied (`logit / T` before the
+ * sigmoid) — regenerate them with `ml/calibrate.py` if the model is retrained or
+ * recalibrated. The tolerance is loose enough to absorb float32-vs-float64 drift
+ * and nothing more.
  */
 const REFERENCE: Record<string, { prices: number[]; prob: number }> = {
-  rising: { prices: Array.from({ length: 20 }, (_, i) => 0.3 + 0.01 * i), prob: 0.387045 },
-  falling: { prices: Array.from({ length: 18 }, (_, i) => 0.7 - 0.012 * i), prob: 0.393431 },
-  chop: { prices: Array.from({ length: 16 }, (_, i) => 0.5 + 0.03 * (-1) ** i), prob: 0.406778 },
+  rising: { prices: Array.from({ length: 20 }, (_, i) => 0.3 + 0.01 * i), prob: 0.368915 },
+  falling: { prices: Array.from({ length: 18 }, (_, i) => 0.7 - 0.012 * i), prob: 0.376239 },
+  chop: { prices: Array.from({ length: 16 }, (_, i) => 0.5 + 0.03 * (-1) ** i), prob: 0.391598 },
   drifted: {
     prices: [
       0.4, 0.41, 0.39, 0.42, 0.44, 0.43, 0.46, 0.48, 0.47, 0.5, 0.52, 0.51, 0.55, 0.57, 0.56, 0.6,
     ],
-    prob: 0.387045,
+    prob: 0.368915,
   },
 };
 
@@ -34,6 +36,22 @@ describe("modelSignal parity with the trained network", () => {
       expect(read!.prob).toBeCloseTo(prob, 3);
     });
   }
+});
+
+describe("temperature calibration", () => {
+  test("ships a fitted temperature and an out-of-sample reliability report", () => {
+    expect(MODEL_TEMPERATURE).toBeGreaterThan(0);
+    expect(MODEL_CALIBRATION).toBeTruthy();
+    expect(MODEL_CALIBRATION!.val_n).toBeGreaterThan(0);
+  });
+
+  test("calibration improved reliability — post-fit ECE is no worse than raw", () => {
+    expect(MODEL_CALIBRATION!.ece_after).toBeLessThanOrEqual(MODEL_CALIBRATION!.ece_before);
+  });
+
+  // The parity fixtures above already encode the temperature: they were captured
+  // WITH `logit / T`, so if the forward pass ever stopped applying it every one
+  // of them would fail. This is the guard that the calibration is actually live.
 });
 
 describe("modelSignal contract", () => {
