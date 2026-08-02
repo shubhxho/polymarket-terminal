@@ -47,7 +47,8 @@ export function MarketHeatmap({ markets }: { markets: readonly Market[] }) {
   const [hover, setHover] = useState<{ market: Market; x: number; y: number } | null>(null);
   const [backend, setBackend] = useState<"webgpu" | "canvas">("canvas");
 
-  // Sorted brightest-first so the board reads as a ranked field, not a shuffle.
+  // Rendered in the order the parent supplies (ranked upstream); aliased once for
+  // a stable name across the render, hit-test and click paths below.
   const ordered = markets;
 
   // Free the cached device only when the component unmounts — never on a data or
