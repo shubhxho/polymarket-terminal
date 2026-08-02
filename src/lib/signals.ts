@@ -33,6 +33,7 @@ import {
   volCompression,
   type BookStats,
 } from "./quant";
+import { modelSignal, type ModelRead } from "./mlSignal";
 import type { EventSummary, Market, OrderBook, PricePoint, Trade } from "./types";
 
 export type SignalKind =
@@ -84,6 +85,15 @@ export type MarketSignals = {
    * and a bare composite score cannot tell those apart.
    */
   readonly conviction: number;
+  /**
+   * The trained model's read on the same price path, when there is enough
+   * history to run it. It is deliberately kept beside the rule engine rather
+   * than folded into `bias`: the detectors and a 0.65-AUC network are different
+   * kinds of evidence, and a screen that shows them agreeing — or not — is worth
+   * more than one number that has already thrown that distinction away. `undefined`
+   * when the market was not deep-scanned. See `blendedScore`.
+   */
+  readonly model?: ModelRead;
   readonly stats: MarketStats;
 };
 
@@ -559,6 +569,7 @@ export function scoreMarket(market: Market, ctx: ScoreContext = {}): MarketSigna
     bias: clamp(Math.round(biasAcc / 1.5), -100, 100),
     heat: clamp(heat, 0, 100),
     conviction,
+    model: modelSignal(history) ?? undefined,
     stats: {
       realisedVol: vol,
       driftPerDay: drift,
@@ -576,6 +587,43 @@ export function scoreMarket(market: Market, ctx: ScoreContext = {}): MarketSigna
       moveZ: ctx.cross ? robustZ(Math.abs(market.chg24h ?? 0), ctx.cross.absMoves) : 0,
     },
   };
+}
+
+/** Whether the model backs the rule engine, fights it, or has nothing to add. */
+export type Agreement = "confirms" | "conflicts" | "neutral";
+
+/**
+ * How the model's directional read lines up with the detectors' net bias.
+ *
+ * Both sides have to actually commit before this says anything: a model sitting
+ * on the fence, or a market with no clear directional bias, reads `"neutral"`
+ * rather than being forced into an agree/disagree it has not earned.
+ */
+export function modelAgreement(ms: MarketSignals): Agreement {
+  const m = ms.model;
+  if (!m || m.conviction < 0.08 || Math.abs(ms.bias) < 8) return "neutral";
+  return (m.prob - 0.5) * ms.bias > 0 ? "confirms" : "conflicts";
+}
+
+/**
+ * The ranking score the scan sorts on: heat, nudged by the model.
+ *
+ * The detectors decide what is even worth looking at — the model cannot conjure
+ * heat on a market nothing fired on. What it can do is move a flagged market up
+ * when it independently agrees with the direction the book and tape are already
+ * leaning, and hold one back when it pushes the other way. The nudge is capped
+ * and scaled by two things the raw probability hides: how far the model commits
+ * (`conviction`) and how good it actually is out of sample (`auc`, mapped so a
+ * coin-flip 0.5 earns zero trust and 0.7 earns full). At 0.65 AUC that ceiling
+ * is about ±22%, which is enough to reorder neighbours without letting a weak
+ * model overrule a wall of microstructure.
+ */
+export function blendedScore(ms: MarketSignals): number {
+  const m = ms.model;
+  if (!m) return ms.heat;
+  const trust = clamp((m.auc - 0.5) / 0.2, 0, 1);
+  const agree = clamp((m.prob - 0.5) * 2 * (ms.bias / 100), -1, 1);
+  return clamp(ms.heat * (1 + trust * m.conviction * agree * 0.3), 0, 100);
 }
 
 /**

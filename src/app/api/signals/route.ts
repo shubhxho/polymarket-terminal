@@ -1,9 +1,11 @@
 import { fetchBooks, fetchEvents, fetchHistory, fetchMarkets, fetchTrades } from "@/lib/polymarket";
 import {
   aggregateFlow,
+  blendedScore,
   buildCrossSection,
   findArbitrage,
   findBasketDrift,
+  modelAgreement,
   scoreMarket,
   WHALE_NOTIONAL,
   type ArbOpportunity,
@@ -28,6 +30,11 @@ export type SignalsPayload = {
     byKind: Partial<Record<SignalKind, number>>;
     /** Notional of block prints in the scanned window. */
     blockNotional: number;
+    /** Markets that had enough history for the trained model to weigh in. */
+    modeled: number;
+    /** Of those, how many the model confirms versus fights the rule engine on. */
+    modelConfirms: number;
+    modelConflicts: number;
   };
 };
 
@@ -93,7 +100,9 @@ export async function GET() {
         });
       })
       .filter((s): s is MarketSignals => s !== null)
-      .sort((a, b) => b.heat - a.heat);
+      // Blend, not heat: the model reorders neighbours it has a view on while
+      // markets it never saw keep their raw-heat position.
+      .sort((a, b) => blendedScore(b) - blendedScore(a));
 
     const byKind: Partial<Record<SignalKind, number>> = {};
     for (const s of scored) {
@@ -114,6 +123,9 @@ export async function GET() {
         deepScanned: historyByToken.size,
         byKind,
         blockNotional: trades.reduce((sum, t) => sum + t.size * t.price, 0),
+        modeled: scored.filter((s) => s.model).length,
+        modelConfirms: scored.filter((s) => modelAgreement(s) === "confirms").length,
+        modelConflicts: scored.filter((s) => modelAgreement(s) === "conflicts").length,
       },
     };
 
