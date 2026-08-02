@@ -13,8 +13,11 @@ import math
 
 from features_deriv import (
     DERIV_NAMES,
+    DERIV_SIGNAL_FEATURES,
     _poly_endpoint,
     deriv_features,
+    deriv_signal,
+    load_signal_model,
     trend_consistency,
 )
 
@@ -62,7 +65,10 @@ def test_flagship_beats_raw_velocity_direction():
 def test_flat_window_is_all_zero():
     feats = deriv_features([0.5] * 16)
     assert set(feats) == set(DERIV_NAMES)
-    assert all(v == 0.0 for v in feats.values()), feats
+    # Derivatives vanish on a flat window; `extremeness`/`last` are price levels.
+    levels = {"extremeness", "last"}
+    assert all(v == 0.0 for k, v in feats.items() if k not in levels), feats
+    assert feats["extremeness"] == 0.5 and feats["last"] == 0.5
 
 
 def test_all_features_finite():
@@ -83,6 +89,37 @@ def test_trend_consistency_is_the_flagship_entry():
     win = [0.4 + 0.01 * i + 0.003 * math.sin(i) for i in range(16)]
     assert approx(deriv_features(win)["trend_consistency"], trend_consistency(win))
     assert DERIV_NAMES[0] == "trend_consistency"
+
+
+def test_signal_feature_set_is_covered():
+    # Every combiner input must be produced by deriv_features (serving parity).
+    feats = deriv_features([0.4 + 0.01 * i for i in range(16)])
+    for name in DERIV_SIGNAL_FEATURES:
+        assert name in feats, name
+
+
+def test_deriv_signal_forward_pass_matches_frozen_weights():
+    model = load_signal_model()
+    if model is None:
+        return  # not trained in this checkout — nothing to verify
+    win = [0.45 + 0.006 * i + 0.002 * math.sin(i) for i in range(16)]
+    feats = deriv_features(win)
+    z = model["bias"]
+    for i, nm in enumerate(model["features"]):
+        s = model["std"][i] if model["std"][i] > 1e-12 else 1.0
+        z += model["weights"][i] * ((feats[nm] - model["mean"][i]) / s)
+    expected = 1.0 / (1.0 + math.exp(-z))
+    assert approx(deriv_signal(win), expected, 1e-9)
+    assert 0.0 <= deriv_signal(win) <= 1.0
+
+
+def test_deriv_signal_prefers_clean_uptrend():
+    model = load_signal_model()
+    if model is None:
+        return
+    up = [0.45 + 0.006 * i for i in range(16)]     # clean rise from mid-range
+    dn = [0.55 - 0.006 * i for i in range(16)]      # clean fall from mid-range
+    assert deriv_signal(up) > deriv_signal(dn)
 
 
 if __name__ == "__main__":

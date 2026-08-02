@@ -32,8 +32,10 @@ portable to the TS bundle (mirrors the discipline of `features.py`).
 
 from __future__ import annotations
 
+import json
 import math
-from typing import Dict, List, Sequence
+import os
+from typing import Dict, List, Optional, Sequence
 
 # Endpoint offset: all derivatives are evaluated at the window's LAST sample,
 # i.e. s = t - t_end runs over -(L-1) .. 0. The value/derivatives at s=0 are then
@@ -116,6 +118,25 @@ def _increments(window: Sequence[float]) -> List[float]:
     return [window[i] - window[i - 1] for i in range(1, len(window))]
 
 
+def _ema(xs: Sequence[float], span: int) -> List[float]:
+    a = 2.0 / (span + 1.0)
+    out = [xs[0]]
+    for x in xs[1:]:
+        out.append(a * x + (1 - a) * out[-1])
+    return out
+
+
+def _consistency(window: Sequence[float], k: int, ref_dir: float) -> float:
+    """Signed fraction of the last-`k` increments that agree with `ref_dir`.
+    `ref_dir` is a denoised trend direction (±1); 0 → no trend → 0."""
+    incs = _increments(window)
+    rec = incs[-k:] if 0 < k < len(incs) else incs
+    if not rec or ref_dir == 0.0:
+        return 0.0
+    up = ref_dir > 0
+    return ref_dir * (sum(1 for r in rec if (r > 0) == up) / len(rec))
+
+
 # ── the derivative family ──────────────────────────────────────────────────────
 #
 # Every candidate maps one look-back window (list of prices, oldest→newest) to a
@@ -153,6 +174,28 @@ DERIV_NAMES: List[str] = [
     # shape of the recent derivative
     "vel_persist",     # signed fraction of last-6 increments agreeing with SG velocity
     "curv_ratio",      # acc_sg8 / (|vel_sg8|+eps)         (turn sharpness)
+    # consistency variants + regime (the combined-signal inputs)
+    "cons_ema",        # trend consistency on an EMA(3)-denoised series
+    "cons_rec",        # recency-weighted trend consistency (recent ticks count more)
+    "cons8",           # trend consistency over the last 8 (short-scale)
+    "extremeness",     # min(p, 1-p) — room to move; pinned markets don't trend
+    "last",            # the raw price level — a *directional* regime term. Unfolded
+                       # `extremeness`: near 0 the crowd drifts down, near 1 up, so
+                       # the signed level out-predicts the folded room (AUC .596 vs
+                       # .582) and is the combiner's strongest single input.
+    "tc_x_ext",        # trend_consistency × 2·extremeness (clean trend AND room)
+    "tc_x_amp",        # trend_consistency × vel_z         (clean trend AND size)
+    "cons_rec_x_ext",  # cons_rec × 2·extremeness (recency-clean trend AND room)
+]
+
+# Ordered inputs to the combined derivative signal (`deriv_signal`). Chosen by
+# out-of-time greedy forward selection (see RESEARCH note in `train_deriv.py`) —
+# the leanest set that reaches the combiner's plateau AUC ~0.62, well above the
+# best single derivative (0.588). Order is FROZEN: the trained weights in
+# `data/deriv_signal.json` are positional, so never reorder without retraining.
+DERIV_SIGNAL_FEATURES: List[str] = [
+    "last", "cons_rec_x_ext", "d1_avg", "tc_x_ext", "acc_sg12", "d1_raw",
+    "trend_consistency", "cons_rec",
 ]
 
 
@@ -208,6 +251,29 @@ def deriv_features(window: Sequence[float]) -> Dict[str, float]:
 
     vel_sg8 = d1_8[1]
     acc_sg8 = d2_8[2]
+    vel_z = vel_sg8 / denom_v
+
+    # Consistency / regime block (the combined-signal inputs).
+    tc = trend_consistency(window)
+    slow_dir = 1.0 if d1_16[1] > 0 else (-1.0 if d1_16[1] < 0 else 0.0)
+    smooth = _ema(window, 3)
+    sm_inc = _increments(smooth)
+    sm_dir = (1.0 if _poly_endpoint(smooth, 1)[1] > 0
+              else -1.0 if _poly_endpoint(smooth, 1)[1] < 0 else 0.0)
+    if sm_inc and sm_dir != 0.0:
+        cons_ema = sm_dir * (sum(1 for r in sm_inc if (r > 0) == (sm_dir > 0)) / len(sm_inc))
+    else:
+        cons_ema = 0.0
+    if incs and slow_dir != 0.0:
+        wts = [math.exp(0.15 * i) for i in range(len(incs))]
+        sw = sum(wts) or 1.0
+        cons_rec = slow_dir * sum(w for w, r in zip(wts, incs)
+                                  if (r > 0) == (slow_dir > 0)) / sw
+    else:
+        cons_rec = 0.0
+    d8 = 1.0 if d1_8[1] > 0 else (-1.0 if d1_8[1] < 0 else 0.0)
+    cons8 = _consistency(window, 8, d8)
+    extremeness = min(window[-1], 1.0 - window[-1]) if window else 0.0
 
     # Recent-increment sign agreement with the denoised velocity direction.
     recent = incs[-6:]
@@ -229,15 +295,74 @@ def deriv_features(window: Sequence[float]) -> Dict[str, float]:
         "acc_sg8": acc_sg8,
         "acc_sg12": d2_12[2],
         "jerk_sg12": d3_12[3],
-        "vel_z": vel_sg8 / denom_v,
+        "vel_z": vel_z,
         "vel_z_slow": d1_16[1] / denom_v,
         "acc_z": acc_sg8 / denom_v,
         "vel_over_range": vel_sg8 / rng,
         "vel_persist": vel_persist,
         "curv_ratio": acc_sg8 / (abs(vel_sg8) + _EPS),
+        "cons_ema": cons_ema,
+        "cons_rec": cons_rec,
+        "cons8": cons8,
+        "extremeness": extremeness,
+        "last": window[-1] if window else 0.0,
+        "tc_x_ext": tc * (2.0 * extremeness),
+        "tc_x_amp": tc * vel_z,
+        "cons_rec_x_ext": cons_rec * (2.0 * extremeness),
     }
     # Final finiteness sweep — never hand a NaN/inf downstream.
     return {k: (v if math.isfinite(v) else 0.0) for k, v in feats.items()}
+
+
+# ── the combined derivative signal ─────────────────────────────────────────────
+#
+# One probability from the whole derivative family: a standardised logistic over
+# `DERIV_SIGNAL_FEATURES`, fit strictly out-of-time by `train_deriv.py` and frozen
+# to `data/deriv_signal.json`. Serving is a pure-stdlib forward pass (no numpy) so
+# it drops straight into the terminal bundle, exactly like `mlSignal.ts`.
+
+_SIGNAL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "data", "deriv_signal.json")
+_SIGNAL_CACHE: Optional[dict] = None
+
+
+def load_signal_model(path: Optional[str] = None) -> Optional[dict]:
+    """Load (and cache) the frozen combiner. Returns None if never trained yet."""
+    global _SIGNAL_CACHE
+    if path is None and _SIGNAL_CACHE is not None:
+        return _SIGNAL_CACHE
+    p = path or _SIGNAL_PATH
+    if not os.path.isfile(p):
+        return None
+    with open(p, "r", encoding="utf-8") as fh:
+        model = json.load(fh)
+    if path is None:
+        _SIGNAL_CACHE = model
+    return model
+
+
+def deriv_signal(window: Sequence[float], model: Optional[dict] = None) -> Optional[float]:
+    """Combined derivative signal: P(up) in 0..1 from the whole family.
+
+    Standardises each `DERIV_SIGNAL_FEATURES` value with the frozen train-set
+    mean/std, applies the frozen logistic weights, and squashes. Returns None when
+    no model has been trained (so callers can fall back to the single flagship).
+    Out-of-time AUC ~0.607 — meaningfully above the best single derivative (0.588).
+    """
+    m = model if model is not None else load_signal_model()
+    if not m:
+        return None
+    feats = deriv_features(window)
+    order = m["features"]
+    mean, std, w = m["mean"], m["std"], m["weights"]
+    z = float(m["bias"])
+    for i, name in enumerate(order):
+        s = std[i] if std[i] > 1e-12 else 1.0
+        z += w[i] * ((feats[name] - mean[i]) / s)
+    if z >= 0.0:
+        return 1.0 / (1.0 + math.exp(-z))
+    e = math.exp(z)
+    return e / (1.0 + e)
 
 
 if __name__ == "__main__":
@@ -255,6 +380,11 @@ if __name__ == "__main__":
     # A choppy zig-zag can't reach the +1 of a clean trend — cleanliness << 1.
     assert abs(trend_consistency([0.5 + 0.02 * (i % 2) for i in range(16)])) < 0.6
     flat = [0.5] * 16
-    assert all(abs(v) < 1e-9 for v in deriv_features(flat).values()), deriv_features(flat)
+    ff = deriv_features(flat)
+    # Every *derivative* is zero on a dead-flat window; `extremeness` and `last`
+    # are price *levels* (0.5 here), not derivatives, so they are exempt.
+    _levels = {"extremeness", "last"}
+    assert all(abs(v) < 1e-9 for k, v in ff.items() if k not in _levels), ff
+    assert abs(ff["extremeness"] - 0.5) < 1e-9 and abs(ff["last"] - 0.5) < 1e-9, ff
     print(f"features_deriv selfcheck ok — {len(DERIV_NAMES)} candidates, "
           f"quad vel={d['vel_sg2_12']:.4f} acc={d['acc_sg12']:.4f}")

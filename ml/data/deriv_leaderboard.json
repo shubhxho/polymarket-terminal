@@ -4,6 +4,16 @@
   "n_val": 27306,
   "ranked": [
     {
+      "name": "COMBINED (deriv_signal)",
+      "auc": 0.6031800216540647,
+      "strength": 0.1031800216540647,
+      "corr": 0.021709678409366186,
+      "spread": 0.22454212454212455,
+      "wf_min_strength": 0.06154793140360604,
+      "wf_mean_auc": 0.5813646393308709,
+      "direction": "combined"
+    },
+    {
       "name": "trend_consistency",
       "auc": 0.5878326379196553,
       "strength": 0.08783263791965534,
@@ -14,6 +24,46 @@
       "direction": "momentum"
     },
     {
+      "name": "cons_rec",
+      "auc": 0.5872682075658241,
+      "strength": 0.0872682075658241,
+      "corr": -0.0014292544347637712,
+      "spread": 0.2582417582417582,
+      "wf_min_strength": 0.06234172194405385,
+      "wf_mean_auc": 0.5770848316354034,
+      "direction": "momentum"
+    },
+    {
+      "name": "last",
+      "auc": 0.5958227656282266,
+      "strength": 0.09582276562822656,
+      "corr": -0.02966154480505636,
+      "spread": 0.22087912087912087,
+      "wf_min_strength": 0.04470669548108874,
+      "wf_mean_auc": 0.5720525235377163,
+      "direction": "momentum"
+    },
+    {
+      "name": "cons8",
+      "auc": 0.5473391666986261,
+      "strength": 0.047339166698626145,
+      "corr": -0.006232882766996153,
+      "spread": 0.19706959706959704,
+      "wf_min_strength": 0.035536549222889846,
+      "wf_mean_auc": 0.5429005761981447,
+      "direction": "momentum"
+    },
+    {
+      "name": "extremeness",
+      "auc": 0.5817086030594171,
+      "strength": 0.08170860305941707,
+      "corr": -0.021755818934512935,
+      "spread": 0.18681318681318682,
+      "wf_min_strength": 0.034014983176798075,
+      "wf_mean_auc": 0.5608537820757258,
+      "direction": "momentum"
+    },
+    {
       "name": "vel_persist",
       "auc": 0.54217610271879,
       "strength": 0.04217610271879002,
@@ -21,6 +71,16 @@
       "spread": 0.15274725274725276,
       "wf_min_strength": 0.03322718138969083,
       "wf_mean_auc": 0.5404491305074657,
+      "direction": "momentum"
+    },
+    {
+      "name": "cons_ema",
+      "auc": 0.560118509347313,
+      "strength": 0.060118509347313,
+      "corr": 1.5710339434041276e-05,
+      "spread": 0.15457875457875456,
+      "wf_min_strength": 0.03207687287693284,
+      "wf_mean_auc": 0.54504929422189,
       "direction": "momentum"
     },
     {
@@ -44,6 +104,16 @@
       "direction": "momentum"
     },
     {
+      "name": "cons_rec_x_ext",
+      "auc": 0.5252695013202675,
+      "strength": 0.025269501320267507,
+      "corr": 0.007436584120100977,
+      "spread": 0.1139194139194139,
+      "wf_min_strength": 0.008542343567615851,
+      "wf_mean_auc": 0.5235277660454541,
+      "direction": "momentum"
+    },
+    {
       "name": "vel_over_range",
       "auc": 0.5124138806270854,
       "strength": 0.012413880627085372,
@@ -51,6 +121,16 @@
       "spread": 0.036263736263736246,
       "wf_min_strength": 0.007423831272657999,
       "wf_mean_auc": 0.5101011869097275,
+      "direction": "momentum"
+    },
+    {
+      "name": "tc_x_ext",
+      "auc": 0.5244783531198229,
+      "strength": 0.024478353119822938,
+      "corr": 0.008214107677775693,
+      "spread": 0.11318681318681317,
+      "wf_min_strength": 0.0067589696182088765,
+      "wf_mean_auc": 0.5220484438797116,
       "direction": "momentum"
     },
     {
@@ -92,6 +172,16 @@
       "wf_min_strength": 0.002757032391584646,
       "wf_mean_auc": 0.497534085050942,
       "direction": "mean-revert"
+    },
+    {
+      "name": "tc_x_amp",
+      "auc": 0.5156564431440849,
+      "strength": 0.015656443144084875,
+      "corr": -0.0036742341822646706,
+      "spread": -0.06666666666666668,
+      "wf_min_strength": 0.0024467380896490143,
+      "wf_mean_auc": 0.5187727171052313,
+      "direction": "momentum"
     },
     {
       "name": "acc_z",
@@ -174,5 +264,5 @@
       "direction": "mean-revert"
     }
   ],
-  "best": "trend_consistency"
+  "best": "COMBINED (deriv_signal)"
 }

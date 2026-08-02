@@ -34,7 +34,12 @@ from dataclasses import dataclass
 from typing import Dict, List, Sequence, Tuple
 
 from features import WINDOW, HORIZON, MIN_STD, _std  # same windowing contract
-from features_deriv import DERIV_NAMES, deriv_features
+from features_deriv import (
+    DERIV_NAMES,
+    DERIV_SIGNAL_FEATURES,
+    deriv_features,
+    load_signal_model,
+)
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_DATA = os.path.join(_HERE, "data", "series.json")
@@ -191,6 +196,35 @@ def evaluate(series: List[List[float]]) -> Tuple[List[DerivEval], int, int, floa
         ))
     # Best = strongest out-of-time signal that also survives every walk-forward fold.
     evals.sort(key=lambda e: (min(e.strength, e.wf_min_strength), e.strength), reverse=True)
+
+    # The trained COMBINER (all derivatives folded into one logistic) — scored on
+    # the same holdout so it sits in the same table, pinned first when present.
+    model = load_signal_model()
+    if model is not None:
+        def _combi(feats: Dict[str, float]) -> float:
+            mean, std, w = model["mean"], model["std"], model["weights"]
+            z = float(model["bias"])
+            for i, nm in enumerate(model["features"]):
+                s = std[i] if std[i] > 1e-12 else 1.0
+                z += w[i] * ((feats[nm] - mean[i]) / s)
+            return z  # monotone in prob → AUC-equivalent, no sigmoid needed
+        c_scores = [_combi(r.feats) for r in va]
+        auc = _auc(c_scores, [r.label for r in va])
+        wf_str, wf_aucs = [], []
+        for _, fold in wf:
+            a = _auc([_combi(r.feats) for r in fold], [r.label for r in fold])
+            wf_str.append(abs(a - 0.5))
+            wf_aucs.append(a)
+        combiner = DerivEval(
+            name="COMBINED (deriv_signal)",
+            auc=auc, strength=abs(auc - 0.5),
+            corr=_pearson(c_scores, [r.fwd for r in va]),
+            spread=_decile_spread(c_scores, [r.label for r in va]),
+            wf_min_strength=min(wf_str) if wf_str else 0.0,
+            wf_mean_auc=sum(wf_aucs) / len(wf_aucs) if wf_aucs else 0.5,
+            direction="combined",
+        )
+        evals.insert(0, combiner)
     return evals, len(tr), len(va), up_rate
 
 
