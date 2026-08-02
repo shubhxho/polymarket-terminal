@@ -10,16 +10,31 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Least privilege: CI only reads the repo.
+permissions:
+  contents: read
+
+env:
+  # Pinned so a bun release never silently changes the gate. Bump deliberately.
+  BUN_VERSION: "1.3.14"
+
 jobs:
   # Lint, format, types and the Vitest unit suite — the fast gate every push
   # must pass. Pure logic, no browser, no network.
   unit:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Cache bun install
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
       - name: Install
         run: bun install --frozen-lockfile
       - name: Lint (oxlint)
@@ -37,10 +52,13 @@ jobs:
   # numpy + lightgbm, everything else stdlib against committed data.
   ml:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
         uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
       - name: Create env + install ML deps (uv)
         run: |
           uv venv --python 3.12
@@ -52,14 +70,35 @@ jobs:
   # a browser flake never blocks the unit gate.
   e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Cache bun install
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
       - name: Install
         run: bun install --frozen-lockfile
+      - name: Resolve Playwright version
+        id: pw
+        run: echo "v=$(bunx playwright --version | grep -oE '[0-9.]+')" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.v }}
       - name: Install Chromium
         run: bunx playwright install --with-deps chromium
+      - name: Cache Next build
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: next-${{ runner.os }}-${{ hashFiles('bun.lock') }}-${{ hashFiles('src/**', 'tsconfig.json') }}
+          restore-keys: next-${{ runner.os }}-
       - name: E2E tests (playwright)
         run: bun run test:e2e
