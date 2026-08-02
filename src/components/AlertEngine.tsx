@@ -26,6 +26,16 @@ export function AlertEngine() {
   useEffect(() => {
     if (armed.length === 0) return;
 
+    // Drop baselines for tokens that are no longer armed (their alert fired or was
+    // removed). Otherwise a re-armed alert on the same token would find a stale
+    // `prev` and could fire instantly off a minutes-old price — the very
+    // instant-fire this crossing design exists to prevent — and the map would grow
+    // unbounded as tokens come and go.
+    const armedTokens = new Set(armed.map((a) => a.tokenId));
+    for (const k of seen.current.keys()) {
+      if (!armedTokens.has(k)) seen.current.delete(k);
+    }
+
     for (const alert of armed) {
       const q = feed.quotes.get(alert.tokenId);
       const price =

@@ -64,11 +64,14 @@ export function Sparkline({
   );
 }
 
-/** Uniform stride sampling — keeps first and last so endpoints stay honest. */
+/** Uniform stride sampling — exactly `target` points, first and last inclusive. */
 function decimate(points: PricePoint[], target: number): PricePoint[] {
-  const step = points.length / target;
+  if (target < 2 || points.length <= target) return points.slice();
   const out: PricePoint[] = [];
-  for (let i = 0; i < target; i++) out.push(points[Math.floor(i * step)]);
-  out.push(points[points.length - 1]);
+  // Span the full range so i=0 → first and i=target-1 → last, with no duplicated
+  // final sample (the old `length/target` stride plus an extra push overshot to
+  // target+1 points and repeated the last).
+  const step = (points.length - 1) / (target - 1);
+  for (let i = 0; i < target; i++) out.push(points[Math.round(i * step)]);
   return out;
 }

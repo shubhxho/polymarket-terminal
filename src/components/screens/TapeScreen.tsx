@@ -203,6 +203,14 @@ export default function TapeScreen() {
                     onClick={() => {
                       if (r.slug) go({ fn: "DES", slug: r.slug, kind: "market" }, `DES ${r.slug}`);
                     }}
+                    role={r.slug ? "button" : undefined}
+                    tabIndex={r.slug ? 0 : undefined}
+                    onKeyDown={(e) => {
+                      if ((e.key === "Enter" || e.key === " ") && r.slug) {
+                        e.preventDefault();
+                        go({ fn: "DES", slug: r.slug, kind: "market" }, `DES ${r.slug}`);
+                      }
+                    }}
                     className={`flex items-center gap-1 border-b border-edge/30 px-1 py-[2px] hover:bg-surface-2 ${
                       r.slug ? "cursor-pointer" : ""
                     }`}
