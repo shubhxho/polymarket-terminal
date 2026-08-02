@@ -31,6 +31,22 @@ jobs:
       - name: Unit tests (vitest)
         run: bun run test
 
+  # The ML signal pipeline is pure Python. This gate runs the stdlib selfchecks
+  # and the derivative / backtest / trading-model test suites (incl. the GBDT
+  # walker == booster.predict parity check). No MLX, no network, no GPU — only
+  # numpy + lightgbm, everything else stdlib against committed data.
+  ml:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ML deps
+        run: pip install numpy lightgbm
+      - name: ML test gate
+        run: PYTHON=python bash ml/run_tests.sh
+
   # Playwright drives a production build in real Chromium. Kept in its own job so
   # a browser flake never blocks the unit gate.
   e2e:

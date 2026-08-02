@@ -329,8 +329,10 @@ def deriv_features(window: Sequence[float]) -> Dict[str, float]:
 _DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 _SIGNAL_PATH = os.path.join(_DATA_DIR, "deriv_signal.json")
 _GBDT_PATH = os.path.join(_DATA_DIR, "deriv_gbdt.json")
+_TRADER_PATH = os.path.join(_DATA_DIR, "deriv_trader.json")
 _SIGNAL_CACHE: Optional[dict] = None
 _GBDT_CACHE: Optional[dict] = None
+_TRADER_CACHE: Optional[dict] = None
 
 
 def _sigmoid(z: float) -> float:
@@ -416,6 +418,55 @@ def deriv_signal_gbdt(window: Sequence[float], model: Optional[dict] = None) -> 
     x = [feats[name] for name in m["features"]]
     raw = sum(_walk_tree(t["tree_structure"], x) for t in m["model"]["tree_info"])
     return _sigmoid(raw)
+
+
+def load_trader_model(path: Optional[str] = None) -> Optional[dict]:
+    """Load (and cache) the frozen SOTA trading policy. None if never trained."""
+    global _TRADER_CACHE
+    if path is None and _TRADER_CACHE is not None:
+        return _TRADER_CACHE
+    p = path or _TRADER_PATH
+    if not os.path.isfile(p):
+        return None
+    with open(p, "r", encoding="utf-8") as fh:
+        model = json.load(fh)
+    if path is None:
+        _TRADER_CACHE = model
+    return model
+
+
+def trade_signal(window: Sequence[float], model: Optional[dict] = None) -> Optional[dict]:
+    """The frozen SOTA trading decision for one look-back window.
+
+    Runs the trader GBDT to get the up-probability, then applies the frozen
+    selective-short operating point: SHORT when the probability clears the frozen
+    top-quantile threshold (those windows fall hardest net of fees), else FLAT.
+    ``size`` is a 0..1 conviction = how far past the threshold the probability is.
+
+    Returns a decision dict, or None if no trader has been trained. The policy is
+    short-biased and narrow (see train_deriv_trader.py) — it is a backtested edge,
+    not a promise; size it against live spread.
+    """
+    m = model if model is not None else load_trader_model()
+    if not m:
+        return None
+    feats = deriv_features(window)
+    x = [feats[name] for name in m["features"]]
+    prob = _sigmoid(sum(_walk_tree(t["tree_structure"], x) for t in m["model"]["tree_info"]))
+    thr = m["short_threshold"]
+    if prob >= thr:
+        size = min(1.0, (prob - thr) / (1.0 - thr)) if thr < 1.0 else 1.0
+        action = "SHORT"
+    else:
+        size, action = 0.0, "FLAT"
+    return {
+        "action": action,
+        "size": round(size, 4),
+        "prob_up": round(prob, 4),
+        "short_threshold": thr,
+        "horizon": m["horizon"],
+        "expected_sharpe": m["policy"].get(f"fee_{m['fee_assumed']}", {}).get("sharpe"),
+    }
 
 
 def deriv_signal(window: Sequence[float], kind: str = "auto",
