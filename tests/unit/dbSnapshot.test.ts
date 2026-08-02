@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { snapshotRow } from "@/db/snapshot";
+import { recordSignalSnapshot, snapshotRow } from "@/db/snapshot";
+import { db, dbEnabled } from "@/db/client";
 import type { SignalsPayload } from "@/app/api/signals/route";
 
 const market = (id: string, over: Record<string, unknown> = {}) =>
@@ -72,5 +73,17 @@ describe("snapshotRow", () => {
     expect(row.topMarketId).toBeNull();
     expect(row.topHeat).toBeNull();
     expect(row.markets).toEqual([]);
+  });
+});
+
+describe("db graceful degradation", () => {
+  test("dbEnabled() reflects DATABASE_URL, db() matches", () => {
+    const has = Boolean(process.env.DATABASE_URL);
+    expect(dbEnabled()).toBe(has);
+    if (!has) expect(db()).toBeNull();
+  });
+
+  test("recordSignalSnapshot resolves without throwing even with no DB", async () => {
+    await expect(recordSignalSnapshot(payload())).resolves.toBeUndefined();
   });
 });
