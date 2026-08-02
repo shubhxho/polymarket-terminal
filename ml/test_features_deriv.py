@@ -20,6 +20,8 @@ from features_deriv import (
     deriv_signal_gbdt,
     load_gbdt_model,
     load_signal_model,
+    load_trader_model,
+    trade_signal,
     trend_consistency,
 )
 
@@ -133,6 +135,25 @@ def test_deriv_signal_gbdt_range_and_direction():
     assert pu > pd
     # auto mode serves the GBDT when present.
     assert approx(deriv_signal(up), pu, 1e-12)
+
+
+def test_trade_signal_policy():
+    m = load_trader_model()
+    if m is None:
+        return
+    win = [0.45 + 0.006 * i for i in range(16)]
+    d = trade_signal(win)
+    assert d["action"] in ("SHORT", "FLAT")
+    assert 0.0 <= d["size"] <= 1.0
+    assert 0.0 <= d["prob_up"] <= 1.0
+    assert d["horizon"] == m["horizon"]
+    # A window whose prob clears the frozen threshold must SHORT with size>0.
+    if d["prob_up"] >= m["short_threshold"]:
+        assert d["action"] == "SHORT" and d["size"] > 0.0
+    else:
+        assert d["action"] == "FLAT" and d["size"] == 0.0
+    # The frozen policy's own backtested edge must be recorded and positive.
+    assert m["policy"][f"fee_{m['fee_assumed']}"]["sharpe"] > 0
 
 
 if __name__ == "__main__":

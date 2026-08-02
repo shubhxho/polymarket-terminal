@@ -1,0 +1,432 @@
+{
+  "horizons": [
+    {
+      "horizon": 4,
+      "auc": 0.651,
+      "n": 27306,
+      "up_rate": 0.2707,
+      "mean_abs_fwd": 0.01209,
+      "strategies": {
+        "fee_0.0": {
+          "always_short": {
+            "pnl": 16.427,
+            "mean_ret": 0.000602,
+            "sharpe": 2.326,
+            "n": 27306
+          },
+          "selective_short_q0.1": {
+            "pnl": 5.494,
+            "mean_ret": 0.002012,
+            "sharpe": 1.41,
+            "n": 2730
+          },
+          "selective_short_q0.2": {
+            "pnl": 8.697,
+            "mean_ret": 0.001593,
+            "sharpe": 1.77,
+            "n": 5461
+          },
+          "selective_short_q0.3": {
+            "pnl": 12.845,
+            "mean_ret": 0.001568,
+            "sharpe": 2.2,
+            "n": 8191
+          },
+          "long_short_q0.2": {
+            "pnl": -9.581,
+            "mean_ret": -0.000877,
+            "sharpe": -1.921,
+            "n": 10922
+          }
+        },
+        "fee_0.003": {
+          "always_short": {
+            "pnl": -65.491,
+            "mean_ret": -0.002398,
+            "sharpe": -9.275,
+            "n": 27306
+          },
+          "selective_short_q0.1": {
+            "pnl": -2.696,
+            "mean_ret": -0.000988,
+            "sharpe": -0.692,
+            "n": 2730
+          },
+          "selective_short_q0.2": {
+            "pnl": -7.686,
+            "mean_ret": -0.001407,
+            "sharpe": -1.564,
+            "n": 5461
+          },
+          "selective_short_q0.3": {
+            "pnl": -11.728,
+            "mean_ret": -0.001432,
+            "sharpe": -2.009,
+            "n": 8191
+          },
+          "long_short_q0.2": {
+            "pnl": -42.347,
+            "mean_ret": -0.003877,
+            "sharpe": -8.489,
+            "n": 10922
+          }
+        },
+        "fee_0.005": {
+          "always_short": {
+            "pnl": -120.103,
+            "mean_ret": -0.004398,
+            "sharpe": -17.009,
+            "n": 27306
+          },
+          "selective_short_q0.1": {
+            "pnl": -8.156,
+            "mean_ret": -0.002988,
+            "sharpe": -2.093,
+            "n": 2730
+          },
+          "selective_short_q0.2": {
+            "pnl": -18.608,
+            "mean_ret": -0.003407,
+            "sharpe": -3.788,
+            "n": 5461
+          },
+          "selective_short_q0.3": {
+            "pnl": -28.11,
+            "mean_ret": -0.003432,
+            "sharpe": -4.815,
+            "n": 8191
+          },
+          "long_short_q0.2": {
+            "pnl": -64.191,
+            "mean_ret": -0.005877,
+            "sharpe": -12.868,
+            "n": 10922
+          }
+        }
+      }
+    },
+    {
+      "horizon": 8,
+      "auc": 0.6081,
+      "n": 27006,
+      "up_rate": 0.306,
+      "mean_abs_fwd": 0.01717,
+      "strategies": {
+        "fee_0.0": {
+          "always_short": {
+            "pnl": 44.432,
+            "mean_ret": 0.001645,
+            "sharpe": 5.22,
+            "n": 27006
+          },
+          "selective_short_q0.1": {
+            "pnl": 22.105,
+            "mean_ret": 0.008187,
+            "sharpe": 4.815,
+            "n": 2700
+          },
+          "selective_short_q0.2": {
+            "pnl": 27.999,
+            "mean_ret": 0.005184,
+            "sharpe": 4.907,
+            "n": 5401
+          },
+          "selective_short_q0.3": {
+            "pnl": 31.636,
+            "mean_ret": 0.003905,
+            "sharpe": 4.909,
+            "n": 8101
+          },
+          "long_short_q0.2": {
+            "pnl": -29.714,
+            "mean_ret": -0.002751,
+            "sharpe": -5.104,
+            "n": 10802
+          }
+        },
+        "fee_0.003": {
+          "always_short": {
+            "pnl": -36.586,
+            "mean_ret": -0.001355,
+            "sharpe": -4.298,
+            "n": 27006
+          },
+          "selective_short_q0.1": {
+            "pnl": 14.005,
+            "mean_ret": 0.005187,
+            "sharpe": 3.051,
+            "n": 2700
+          },
+          "selective_short_q0.2": {
+            "pnl": 11.796,
+            "mean_ret": 0.002184,
+            "sharpe": 2.067,
+            "n": 5401
+          },
+          "selective_short_q0.3": {
+            "pnl": 7.333,
+            "mean_ret": 0.000905,
+            "sharpe": 1.138,
+            "n": 8101
+          },
+          "long_short_q0.2": {
+            "pnl": -62.12,
+            "mean_ret": -0.005751,
+            "sharpe": -10.671,
+            "n": 10802
+          }
+        },
+        "fee_0.005": {
+          "always_short": {
+            "pnl": -90.598,
+            "mean_ret": -0.003355,
+            "sharpe": -10.644,
+            "n": 27006
+          },
+          "selective_short_q0.1": {
+            "pnl": 8.605,
+            "mean_ret": 0.003187,
+            "sharpe": 1.875,
+            "n": 2700
+          },
+          "selective_short_q0.2": {
+            "pnl": 0.994,
+            "mean_ret": 0.000184,
+            "sharpe": 0.174,
+            "n": 5401
+          },
+          "selective_short_q0.3": {
+            "pnl": -8.869,
+            "mean_ret": -0.001095,
+            "sharpe": -1.376,
+            "n": 8101
+          },
+          "long_short_q0.2": {
+            "pnl": -83.724,
+            "mean_ret": -0.007751,
+            "sharpe": -14.382,
+            "n": 10802
+          }
+        }
+      }
+    },
+    {
+      "horizon": 16,
+      "auc": 0.5813,
+      "n": 26461,
+      "up_rate": 0.3309,
+      "mean_abs_fwd": 0.02505,
+      "strategies": {
+        "fee_0.0": {
+          "always_short": {
+            "pnl": 88.787,
+            "mean_ret": 0.003355,
+            "sharpe": 8.409,
+            "n": 26461
+          },
+          "selective_short_q0.1": {
+            "pnl": 29.252,
+            "mean_ret": 0.011055,
+            "sharpe": 6.036,
+            "n": 2646
+          },
+          "selective_short_q0.2": {
+            "pnl": 50.681,
+            "mean_ret": 0.009577,
+            "sharpe": 7.272,
+            "n": 5292
+          },
+          "selective_short_q0.3": {
+            "pnl": 64.663,
+            "mean_ret": 0.008146,
+            "sharpe": 8.173,
+            "n": 7938
+          },
+          "long_short_q0.2": {
+            "pnl": -51.529,
+            "mean_ret": -0.004869,
+            "sharpe": -7.021,
+            "n": 10584
+          }
+        },
+        "fee_0.003": {
+          "always_short": {
+            "pnl": 9.404,
+            "mean_ret": 0.000355,
+            "sharpe": 0.891,
+            "n": 26461
+          },
+          "selective_short_q0.1": {
+            "pnl": 21.314,
+            "mean_ret": 0.008055,
+            "sharpe": 4.398,
+            "n": 2646
+          },
+          "selective_short_q0.2": {
+            "pnl": 34.805,
+            "mean_ret": 0.006577,
+            "sharpe": 4.994,
+            "n": 5292
+          },
+          "selective_short_q0.3": {
+            "pnl": 40.849,
+            "mean_ret": 0.005146,
+            "sharpe": 5.163,
+            "n": 7938
+          },
+          "long_short_q0.2": {
+            "pnl": -83.281,
+            "mean_ret": -0.007869,
+            "sharpe": -11.347,
+            "n": 10584
+          }
+        },
+        "fee_0.005": {
+          "always_short": {
+            "pnl": -43.518,
+            "mean_ret": -0.001645,
+            "sharpe": -4.122,
+            "n": 26461
+          },
+          "selective_short_q0.1": {
+            "pnl": 16.022,
+            "mean_ret": 0.006055,
+            "sharpe": 3.306,
+            "n": 2646
+          },
+          "selective_short_q0.2": {
+            "pnl": 24.221,
+            "mean_ret": 0.004577,
+            "sharpe": 3.475,
+            "n": 5292
+          },
+          "selective_short_q0.3": {
+            "pnl": 24.973,
+            "mean_ret": 0.003146,
+            "sharpe": 3.156,
+            "n": 7938
+          },
+          "long_short_q0.2": {
+            "pnl": -104.45,
+            "mean_ret": -0.009869,
+            "sharpe": -14.231,
+            "n": 10584
+          }
+        }
+      }
+    },
+    {
+      "horizon": 32,
+      "auc": 0.5063,
+      "n": 25412,
+      "up_rate": 0.3378,
+      "mean_abs_fwd": 0.03504,
+      "strategies": {
+        "fee_0.0": {
+          "always_short": {
+            "pnl": 134.765,
+            "mean_ret": 0.005303,
+            "sharpe": 10.563,
+            "n": 25412
+          },
+          "selective_short_q0.1": {
+            "pnl": -3.933,
+            "mean_ret": -0.001548,
+            "sharpe": -0.864,
+            "n": 2541
+          },
+          "selective_short_q0.2": {
+            "pnl": 7.976,
+            "mean_ret": 0.001569,
+            "sharpe": 1.232,
+            "n": 5082
+          },
+          "selective_short_q0.3": {
+            "pnl": 17.444,
+            "mean_ret": 0.002288,
+            "sharpe": 2.272,
+            "n": 7623
+          },
+          "long_short_q0.2": {
+            "pnl": 34.916,
+            "mean_ret": 0.003435,
+            "sharpe": 3.954,
+            "n": 10164
+          }
+        },
+        "fee_0.003": {
+          "always_short": {
+            "pnl": 58.529,
+            "mean_ret": 0.002303,
+            "sharpe": 4.588,
+            "n": 25412
+          },
+          "selective_short_q0.1": {
+            "pnl": -11.556,
+            "mean_ret": -0.004548,
+            "sharpe": -2.538,
+            "n": 2541
+          },
+          "selective_short_q0.2": {
+            "pnl": -7.271,
+            "mean_ret": -0.001431,
+            "sharpe": -1.123,
+            "n": 5082
+          },
+          "selective_short_q0.3": {
+            "pnl": -5.425,
+            "mean_ret": -0.000712,
+            "sharpe": -0.707,
+            "n": 7623
+          },
+          "long_short_q0.2": {
+            "pnl": 4.424,
+            "mean_ret": 0.000435,
+            "sharpe": 0.501,
+            "n": 10164
+          }
+        },
+        "fee_0.005": {
+          "always_short": {
+            "pnl": 7.705,
+            "mean_ret": 0.000303,
+            "sharpe": 0.604,
+            "n": 25412
+          },
+          "selective_short_q0.1": {
+            "pnl": -16.639,
+            "mean_ret": -0.006548,
+            "sharpe": -3.654,
+            "n": 2541
+          },
+          "selective_short_q0.2": {
+            "pnl": -17.435,
+            "mean_ret": -0.003431,
+            "sharpe": -2.692,
+            "n": 5082
+          },
+          "selective_short_q0.3": {
+            "pnl": -20.671,
+            "mean_ret": -0.002712,
+            "sharpe": -2.692,
+            "n": 7623
+          },
+          "long_short_q0.2": {
+            "pnl": -15.904,
+            "mean_ret": -0.001565,
+            "sharpe": -1.801,
+            "n": 10164
+          }
+        }
+      }
+    }
+  ],
+  "best_net_of_fee": {
+    "horizon": 16,
+    "fee": "fee_0.003",
+    "strategy": "selective_short_q0.3",
+    "sharpe": 5.163,
+    "pnl": 40.849,
+    "baseline_sharpe": 0.891
+  }
+}
