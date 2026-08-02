@@ -207,6 +207,11 @@ def train_tabpfn(series, horizon: int = 16):
     Xva, yva, fva = M(va)
 
     # TabPFN caps context; subsample a class-balanced 10k train slice.
+    # NOTE: TabPFN v2 requires a one-time license acceptance to download weights
+    # (TabPFNLicenseError under a headless run) — accept it once in an interactive
+    # session / set the documented env before relying on this in CI. Kept because
+    # the finding stands regardless: a data-bound ceiling (0.651) is not broken by
+    # a better model class, only by better data.
     rng = np.random.RandomState(0)
     idx = rng.permutation(len(Xtr))[:10000]
     clf = TabPFNClassifier(device="cuda")
