@@ -112,6 +112,12 @@ export default function MeshScreen() {
               </button>
             </div>
 
+            {mesh.error ? (
+              <div className="border border-down-weak px-2 py-1 text-[11px] text-down">
+                {mesh.error}
+              </div>
+            ) : null}
+
             {mesh.localBlob ? (
               <div className="flex flex-col gap-1">
                 <span className="eyebrow">

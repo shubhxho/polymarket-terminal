@@ -5,6 +5,7 @@ import {
   encodeMessage,
   mergeRemote,
   MESH_PROTOCOL_VERSION,
+  parseSignaling,
   PEER_TTL_MS,
   prune,
   relayFrames,
@@ -105,6 +106,24 @@ describe("mergeRemote / prune", () => {
       "self"
     );
     expect([...state.keys()]).toEqual(["c"]);
+  });
+});
+
+describe("parseSignaling", () => {
+  test("accepts a well-formed offer or answer, trimming whitespace", () => {
+    expect(parseSignaling('  {"type":"offer","sdp":"v=0..."}  ')).toEqual({
+      type: "offer",
+      sdp: "v=0...",
+    });
+    expect(parseSignaling('{"type":"answer","sdp":"v=0"}')).toEqual({ type: "answer", sdp: "v=0" });
+  });
+
+  test("rejects junk, wrong type, or a missing/empty sdp", () => {
+    expect(parseSignaling("not json")).toBeNull();
+    expect(parseSignaling("null")).toBeNull();
+    expect(parseSignaling('{"type":"pranswer","sdp":"x"}')).toBeNull();
+    expect(parseSignaling('{"type":"offer"}')).toBeNull();
+    expect(parseSignaling('{"type":"offer","sdp":""}')).toBeNull();
   });
 });
 

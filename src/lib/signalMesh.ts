@@ -66,6 +66,32 @@ function validSignal(s: unknown): s is SharedSignal {
   );
 }
 
+/**
+ * Validate a pasted WebRTC signaling blob before it is ever handed to the
+ * connection. A peer's offer/answer arrives as a copy-pasted string that could
+ * be truncated, doubled, or plain wrong; this rejects anything that is not a
+ * `{ type: "offer" | "answer", sdp: string }` so the handshake fails with a clear
+ * message instead of an opaque `setRemoteDescription` throw.
+ */
+export function parseSignaling(raw: string): { type: "offer" | "answer"; sdp: string } | null {
+  let o: unknown;
+  try {
+    o = JSON.parse(raw.trim());
+  } catch {
+    return null;
+  }
+  if (!o || typeof o !== "object") return null;
+  const d = o as Record<string, unknown>;
+  if (
+    (d.type === "offer" || d.type === "answer") &&
+    typeof d.sdp === "string" &&
+    d.sdp.length > 0
+  ) {
+    return { type: d.type, sdp: d.sdp };
+  }
+  return null;
+}
+
 /** Build the wire payload for this terminal's current signals. */
 export function encodeMessage(peer: string, ts: number, signals: readonly SharedSignal[]): string {
   const msg: MeshMessage = { v: MESH_PROTOCOL_VERSION, peer, ts, signals };
