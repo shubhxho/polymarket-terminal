@@ -44,6 +44,11 @@ from backtest import BacktestResult, Record, run_backtest  # noqa: E402
 # Minimum |edge| (model prob − market price, in probability units) needed to act.
 # Below this band the quote is not worth crossing the fee/slippage — we HOLD.
 MIN_EDGE: float = 0.02
+# Minimum fused confidence needed to act. A large edge means nothing when the base
+# models are at war or the signal has a poor realized track record — that is a
+# low-quality signal, not an opportunity. Below this floor we HOLD even with a big
+# edge. This is the signal-qualification gate the edge band alone can't provide.
+MIN_CONFIDENCE: float = 0.15
 # Per-trade fee + slippage handed to the backtester, same units as MIN_EDGE.
 FEE: float = 0.01
 # How hard a positive/negative realized Sharpe pushes empirical reliability up/down.
@@ -81,6 +86,8 @@ class Signal:
     score                risk-adjusted edge = |edge| × confidence for a live call,
                          0 for HOLD — the ranking key in `rank_signals`
     contributing         base models that actually fed this signal
+    hold_reason          why a HOLD was returned — "no_models" / "low_edge" /
+                         "low_confidence" — or None for a live BUY_YES/BUY_NO call
     market_id            optional caller-supplied identifier (used by ranking)
     """
 
@@ -94,6 +101,7 @@ class Signal:
     reliability: Optional[float] = None
     score: float = 0.0
     contributing: List[str] = field(default_factory=list)
+    hold_reason: Optional[str] = None
     market_id: Optional[str] = None
 
     def to_dict(self) -> Dict[str, object]:
@@ -110,6 +118,7 @@ class Signal:
                             else round(self.reliability, 6)),
             "score": round(self.score, 6),
             "contributing": list(self.contributing),
+            "hold_reason": self.hold_reason,
         }
 
 
@@ -198,6 +207,7 @@ def best_signal(
     *,
     weights: Optional[StackWeights] = None,
     min_edge: float = MIN_EDGE,
+    min_confidence: float = MIN_CONFIDENCE,
     fee: float = FEE,
     market_id: Optional[str] = None,
 ) -> Signal:
@@ -220,14 +230,21 @@ def best_signal(
     confidence = _fuse_confidence(es.confidence, reliability)
 
     # Direction: gated by the min-edge band, and never act without a base model.
+    hold_reason: Optional[str] = None
     if not es.contributing:
-        direction = HOLD
+        direction, hold_reason = HOLD, "no_models"
     elif edge > min_edge:
         direction = BUY_YES
     elif edge < -min_edge:
         direction = BUY_NO
     else:
-        direction = HOLD
+        direction, hold_reason = HOLD, "low_edge"
+
+    # Qualification gate: a live edge from a set of models we don't trust — internal
+    # disagreement or a poor backtested track record — is suppressed to HOLD. This
+    # is the quality bar the edge band alone can't enforce.
+    if direction != HOLD and confidence < min_confidence:
+        direction, hold_reason = HOLD, "low_confidence"
 
     # Risk-adjusted edge: only a live (non-HOLD) call is an opportunity to rank.
     score = 0.0 if direction == HOLD else abs(edge) * confidence
@@ -243,6 +260,7 @@ def best_signal(
         reliability=reliability,
         score=score,
         contributing=list(es.contributing),
+        hold_reason=hold_reason,
         market_id=market_id,
     )
 
@@ -273,6 +291,7 @@ def _coerce_signal(market: object) -> Signal:
         market.get("history"),
         weights=market.get("weights"),
         min_edge=market.get("min_edge", MIN_EDGE),
+        min_confidence=market.get("min_confidence", MIN_CONFIDENCE),
         fee=market.get("fee", FEE),
         market_id=(str(mid) if mid is not None else None),
     )
@@ -352,6 +371,20 @@ def _selfcheck() -> None:
         market_price=0.505,
     )
     assert abs(tiny.edge) < MIN_EDGE and tiny.direction == HOLD, (tiny.edge, tiny.direction)
+    assert tiny.hold_reason == "low_edge", tiny.hold_reason
+
+    # Qualification gate: a big, clean edge is still suppressed to HOLD when the
+    # confidence floor is not cleared — an untrusted signal is not tradeable.
+    gated = best_signal(
+        {"resolve": 0.90, "flow": 0.88, "smart": 0.92},
+        market_price=0.60,
+        min_confidence=0.999,          # unreachable floor → forces the gate
+    )
+    assert abs(gated.edge) > MIN_EDGE, gated.edge         # edge alone would have fired
+    assert gated.direction == HOLD, gated.direction
+    assert gated.hold_reason == "low_confidence", gated.hold_reason
+    # The strong live call above cleared the default floor → it stays a live BUY.
+    assert strong.direction == BUY_YES and strong.hold_reason is None, strong
 
     # No usable base models → explicit HOLD, zero confidence, never a crash.
     empty = best_signal({}, market_price=0.30)
@@ -383,6 +416,7 @@ def _selfcheck() -> None:
     assert ids[0] == "strong-edge", ids
     assert ids[-1] == "hold", ids
     assert ranked[-1].direction == HOLD and ranked[-1].score == 0.0
+    assert ranked[-1].hold_reason == "low_edge", ranked[-1].hold_reason
     # Monotone non-increasing risk-adjusted score.
     for i in range(1, len(ranked)):
         assert ranked[i - 1].score >= ranked[i].score - 1e-12, [s.score for s in ranked]
