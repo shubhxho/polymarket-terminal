@@ -316,14 +316,28 @@ def deriv_features(window: Sequence[float]) -> Dict[str, float]:
 
 # ── the combined derivative signal ─────────────────────────────────────────────
 #
-# One probability from the whole derivative family: a standardised logistic over
-# `DERIV_SIGNAL_FEATURES`, fit strictly out-of-time by `train_deriv.py` and frozen
-# to `data/deriv_signal.json`. Serving is a pure-stdlib forward pass (no numpy) so
-# it drops straight into the terminal bundle, exactly like `mlSignal.ts`.
+# One probability from the whole derivative family, in two flavours, both fit
+# strictly out-of-time and both served by a pure-stdlib forward pass (no numpy /
+# lightgbm at serve time) so they drop straight into the terminal bundle like
+# `mlSignal.ts`:
+#   • deriv_signal_gbdt — the FLAGSHIP gradient-boosted trees (out-of-time AUC
+#     ~0.649). Frozen as `data/deriv_gbdt.json` by `train_deriv_gbdt.py`.
+#   • deriv_signal(…, kind="logistic") — the linear baseline (~0.603). Frozen as
+#     `data/deriv_signal.json` by `train_deriv.py`.
+# `deriv_signal` with the default kind="auto" serves the GBDT when present.
 
-_SIGNAL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                            "data", "deriv_signal.json")
+_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+_SIGNAL_PATH = os.path.join(_DATA_DIR, "deriv_signal.json")
+_GBDT_PATH = os.path.join(_DATA_DIR, "deriv_gbdt.json")
 _SIGNAL_CACHE: Optional[dict] = None
+_GBDT_CACHE: Optional[dict] = None
+
+
+def _sigmoid(z: float) -> float:
+    if z >= 0.0:
+        return 1.0 / (1.0 + math.exp(-z))
+    e = math.exp(z)
+    return e / (1.0 + e)
 
 
 def load_signal_model(path: Optional[str] = None) -> Optional[dict]:
@@ -341,28 +355,90 @@ def load_signal_model(path: Optional[str] = None) -> Optional[dict]:
     return model
 
 
-def deriv_signal(window: Sequence[float], model: Optional[dict] = None) -> Optional[float]:
-    """Combined derivative signal: P(up) in 0..1 from the whole family.
+def _logistic_signal(window: Sequence[float], m: dict) -> float:
+    feats = deriv_features(window)
+    mean, std, w = m["mean"], m["std"], m["weights"]
+    z = float(m["bias"])
+    for i, name in enumerate(m["features"]):
+        s = std[i] if std[i] > 1e-12 else 1.0
+        z += w[i] * ((feats[name] - mean[i]) / s)
+    return _sigmoid(z)
 
-    Standardises each `DERIV_SIGNAL_FEATURES` value with the frozen train-set
-    mean/std, applies the frozen logistic weights, and squashes. Returns None when
-    no model has been trained (so callers can fall back to the single flagship).
-    Out-of-time AUC ~0.607 — meaningfully above the best single derivative (0.588).
+
+# The flagship GBDT is served by walking LightGBM's own `dump_model()` tree JSON.
+# A leaf node carries `leaf_value`; an internal node carries `split_feature`,
+# `threshold`, `decision_type` ("<=") and left/right child subtrees. Summing the
+# leaf values across trees and squashing reproduces `booster.predict` exactly
+# (verified to 1e-16), with zero third-party deps — so it ports to the TS bundle.
+
+def load_gbdt_model(path: Optional[str] = None) -> Optional[dict]:
+    """Load (and cache) the frozen GBDT. None if never trained."""
+    global _GBDT_CACHE
+    if path is None and _GBDT_CACHE is not None:
+        return _GBDT_CACHE
+    p = path or _GBDT_PATH
+    if not os.path.isfile(p):
+        return None
+    with open(p, "r", encoding="utf-8") as fh:
+        model = json.load(fh)
+    if path is None:
+        _GBDT_CACHE = model
+    return model
+
+
+def _walk_tree(node: dict, x: List[float]) -> float:
+    n = node
+    while "leaf_value" not in n:
+        xv = x[n["split_feature"]]
+        thr = n["threshold"]
+        if xv is None or (isinstance(xv, float) and math.isnan(xv)):
+            go_left = n.get("default_left", True)
+        elif n.get("decision_type", "<=") == "<=":
+            go_left = xv <= thr
+        else:
+            go_left = xv < thr
+        n = n["left_child"] if go_left else n["right_child"]
+    return n["leaf_value"]
+
+
+def deriv_signal_gbdt(window: Sequence[float], model: Optional[dict] = None) -> Optional[float]:
+    """Flagship combined derivative signal via the frozen GBDT: P(up) in 0..1.
+
+    Out-of-time AUC ~0.649 — well above the linear combiner (0.603) and the best
+    single derivative (0.588), because the trees capture the interactions between
+    trend cleanliness, room-to-move and move size that a linear model cannot.
+    Returns None when the GBDT has not been trained.
     """
-    m = model if model is not None else load_signal_model()
+    m = model if model is not None else load_gbdt_model()
     if not m:
         return None
     feats = deriv_features(window)
-    order = m["features"]
-    mean, std, w = m["mean"], m["std"], m["weights"]
-    z = float(m["bias"])
-    for i, name in enumerate(order):
-        s = std[i] if std[i] > 1e-12 else 1.0
-        z += w[i] * ((feats[name] - mean[i]) / s)
-    if z >= 0.0:
-        return 1.0 / (1.0 + math.exp(-z))
-    e = math.exp(z)
-    return e / (1.0 + e)
+    x = [feats[name] for name in m["features"]]
+    raw = sum(_walk_tree(t["tree_structure"], x) for t in m["model"]["tree_info"])
+    return _sigmoid(raw)
+
+
+def deriv_signal(window: Sequence[float], kind: str = "auto",
+                 model: Optional[dict] = None) -> Optional[float]:
+    """Combined derivative signal: P(up) in 0..1 from the whole family.
+
+    ``kind="auto"`` (default) serves the flagship GBDT when it is present and
+    falls back to the linear logistic combiner, then to None. ``kind="gbdt"`` /
+    ``kind="logistic"`` force one path. The GBDT is the stronger model
+    (out-of-time AUC ~0.649 vs ~0.603); the logistic is the minimal linear
+    baseline and the single-flagship fallback for callers that want it.
+    """
+    if kind == "logistic":
+        m = model if model is not None else load_signal_model()
+        return _logistic_signal(window, m) if m else None
+    if kind == "gbdt":
+        return deriv_signal_gbdt(window, model)
+    # auto
+    g = deriv_signal_gbdt(window)
+    if g is not None:
+        return g
+    m = load_signal_model()
+    return _logistic_signal(window, m) if m else None
 
 
 if __name__ == "__main__":

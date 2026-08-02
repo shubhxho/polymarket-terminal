@@ -37,7 +37,9 @@ from features import WINDOW, HORIZON, MIN_STD, _std  # same windowing contract
 from features_deriv import (
     DERIV_NAMES,
     DERIV_SIGNAL_FEATURES,
+    _walk_tree,
     deriv_features,
+    load_gbdt_model,
     load_signal_model,
 )
 
@@ -225,6 +227,33 @@ def evaluate(series: List[List[float]]) -> Tuple[List[DerivEval], int, int, floa
             direction="combined",
         )
         evals.insert(0, combiner)
+
+    # The flagship GBDT combiner — nonlinear, scored on the same holdout. Uses the
+    # raw summed leaf value (monotone in prob) so no sigmoid is needed for AUC.
+    gbdt = load_gbdt_model()
+    if gbdt is not None:
+        order = gbdt["features"]
+        trees = gbdt["model"]["tree_info"]
+
+        def _graw(feats: Dict[str, float]) -> float:
+            x = [feats[nm] for nm in order]
+            return sum(_walk_tree(t["tree_structure"], x) for t in trees)
+        g_scores = [_graw(r.feats) for r in va]
+        auc = _auc(g_scores, [r.label for r in va])
+        wf_str, wf_aucs = [], []
+        for _, fold in wf:
+            a = _auc([_graw(r.feats) for r in fold], [r.label for r in fold])
+            wf_str.append(abs(a - 0.5))
+            wf_aucs.append(a)
+        evals.insert(0, DerivEval(
+            name="GBDT (deriv_signal_gbdt)",
+            auc=auc, strength=abs(auc - 0.5),
+            corr=_pearson(g_scores, [r.fwd for r in va]),
+            spread=_decile_spread(g_scores, [r.label for r in va]),
+            wf_min_strength=min(wf_str) if wf_str else 0.0,
+            wf_mean_auc=sum(wf_aucs) / len(wf_aucs) if wf_aucs else 0.5,
+            direction="combined*",
+        ))
     return evals, len(tr), len(va), up_rate
 
 
@@ -249,9 +278,18 @@ def _render(evals: List[DerivEval], n_tr: int, n_va: int, up_rate: float) -> str
     sep = "| " + " | ".join("-" * w[j] for j in range(len(hdr))) + " |"
     best = evals[0]
     lines += [fmt(hdr), sep, *(fmt(r) for r in rows)]
+    fitted = [e for e in evals if e.direction.startswith("combined")]
     lines += ["", f"Best derivative signal: **{best.name}** "
               f"(OOT AUC {best.auc:.4f}, {best.direction}, worst-fold strength "
               f"{best.wf_min_strength:.4f}, decile spread {best.spread:+.4f})."]
+    if fitted:
+        lines += [
+            "Note: fitted-combiner rows (marked 'combined') have an honest "
+            "out-of-sample AUC (val held out of training) but their wf_* columns "
+            "here are IN-SAMPLE (frozen model re-scored on training-region folds). "
+            "The honest walk-forward for those models (retrained per fold) lives in "
+            "data/deriv_gbdt.json / deriv_signal.json — GBDT wf-mean 0.640.",
+        ]
     return "\n".join(lines)
 
 
