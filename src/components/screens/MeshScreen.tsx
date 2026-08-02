@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import type { SignalsPayload } from "@/app/api/signals/route";
 import { Empty, Field, Panel } from "@/components/ui/Panel";
 import { usePoll } from "@/hooks/usePoll";
-import { useSignalMesh } from "@/hooks/useSignalMesh";
+import { useMesh } from "@/components/MeshProvider";
 import { cents, truncate } from "@/lib/format";
 import { panelVariants, staggerContainer } from "@/lib/motion";
 import type { SharedSignal } from "@/lib/signalMesh";
@@ -42,7 +42,7 @@ export default function MeshScreen() {
     [data]
   );
 
-  const mesh = useSignalMesh(local);
+  const mesh = useMesh();
   const [offerIn, setOfferIn] = useState("");
   const [answerIn, setAnswerIn] = useState("");
 
@@ -79,6 +79,7 @@ export default function MeshScreen() {
       >
         <div className="flex flex-wrap items-end gap-x-6 gap-y-2 px-2.5 py-2">
           <Field label="Role" value={mesh.role} />
+          <Field label="Links" value={String(mesh.links)} />
           <Field label="Peers" value={String(mesh.peers.size)} />
           <Field label="Sharing" value={`${local.length} markets`} />
         </div>

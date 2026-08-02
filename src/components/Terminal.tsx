@@ -16,6 +16,7 @@ import CategoryScreen from "@/components/screens/CategoryScreen";
 import DetailScreen from "@/components/screens/DetailScreen";
 import HelpScreen from "@/components/screens/HelpScreen";
 import MeshScreen from "@/components/screens/MeshScreen";
+import { MeshProvider } from "@/components/MeshProvider";
 import MonitorScreen from "@/components/screens/MonitorScreen";
 import MoversScreen from "@/components/screens/MoversScreen";
 import PortfolioScreen from "@/components/screens/PortfolioScreen";
@@ -34,7 +35,9 @@ type Theme = "light" | "dark";
 export function Terminal() {
   return (
     <TerminalProvider>
-      <Shell />
+      <MeshProvider>
+        <Shell />
+      </MeshProvider>
     </TerminalProvider>
   );
 }
