@@ -212,7 +212,7 @@ function surge(m: Market, cross: CrossSection | undefined): Signal | null {
  * *relative to how much this market normally jumps around* — and lag-1
  * autocorrelation confirms the moves are persisting rather than oscillating.
  */
-function momentum(m: Market, history: readonly PricePoint[] | undefined): Signal | null {
+function momentum(history: readonly PricePoint[] | undefined): Signal | null {
   if (!history || history.length < 12) return null;
   const drift = driftPerDay(history);
   const vol = realisedVol(history);
@@ -240,7 +240,7 @@ function momentum(m: Market, history: readonly PricePoint[] | undefined): Signal
 }
 
 /** Price stretched beyond its own band while increments start reverting. */
-function reversal(m: Market, history: readonly PricePoint[] | undefined): Signal | null {
+function reversal(history: readonly PricePoint[] | undefined): Signal | null {
   if (!history || history.length < 20) return null;
   const z = bandZ(history);
   if (Math.abs(z) < 1.6) return null;
@@ -507,8 +507,8 @@ export function scoreMarket(market: Market, ctx: ScoreContext = {}): MarketSigna
 
   const signals = [
     surge(market, ctx.cross),
-    momentum(market, history),
-    reversal(market, history),
+    momentum(history),
+    reversal(history),
     breakout(history),
     coil(history),
     whale(market, ctx.flow),

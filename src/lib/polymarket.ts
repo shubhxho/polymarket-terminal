@@ -352,12 +352,3 @@ export async function fetchPositions(user: string, limit = 50): Promise<Position
     endDate: r.endDate ? String(r.endDate) : undefined,
   }));
 }
-
-export async function fetchTags(): Promise<{ id: string; label: string; slug: string }[]> {
-  const raw = await get<RawMarket[]>(`${GAMMA}/tags?limit=200&order=id&ascending=true`, 3600);
-  return (Array.isArray(raw) ? raw : []).map((t) => ({
-    id: String(t.id ?? ""),
-    label: String(t.label ?? ""),
-    slug: String(t.slug ?? ""),
-  }));
-}
