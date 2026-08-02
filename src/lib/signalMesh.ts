@@ -92,6 +92,60 @@ export function parseSignaling(raw: string): { type: "offer" | "answer"; sdp: st
   return null;
 }
 
+// ── Latency / geo ────────────────────────────────────────────────────────────
+// We hold no TURN infrastructure to route by region, so "where is this peer"
+// is answered by the one geographic fact a browser will give us for free: how
+// long a round trip takes. A ping/pong on the data channel measures it, and the
+// tier below turns milliseconds into a rough distance a trader can read.
+
+/** How often to ping a link for its round-trip time. */
+export const PING_INTERVAL_MS = 5_000;
+
+export type Control = { readonly kind: "ping" | "pong"; readonly t: number };
+
+export function encodePing(t: number): string {
+  return JSON.stringify({ v: MESH_PROTOCOL_VERSION, kind: "ping", t });
+}
+
+export function encodePong(t: number): string {
+  return JSON.stringify({ v: MESH_PROTOCOL_VERSION, kind: "pong", t });
+}
+
+/**
+ * Parse a control frame (ping/pong). Disjoint from `decodeMessage`: a control
+ * frame has a `kind` and no `peer`, a signal frame has a `peer` and no `kind`,
+ * so each decoder returns `null` on the other's frames and they never collide on
+ * one channel.
+ */
+export function decodeControl(raw: string): Control | null {
+  let o: unknown;
+  try {
+    o = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!o || typeof o !== "object") return null;
+  const d = o as Record<string, unknown>;
+  if (d.v !== MESH_PROTOCOL_VERSION) return null;
+  if ((d.kind === "ping" || d.kind === "pong") && isNum(d.t)) return { kind: d.kind, t: d.t };
+  return null;
+}
+
+export type Region = "local" | "regional" | "continental" | "intercontinental";
+
+/**
+ * Rough geographic tier from a round-trip time. Light-in-fibre plus routing puts
+ * ~1ms on a LAN, tens of ms within a region, ~100ms across a continent and more
+ * between them; these cutoffs are deliberately coarse — a distance a human reads,
+ * not a claim of precision.
+ */
+export function regionFromRtt(ms: number): Region {
+  if (ms < 25) return "local";
+  if (ms < 75) return "regional";
+  if (ms < 160) return "continental";
+  return "intercontinental";
+}
+
 /** Build the wire payload for this terminal's current signals. */
 export function encodeMessage(peer: string, ts: number, signals: readonly SharedSignal[]): string {
   const msg: MeshMessage = { v: MESH_PROTOCOL_VERSION, peer, ts, signals };

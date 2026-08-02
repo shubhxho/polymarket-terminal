@@ -3,14 +3,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   consensus,
+  decodeControl,
   decodeMessage,
   encodeMessage,
+  encodePing,
+  encodePong,
   mergeRemote,
   parseSignaling,
+  PING_INTERVAL_MS,
   prune,
+  regionFromRtt,
   relayFrames,
   type Consensus,
   type MeshState,
+  type Region,
   type SharedSignal,
 } from "@/lib/signalMesh";
 
@@ -43,12 +49,17 @@ export type MeshStatus = RTCPeerConnectionState | "idle";
 
 type Conn = { pc: RTCPeerConnection; chan: RTCDataChannel | null };
 
+/** Round-trip latency to a directly-linked peer, and the geo tier it implies. */
+export type LinkStat = { peer: string; rttMs: number; region: Region };
+
 export type SignalMesh = {
   selfId: string;
   role: MeshRole;
   status: MeshStatus;
   /** Established WebRTC links (may be fewer than peers, thanks to gossip relay). */
   links: number;
+  /** Per-direct-link latency + region, newest RTT first computed. */
+  linkStats: LinkStat[];
   peers: MeshState;
   consensusMap: Map<string, Consensus>;
   localBlob: string;
@@ -86,10 +97,14 @@ export function useSignalMesh(localSignals: readonly SharedSignal[]): SignalMesh
   const pendingRef = useRef<string | null>(null);
   const seenRef = useRef<Map<string, number>>(new Map());
   const peersRef = useRef<MeshState>(new Map());
+  // Which origin peer each direct link carries, and its latest measured RTT.
+  const linkPeerRef = useRef<Map<string, string>>(new Map());
+  const rttRef = useRef<Map<string, number>>(new Map());
 
   const [role, setRole] = useState<MeshRole>("idle");
   const [status, setStatus] = useState<MeshStatus>("idle");
   const [links, setLinks] = useState(0);
+  const [linkStats, setLinkStats] = useState<LinkStat[]>([]);
   const [localBlob, setLocalBlob] = useState("");
   const [peers, setPeers] = useState<MeshState>(new Map());
   const [error, setError] = useState<string | null>(null);
@@ -110,6 +125,21 @@ export function useSignalMesh(localSignals: readonly SharedSignal[]): SignalMesh
     }
   }, [selfId]);
 
+  /** Record a fresh RTT for a link and rebuild the per-link latency table. */
+  const recordRtt = useCallback((id: string, rtt: number) => {
+    rttRef.current.set(id, rtt);
+    const stats: LinkStat[] = [];
+    for (const [connId, ms] of rttRef.current) {
+      stats.push({
+        peer: linkPeerRef.current.get(connId) ?? connId,
+        rttMs: ms,
+        region: regionFromRtt(ms),
+      });
+    }
+    stats.sort((a, b) => a.rttMs - b.rttMs);
+    setLinkStats(stats);
+  }, []);
+
   const refreshStatus = useCallback(() => {
     const states = [...connsRef.current.values()].map((c) => c.pc.connectionState);
     setLinks(states.filter((s) => s === "connected").length);
@@ -125,6 +155,9 @@ export function useSignalMesh(localSignals: readonly SharedSignal[]): SignalMesh
     (raw: string, fromId: string) => {
       const msg = decodeMessage(raw);
       if (!msg || msg.peer === selfId) return;
+      // First frame on a link is the neighbour's own signal (sent before any
+      // relayed frames on open), so first-write-wins maps the link to its peer.
+      if (!linkPeerRef.current.has(fromId)) linkPeerRef.current.set(fromId, msg.peer);
       const seen = seenRef.current.get(msg.peer);
       if (seen !== undefined && msg.ts <= seen) return; // stale/replay — stop the loop here
       seenRef.current.set(msg.peer, msg.ts);
@@ -146,9 +179,18 @@ export function useSignalMesh(localSignals: readonly SharedSignal[]): SignalMesh
         for (const f of relayFrames(peersRef.current)) ch.send(JSON.stringify(f));
         refreshStatus();
       };
-      ch.onmessage = (e) => onFrame(typeof e.data === "string" ? e.data : "", id);
+      ch.onmessage = (e) => {
+        const raw = typeof e.data === "string" ? e.data : "";
+        const ctrl = decodeControl(raw);
+        if (ctrl) {
+          if (ctrl.kind === "ping") ch.send(encodePong(ctrl.t));
+          else recordRtt(id, Math.max(0, Date.now() - ctrl.t));
+          return;
+        }
+        onFrame(raw, id);
+      };
     },
-    [selfId, onFrame, refreshStatus]
+    [selfId, onFrame, refreshStatus, recordRtt]
   );
 
   const newConn = useCallback(
@@ -174,10 +216,13 @@ export function useSignalMesh(localSignals: readonly SharedSignal[]): SignalMesh
     }
     connsRef.current.clear();
     seenRef.current.clear();
+    linkPeerRef.current.clear();
+    rttRef.current.clear();
     pendingRef.current = null;
     setRole("idle");
     setStatus("idle");
     setLinks(0);
+    setLinkStats([]);
     setLocalBlob("");
     setError(null);
     setPeersBoth(new Map());
@@ -256,6 +301,17 @@ export function useSignalMesh(localSignals: readonly SharedSignal[]): SignalMesh
     return () => clearInterval(t);
   }, [broadcastOwn]);
 
+  // Ping every open link to measure round-trip latency (the geo read).
+  useEffect(() => {
+    const t = setInterval(() => {
+      const raw = encodePing(Date.now());
+      for (const c of connsRef.current.values()) {
+        if (c.chan?.readyState === "open") c.chan.send(raw);
+      }
+    }, PING_INTERVAL_MS);
+    return () => clearInterval(t);
+  }, []);
+
   // Expire peers that go quiet even if no closing frame ever arrives.
   useEffect(() => {
     const t = setInterval(() => setPeersBoth(prune(peersRef.current, Date.now())), 5000);
@@ -269,6 +325,7 @@ export function useSignalMesh(localSignals: readonly SharedSignal[]): SignalMesh
     role,
     status,
     links,
+    linkStats,
     peers,
     consensusMap: consensus(peers),
     localBlob,
