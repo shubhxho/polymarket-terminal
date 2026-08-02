@@ -17,6 +17,8 @@ from features_deriv import (
     _poly_endpoint,
     deriv_features,
     deriv_signal,
+    deriv_signal_gbdt,
+    load_gbdt_model,
     load_signal_model,
     trend_consistency,
 )
@@ -109,17 +111,28 @@ def test_deriv_signal_forward_pass_matches_frozen_weights():
         s = model["std"][i] if model["std"][i] > 1e-12 else 1.0
         z += model["weights"][i] * ((feats[nm] - model["mean"][i]) / s)
     expected = 1.0 / (1.0 + math.exp(-z))
-    assert approx(deriv_signal(win), expected, 1e-9)
-    assert 0.0 <= deriv_signal(win) <= 1.0
+    assert approx(deriv_signal(win, kind="logistic"), expected, 1e-9)
+    assert 0.0 <= deriv_signal(win, kind="logistic") <= 1.0
 
 
 def test_deriv_signal_prefers_clean_uptrend():
-    model = load_signal_model()
-    if model is None:
+    if load_signal_model() is None and load_gbdt_model() is None:
         return
     up = [0.45 + 0.006 * i for i in range(16)]     # clean rise from mid-range
     dn = [0.55 - 0.006 * i for i in range(16)]      # clean fall from mid-range
-    assert deriv_signal(up) > deriv_signal(dn)
+    assert deriv_signal(up) > deriv_signal(dn)      # auto picks the best model
+
+
+def test_deriv_signal_gbdt_range_and_direction():
+    if load_gbdt_model() is None:
+        return
+    up = [0.45 + 0.006 * i for i in range(16)]
+    dn = [0.55 - 0.006 * i for i in range(16)]
+    pu, pd = deriv_signal_gbdt(up), deriv_signal_gbdt(dn)
+    assert 0.0 < pu < 1.0 and 0.0 < pd < 1.0
+    assert pu > pd
+    # auto mode serves the GBDT when present.
+    assert approx(deriv_signal(up), pu, 1e-12)
 
 
 if __name__ == "__main__":

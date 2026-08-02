@@ -4,6 +4,16 @@
   "n_val": 27306,
   "ranked": [
     {
+      "name": "GBDT (deriv_signal_gbdt)",
+      "auc": 0.6508061031811121,
+      "strength": 0.1508061031811121,
+      "corr": -0.011385823523104811,
+      "spread": 0.30219780219780223,
+      "wf_min_strength": 0.15035682289536545,
+      "wf_mean_auc": 0.6552143220105668,
+      "direction": "combined*"
+    },
+    {
       "name": "COMBINED (deriv_signal)",
       "auc": 0.6031800216540647,
       "strength": 0.1031800216540647,
@@ -264,5 +274,5 @@
       "direction": "mean-revert"
     }
   ],
-  "best": "COMBINED (deriv_signal)"
+  "best": "GBDT (deriv_signal_gbdt)"
 }
