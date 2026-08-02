@@ -8,7 +8,13 @@ import { PriceChart, SERIES_COLORS, type Series } from "@/components/ui/PriceCha
 import { Empty, ErrorBox, Field, Loading, Panel } from "@/components/ui/Panel";
 import { useMarketSocket } from "@/hooks/useMarketSocket";
 import { usePoll } from "@/hooks/usePoll";
-import { aggregateFlow, scoreMarket, SIGNAL_META, type MarketSignals } from "@/lib/signals";
+import {
+  aggregateFlow,
+  modelAgreement,
+  scoreMarket,
+  SIGNAL_META,
+  type MarketSignals,
+} from "@/lib/signals";
 import {
   cents,
   compact,
@@ -49,6 +55,13 @@ const OrderBookLadder = dynamic(
   { ssr: false, loading: () => <Loading /> }
 );
 const TradeTape = dynamic(() => import("@/components/TradeTape").then((m) => m.TradeTape), {
+  ssr: false,
+  loading: () => <Loading />,
+});
+// The ticket pulls in the wallet + signing path, none of which the read-only
+// screens need — keep it out of the entry bundle and load it with the rest of
+// the below-the-fold right rail.
+const OrderTicket = dynamic(() => import("@/components/OrderTicket").then((m) => m.OrderTicket), {
   ssr: false,
   loading: () => <Loading />,
 });
@@ -189,8 +202,13 @@ export default function DetailScreen({ slug, kind }: { slug: string; kind: "even
   const signals = useMemo(() => {
     if (!selectedMarket) return null;
     const flow = aggregateFlow(tradesQ.data ?? []).get(selectedMarket.conditionId);
-    return scoreMarket(selectedMarket, { flow, book });
-  }, [selectedMarket, tradesQ.data, book]);
+    // Feed the token's own history in too, so the same trained model that ranks
+    // the scan also weighs in here — the detail screen runs the whole engine,
+    // not a cheaper subset of it.
+    const token = selectedMarket.outcomes[0]?.tokenId;
+    const history = token ? historyQ.data?.find((h) => h.tokenId === token)?.points : undefined;
+    return scoreMarket(selectedMarket, { flow, book, history });
+  }, [selectedMarket, tradesQ.data, book, historyQ.data]);
 
   const series = useMemo<Series[]>(() => {
     if (!historyQ.data) return [];
@@ -378,7 +396,13 @@ export default function DetailScreen({ slug, kind }: { slug: string; kind: "even
 
           <Panel
             title="SIGNALS"
-            right={signals ? `heat ${signals.heat} · bias ${signed(signals.bias, 0)}` : "none"}
+            right={
+              signals
+                ? `heat ${signals.heat} · bias ${signed(signals.bias, 0)}${
+                    signals.model ? ` · model ${Math.round(signals.model.prob * 100)}%` : ""
+                  }`
+                : "none"
+            }
             className="shrink-0"
           >
             <SignalStrip signals={signals} />
@@ -420,6 +444,18 @@ export default function DetailScreen({ slug, kind }: { slug: string; kind: "even
             className="min-h-[326px] shrink-0"
           >
             <OrderBookLadder book={book} depth={9} outcomeLabel={selected?.label} />
+          </Panel>
+
+          <Panel title="TRADE" right={truncate(selected?.label ?? "", 18)} className="shrink-0">
+            <OrderTicket
+              tokenId={selectedId ?? undefined}
+              outcomeLabel={selected?.label}
+              markPrice={selected?.price}
+              tickSize={selectedMarket?.tickSize ?? 0.001}
+              negRisk={selectedMarket?.negRisk ?? false}
+              acceptingOrders={selectedMarket?.acceptingOrders ?? false}
+              book={book}
+            />
           </Panel>
 
           <Panel title="MARKET DATA" className="shrink-0">
@@ -492,8 +528,53 @@ function SignalStrip({ signals }: { signals: MarketSignals | null }) {
     );
   }
 
+  const model = signals.model;
+  const agree = model ? modelAgreement(signals) : "neutral";
+  const modelGlyph =
+    agree === "confirms"
+      ? { mark: "✓", tone: "text-accent-2", word: "confirms bias" }
+      : agree === "conflicts"
+        ? { mark: "✕", tone: "text-warn", word: "conflicts with bias" }
+        : { mark: "·", tone: "text-faint", word: "no clear lean" };
+
   return (
     <div className="flex flex-col gap-[3px]">
+      {/* The trained model's own read, kept visually apart from the detector
+          rows above it — a different kind of evidence, not one more detector. */}
+      {model ? (
+        <div
+          className="mb-[3px] flex items-baseline gap-2 border-b border-edge/60 pb-[4px]"
+          title={`Trained model puts ${Math.round(
+            model.prob * 100
+          )}% on YES rising from here (conviction ${(model.conviction * 100).toFixed(
+            0
+          )}%), and ${modelGlyph.word}. ${(model.auc * 100).toFixed(0)}% AUC out of sample — it tilts the read, it does not drive it.`}
+        >
+          <span
+            className={`w-[46px] shrink-0 border border-edge-strong px-1 text-center text-[10px] font-bold ${
+              model.direction === "bullish" ? "text-up" : "text-down"
+            }`}
+          >
+            MODEL
+          </span>
+          <span className="h-[6px] w-[40px] shrink-0 self-center bg-edge" aria-hidden>
+            <span
+              className={`block h-full ${model.direction === "bullish" ? "bg-up" : "bg-down"}`}
+              style={{ width: `${model.conviction * 100}%` }}
+            />
+          </span>
+          <span
+            className={`w-[84px] shrink-0 text-tiny ${
+              model.direction === "bullish" ? "text-up" : "text-down"
+            }`}
+          >
+            {Math.round(model.prob * 100)}% up
+          </span>
+          <span className={`min-w-0 flex-1 truncate text-[10px] ${modelGlyph.tone}`}>
+            {modelGlyph.mark} {modelGlyph.word}
+          </span>
+        </div>
+      ) : null}
       {signals.signals.map((s) => {
         const meta = SIGNAL_META[s.kind];
         const tone =

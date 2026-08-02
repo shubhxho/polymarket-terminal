@@ -6,17 +6,28 @@ import type { SignalsPayload } from "@/app/api/signals/route";
 import { useTerminal } from "@/components/TerminalProvider";
 import { Chip, Empty, ErrorBox, Field, Loading, Panel } from "@/components/ui/Panel";
 import { usePoll } from "@/hooks/usePoll";
+import { useMarketSocket } from "@/hooks/useMarketSocket";
+import { useLiveModel } from "@/hooks/useLiveModel";
+import type { LiveRead } from "@/lib/liveModel";
 import { cents, compact, dirClass, signed, timeToExpiry, truncate, usd } from "@/lib/format";
 import { panelVariants, staggerContainer } from "@/lib/motion";
 import { clamp } from "@/lib/quant";
 import {
+  modelAgreement,
   SIGNAL_META,
+  type Agreement,
   type ArbOpportunity,
   type BasketDrift,
   type MarketSignals,
   type Signal,
   type SignalKind,
 } from "@/lib/signals";
+import {
+  MODEL_AUC,
+  MODEL_CALIBRATION,
+  type Calibration,
+  type ReliabilityBin,
+} from "@/lib/mlSignal";
 
 /** Declared order of the union, so the chip row and the legend never reshuffle. */
 const KINDS = Object.keys(SIGNAL_META) as SignalKind[];
@@ -29,6 +40,12 @@ const DEEP_SCAN_TITLE =
 
 const DISLOCATION_NOTE =
   "Exactly one leg of a negative-risk event resolves YES, so the basket settles at 100¢. Arbitrage is a crossable edge on real quotes; drift is mid-price pressure that has not yet opened one.";
+
+const MODEL_NOTE = `A trained network scores each deep-scanned market's own price path and reports the probability it drifts up over the next few hours. It ran at ${(
+  MODEL_AUC * 100
+).toFixed(
+  0
+)}% AUC out of sample — a real but weak edge — so it only nudges the ranking toward markets it independently agrees with, and never overrules the book. Confirms means it points the same way as the rule-engine bias; conflicts means it fights it.`;
 
 /**
  * The scanner screen.
@@ -47,6 +64,21 @@ const DISLOCATION_NOTE =
 export default function SignalsScreen() {
   const { go } = useTerminal();
   const { data, error, loading, refreshing } = usePoll<SignalsPayload>("/api/signals", 20000);
+
+  // Live model overlay: subscribe to the ranked markets' tokens and re-score the
+  // model between polls off the socket. The poll stays the source of truth for
+  // heat, bias, arbs and the cross-section; only the model read and its blended
+  // value tick live. Capped so a huge scan doesn't open hundreds of subscriptions.
+  const liveTokens = useMemo(
+    () =>
+      (data?.markets ?? [])
+        .map((m) => m.market.outcomes[0]?.tokenId)
+        .filter((t): t is string => Boolean(t))
+        .slice(0, 60),
+    [data]
+  );
+  const feed = useMarketSocket(liveTokens, liveTokens.length > 0);
+  const liveModel = useLiveModel(data?.markets ?? [], feed);
 
   const [active, setActive] = useState<readonly SignalKind[]>([]);
   const [sel, setSel] = useState(0);
@@ -138,6 +170,23 @@ export default function SignalsScreen() {
   const directional = bullish + bearish;
   const bullPct = directional === 0 ? 50 : (bullish / directional) * 100;
 
+  // Confirm/conflict split recomputed from the live overlay, so the header tracks
+  // the model as price moves rather than freezing at the last poll. Falls back to
+  // the poll's own numbers exactly when no live tick has landed yet.
+  const { confirms, conflicts } = useMemo(() => {
+    let c = 0;
+    let x = 0;
+    for (const m of data?.markets ?? []) {
+      const lv = liveModel.get(m.market.id);
+      const a = modelAgreement(lv ? { ...m, model: lv.model } : m);
+      if (a === "confirms") c++;
+      else if (a === "conflicts") x++;
+    }
+    return { confirms: c, conflicts: x };
+  }, [data, liveModel]);
+  const modelCalls = confirms + conflicts;
+  const confirmPct = modelCalls === 0 ? 50 : (confirms / modelCalls) * 100;
+
   const liveKinds = KINDS.filter((k) => (stats?.byKind[k] ?? 0) > 0);
 
   return (
@@ -154,6 +203,14 @@ export default function SignalsScreen() {
           <span className="flex items-center gap-2">
             {stale ? <span className="text-warn">stale</span> : null}
             {refreshing ? <span className="text-accent">···</span> : null}
+            {feed.status === "live" ? (
+              <span
+                className="flex items-center gap-1 text-up"
+                title="Model is re-scoring live off the market socket between the 20-second polls."
+              >
+                <span className="dot" /> live
+              </span>
+            ) : null}
             <span>every 20s</span>
           </span>
         }
@@ -198,6 +255,25 @@ export default function SignalsScreen() {
             value={stats ? usd(stats.blockNotional) : "—"}
             title="Total notional of the block prints in the scanned window — the size that moved, not the count."
           />
+
+          <div className="flex flex-col gap-[3px]">
+            <span className="eyebrow" title={MODEL_NOTE}>
+              Model {stats ? stats.modeled : "—"}
+            </span>
+            <span
+              className="flex items-center gap-1.5"
+              title={`The trained model took a directional view on ${modelCalls} of them: ${confirms} confirm the rule engine, ${conflicts} conflict. ${MODEL_NOTE}`}
+            >
+              <span className="w-[18px] text-right text-tiny font-medium text-accent-2">
+                {confirms}
+              </span>
+              <span className="flex h-[6px] w-[120px] shrink-0 overflow-hidden rounded-sm border border-edge bg-surface-2">
+                <span className="bg-accent-2" style={{ width: `${confirmPct}%` }} />
+                <span className="flex-1 bg-warn" />
+              </span>
+              <span className="w-[18px] text-tiny font-medium text-warn">{conflicts}</span>
+            </span>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5 border-t border-edge px-2.5 py-1.5">
@@ -287,7 +363,7 @@ export default function SignalsScreen() {
           ) : rows.length === 0 ? (
             <Empty text={active.length > 0 ? "no markets match that filter" : "no signals"} />
           ) : (
-            <div ref={bodyRef} className="min-w-[940px] text-tiny">
+            <div ref={bodyRef} className="min-w-[1040px] text-tiny">
               <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-edge bg-surface-2 px-2.5 py-[4px]">
                 <span className="eyebrow w-[22px] shrink-0 text-right">#</span>
                 <span
@@ -327,6 +403,9 @@ export default function SignalsScreen() {
                 >
                   Conv
                 </span>
+                <span className="eyebrow w-[92px] shrink-0 text-right" title={MODEL_NOTE}>
+                  Model
+                </span>
                 <span className="eyebrow w-[216px] shrink-0">Signals</span>
               </div>
 
@@ -335,6 +414,7 @@ export default function SignalsScreen() {
                   key={m.market.id || m.market.slug || i}
                   index={i}
                   row={m}
+                  live={liveModel.get(m.market.id)}
                   selected={i === sel}
                   onSelect={() => setSel(i)}
                   onOpen={() => openMarket(m)}
@@ -346,7 +426,7 @@ export default function SignalsScreen() {
 
         <div className="hidden min-h-0 flex-col gap-2 overflow-auto xl:flex">
           {selected ? (
-            <DetailRail row={selected} />
+            <DetailRail row={selected} live={liveModel.get(selected.market.id)} />
           ) : (
             <Panel title="Detail" className="shrink-0">
               <Empty text="select a market" />
@@ -472,17 +552,22 @@ function DriftRow({ drift, onOpen }: { drift: BasketDrift; onOpen: () => void })
 function SignalRow({
   index,
   row,
+  live,
   selected,
   onSelect,
   onOpen,
 }: {
   index: number;
   row: MarketSignals;
+  live?: LiveRead;
   selected: boolean;
   onSelect: () => void;
   onOpen: () => void;
 }) {
   const m = row.market;
+  // Overlay the live model read onto the poll row for the model column only —
+  // heat, bias and the badges stay as the scan computed them.
+  const modelRow = live ? { ...row, model: live.model } : row;
   const label = m.groupItemTitle || m.question;
   const context = m.eventTitle;
 
@@ -516,6 +601,7 @@ function SignalRow({
       <span className="w-[58px] shrink-0 text-right text-muted">{compact(m.volume24h)}</span>
       <Bias value={row.bias} />
       <Conviction value={row.conviction} />
+      <ModelCell row={modelRow} />
       {/* Signals are pre-sorted by weighted strength, so the leading few are
           the ones worth the width. Overflow is counted rather than clipped —
           a badge sliced in half reads as a rendering bug, and the rail shows
@@ -589,6 +675,65 @@ function Conviction({ value }: { value: number }) {
   );
 }
 
+const AGREE_GLYPH: Record<Agreement, { mark: string; tone: string; word: string }> = {
+  confirms: { mark: "✓", tone: "text-accent-2", word: "confirms" },
+  conflicts: { mark: "✕", tone: "text-warn", word: "conflicts with" },
+  neutral: { mark: "·", tone: "text-faint", word: "is undecided on" },
+};
+
+/**
+ * The model's own directional read, kept beside the rule engine's rather than
+ * blended into it.
+ *
+ * The number is the probability the model puts on YES rising; the bar is that
+ * probability as a centre-origin lean, coloured by side exactly like `Bias` so
+ * the eye can check agreement across the two columns at a glance. The leading
+ * glyph is the verdict on whether the two actually line up — a market where the
+ * book leans one way and the model the other is precisely the row worth a second
+ * look, and it should not need arithmetic to spot.
+ */
+function ModelCell({ row }: { row: MarketSignals }) {
+  const m = row.model;
+  if (!m) {
+    return (
+      <span
+        className="w-[92px] shrink-0 text-right text-faint"
+        title="Not deep-scanned, so there was no price history to run the model on."
+      >
+        —
+      </span>
+    );
+  }
+
+  const agree = modelAgreement(row);
+  const glyph = AGREE_GLYPH[agree];
+  const pct = Math.round(m.prob * 100);
+  const up = m.direction === "bullish";
+  const half = m.conviction * 50;
+
+  return (
+    <span
+      className="flex w-[92px] shrink-0 items-center justify-end gap-1.5"
+      title={`Model puts ${pct}% on YES rising from here (conviction ${(m.conviction * 100).toFixed(
+        0
+      )}%), and ${glyph.word} the rule-engine bias. ${(m.auc * 100).toFixed(
+        0
+      )}% AUC out of sample.`}
+    >
+      <span className={`w-[10px] shrink-0 text-center ${glyph.tone}`}>{glyph.mark}</span>
+      <span className="relative h-[6px] w-[40px] shrink-0 overflow-hidden rounded-sm border border-edge bg-surface-2">
+        {up ? (
+          <span className="absolute inset-y-0 left-1/2 bg-up" style={{ width: `${half}%` }} />
+        ) : (
+          <span className="absolute inset-y-0 right-1/2 bg-down" style={{ width: `${half}%` }} />
+        )}
+        <span className="absolute inset-y-0 left-1/2 w-px bg-edge-strong" />
+      </span>
+      <span className={`w-[24px] text-right ${up ? "text-up" : "text-down"}`}>{pct}%</span>
+    </span>
+  );
+}
+
 /**
  * Colour carries the side, opacity carries the belief.
  *
@@ -624,10 +769,11 @@ function Badge({ signal }: { signal: Signal }) {
 
 /* ── Detail rail ──────────────────────────────────────────────────────── */
 
-function DetailRail({ row }: { row: MarketSignals }) {
+function DetailRail({ row, live }: { row: MarketSignals; live?: LiveRead }) {
   const m = row.market;
   const s = row.stats;
   const book = s.book;
+  const modelRow = live ? { ...row, model: live.model } : row;
 
   return (
     <>
@@ -653,6 +799,8 @@ function DetailRail({ row }: { row: MarketSignals }) {
           </div>
         </div>
       </Panel>
+
+      {modelRow.model ? <ModelPanel row={modelRow} /> : null}
 
       <Panel title="Quant" className="shrink-0">
         <QuantField
@@ -741,6 +889,157 @@ function QuantField({
   return (
     <div title={title} className="border-b border-edge/60 last:border-0">
       <Field label={label} value={value} tone={tone} />
+    </div>
+  );
+}
+
+/**
+ * The model's read, given a full panel on the detail rail because the rail is
+ * where a trader has already decided a market is worth the time — so the honest
+ * caveats fit here in a way they never would in a table cell. The header carries
+ * the model's out-of-sample AUC so the strength of every number below it is read
+ * in the same glance, and the footer states plainly that this only ever tilts
+ * the ranking rather than driving it.
+ */
+function ModelPanel({ row }: { row: MarketSignals }) {
+  const m = row.model;
+  if (!m) return null;
+  const agree = modelAgreement(row);
+  const glyph = AGREE_GLYPH[agree];
+  const pct = Math.round(m.prob * 100);
+  const up = m.direction === "bullish";
+
+  return (
+    <Panel title="Model" right={`${(m.auc * 100).toFixed(0)}% AUC`} className="shrink-0">
+      <div className="flex flex-col gap-2">
+        {/* Probability as a 0–100 track with the coin-flip line marked, so how
+            far off the fence the model is reads as distance, not just a digit. */}
+        <div className="flex items-center gap-2">
+          <span className="relative h-[8px] min-w-0 flex-1 overflow-hidden rounded-sm border border-edge bg-surface-2">
+            {up ? (
+              <span
+                className="absolute inset-y-0 left-1/2 bg-up"
+                style={{ width: `${m.conviction * 50}%` }}
+              />
+            ) : (
+              <span
+                className="absolute inset-y-0 right-1/2 bg-down"
+                style={{ width: `${m.conviction * 50}%` }}
+              />
+            )}
+            <span className="absolute inset-y-0 left-1/2 w-px bg-edge-strong" />
+          </span>
+          <span
+            className={`w-[42px] text-right text-sm2 font-semibold ${up ? "text-up" : "text-down"}`}
+          >
+            {pct}%
+          </span>
+        </div>
+
+        <div>
+          <Field label="P(YES rises)" value={`${pct}%`} tone={up ? "text-up" : "text-down"} />
+          <Field
+            label="Direction"
+            value={up ? "bullish" : "bearish"}
+            tone={up ? "text-up" : "text-down"}
+          />
+          <Field
+            label="Conviction"
+            value={`${(m.conviction * 100).toFixed(0)}%`}
+            tone="text-accent-2"
+          />
+          <Field
+            label="vs. engine"
+            value={
+              <span className={glyph.tone}>
+                {glyph.mark} {glyph.word.replace(" with", "")}
+              </span>
+            }
+          />
+        </div>
+
+        {MODEL_CALIBRATION ? <ReliabilityDiagram cal={MODEL_CALIBRATION} /> : null}
+
+        <p className="text-[11px] leading-[15px] text-faint">
+          {(m.auc * 100).toFixed(0)}% AUC out of sample — a real but weak edge, so it only tilts the
+          ranking toward markets it agrees with. It never overrides the book.
+          {MODEL_CALIBRATION ? (
+            <>
+              {" "}
+              Probability is temperature-calibrated on validation; held-out reliability error{" "}
+              {(MODEL_CALIBRATION.ece_heldout * 100).toFixed(1)}% (down from{" "}
+              {(MODEL_CALIBRATION.ece_before * 100).toFixed(1)}%), so the number means what it says.
+            </>
+          ) : null}
+        </p>
+      </div>
+    </Panel>
+  );
+}
+
+/**
+ * Reliability diagram — the "does 70% mean 70%?" chart.
+ *
+ * Predicted probability runs along x, the empirical hit rate up y, both on the
+ * same 0..1 scale, so a perfectly calibrated model traces the dotted diagonal.
+ * The model's line is drawn over it and each point is sized by how many
+ * validation windows fell in that bin, so a wobble on a bin of four is visibly
+ * lighter than a true miss on a bin of ten thousand. This is the picture behind
+ * the single ECE number — the honest bridge from what the model claims to what
+ * actually happened.
+ */
+function ReliabilityDiagram({ cal }: { cal: Calibration }) {
+  const bins = cal.reliability;
+  if (bins.length < 2) return null;
+
+  const S = 100;
+  const P = 9;
+  const toX = (v: number) => P + clamp(v, 0, 1) * (S - 2 * P);
+  const toY = (v: number) => S - (P + clamp(v, 0, 1) * (S - 2 * P));
+  const maxN = Math.max(...bins.map((b) => b.n));
+  const line = bins.map(
+    (b: ReliabilityBin) => `${toX(b.conf).toFixed(1)},${toY(b.acc).toFixed(1)}`
+  );
+
+  return (
+    <div title="Reliability diagram: predicted probability (x) against the actual hit rate on validation (y). The dotted line is perfect calibration; the model's line hugging it is what the low ECE measures. Points are sized by how many windows landed in each bin.">
+      <div className="eyebrow mb-1">Reliability</div>
+      <svg viewBox={`0 0 ${S} ${S}`} className="w-full" style={{ maxHeight: 132 }} aria-hidden>
+        <rect
+          x={P}
+          y={P}
+          width={S - 2 * P}
+          height={S - 2 * P}
+          fill="none"
+          strokeWidth={0.5}
+          className="stroke-current text-faint"
+        />
+        <line
+          x1={toX(0)}
+          y1={toY(0)}
+          x2={toX(1)}
+          y2={toY(1)}
+          strokeWidth={0.7}
+          strokeDasharray="2 2"
+          className="stroke-current text-faint"
+        />
+        <polyline
+          points={line.join(" ")}
+          fill="none"
+          strokeWidth={1.1}
+          strokeLinejoin="round"
+          className="stroke-current text-accent"
+        />
+        {bins.map((b, i) => (
+          <circle
+            key={i}
+            cx={toX(b.conf)}
+            cy={toY(b.acc)}
+            r={1 + 2.6 * Math.sqrt(b.n / maxN)}
+            className="fill-current text-accent"
+          />
+        ))}
+      </svg>
     </div>
   );
 }

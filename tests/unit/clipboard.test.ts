@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "vitest";
 import { copyToClipboard } from "@/lib/clipboard";
 
 type ToastCall = [string, ("info" | "warn" | "error")?];

@@ -12,8 +12,9 @@
     "fmt:check": "oxfmt --check src tests",
     "typecheck": "tsc --noEmit",
     "check": "oxlint && oxfmt --check src tests && tsc --noEmit",
-    "test": "bun test tests/unit",
-    "test:watch": "bun test --watch tests/unit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:cov": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui"
   },
@@ -33,10 +34,12 @@
     "@types/node": "^26.1.2",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
+    "@vitest/coverage-v8": "^4.1.10",
     "@webgpu/types": "^0.1.71",
     "oxfmt": "^0.61.0",
     "oxlint": "^1.76.0",
     "tailwindcss": "^4.3.3",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
   }
 }
