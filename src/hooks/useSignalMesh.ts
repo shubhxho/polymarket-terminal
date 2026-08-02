@@ -6,6 +6,7 @@ import {
   decodeMessage,
   encodeMessage,
   mergeRemote,
+  parseSignaling,
   prune,
   relayFrames,
   type Consensus,
@@ -51,6 +52,8 @@ export type SignalMesh = {
   peers: MeshState;
   consensusMap: Map<string, Consensus>;
   localBlob: string;
+  /** Last handshake error, cleared when a new one starts. */
+  error: string | null;
   createOffer: () => Promise<void>;
   acceptOffer: (remote: string) => Promise<void>;
   acceptAnswer: (remote: string) => Promise<void>;
@@ -89,6 +92,7 @@ export function useSignalMesh(localSignals: readonly SharedSignal[]): SignalMesh
   const [links, setLinks] = useState(0);
   const [localBlob, setLocalBlob] = useState("");
   const [peers, setPeers] = useState<MeshState>(new Map());
+  const [error, setError] = useState<string | null>(null);
 
   const localRef = useRef<readonly SharedSignal[]>(localSignals);
   localRef.current = localSignals;
@@ -97,6 +101,14 @@ export function useSignalMesh(localSignals: readonly SharedSignal[]): SignalMesh
     peersRef.current = next;
     setPeers(next);
   }, []);
+
+  /** Send our current signals (fresh ts) to every open link. */
+  const broadcastOwn = useCallback(() => {
+    const raw = encodeMessage(selfId, Date.now(), localRef.current);
+    for (const c of connsRef.current.values()) {
+      if (c.chan?.readyState === "open") c.chan.send(raw);
+    }
+  }, [selfId]);
 
   const refreshStatus = useCallback(() => {
     const states = [...connsRef.current.values()].map((c) => c.pc.connectionState);
@@ -167,47 +179,82 @@ export function useSignalMesh(localSignals: readonly SharedSignal[]): SignalMesh
     setStatus("idle");
     setLinks(0);
     setLocalBlob("");
+    setError(null);
     setPeersBoth(new Map());
   }, [setPeersBoth]);
 
   const createOffer = useCallback(async () => {
-    const id = randId("link");
-    pendingRef.current = id;
-    const pc = newConn(id);
-    setRole("host");
-    wireChannel(id, pc.createDataChannel("signals"));
-    await pc.setLocalDescription(await pc.createOffer());
-    await whenGathered(pc);
-    setLocalBlob(JSON.stringify(pc.localDescription));
+    setError(null);
+    try {
+      const id = randId("link");
+      pendingRef.current = id;
+      const pc = newConn(id);
+      setRole("host");
+      wireChannel(id, pc.createDataChannel("signals"));
+      await pc.setLocalDescription(await pc.createOffer());
+      await whenGathered(pc);
+      setLocalBlob(JSON.stringify(pc.localDescription));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "could not create an offer");
+    }
   }, [newConn, wireChannel]);
 
   const acceptOffer = useCallback(
     async (remote: string) => {
-      const id = randId("link");
-      const pc = newConn(id);
-      setRole("guest");
-      await pc.setRemoteDescription(JSON.parse(remote) as RTCSessionDescriptionInit);
-      await pc.setLocalDescription(await pc.createAnswer());
-      await whenGathered(pc);
-      setLocalBlob(JSON.stringify(pc.localDescription));
+      const desc = parseSignaling(remote);
+      if (!desc || desc.type !== "offer") {
+        setError("That is not a valid offer — paste the host's offer JSON.");
+        return;
+      }
+      setError(null);
+      try {
+        const id = randId("link");
+        const pc = newConn(id);
+        setRole("guest");
+        await pc.setRemoteDescription(desc);
+        await pc.setLocalDescription(await pc.createAnswer());
+        await whenGathered(pc);
+        setLocalBlob(JSON.stringify(pc.localDescription));
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "handshake failed");
+      }
     },
     [newConn]
   );
 
   const acceptAnswer = useCallback(async (remote: string) => {
-    const id = pendingRef.current;
-    const conn = id ? connsRef.current.get(id) : null;
-    await conn?.pc.setRemoteDescription(JSON.parse(remote) as RTCSessionDescriptionInit);
-    pendingRef.current = null;
+    const desc = parseSignaling(remote);
+    if (!desc || desc.type !== "answer") {
+      setError("That is not a valid answer — paste the peer's answer JSON.");
+      return;
+    }
+    const conn = pendingRef.current ? connsRef.current.get(pendingRef.current) : null;
+    if (!conn) {
+      setError("No pending offer to finish — make an offer first.");
+      return;
+    }
+    setError(null);
+    try {
+      await conn.pc.setRemoteDescription(desc);
+      pendingRef.current = null;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "handshake failed");
+    }
   }, []);
 
   // Broadcast our own signals to every open link whenever they change.
   useEffect(() => {
-    const raw = encodeMessage(selfId, Date.now(), localSignals);
-    for (const c of connsRef.current.values()) {
-      if (c.chan?.readyState === "open") c.chan.send(raw);
-    }
-  }, [localSignals, selfId]);
+    broadcastOwn();
+  }, [localSignals, broadcastOwn]);
+
+  // Liveness heartbeat: re-broadcast on a fixed cadence so this terminal stays
+  // inside peers' TTL windows even when the scan poll pauses (a backgrounded tab
+  // stops polling) or a quiet market produces no new signals. Well under the
+  // 45s PEER_TTL_MS, so a live link never looks stale to the other side.
+  useEffect(() => {
+    const t = setInterval(broadcastOwn, 15000);
+    return () => clearInterval(t);
+  }, [broadcastOwn]);
 
   // Expire peers that go quiet even if no closing frame ever arrives.
   useEffect(() => {
@@ -225,6 +272,7 @@ export function useSignalMesh(localSignals: readonly SharedSignal[]): SignalMesh
     peers,
     consensusMap: consensus(peers),
     localBlob,
+    error,
     createOffer,
     acceptOffer,
     acceptAnswer,
