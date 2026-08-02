@@ -83,10 +83,28 @@ export default function MeshScreen() {
           <Field label="Peers" value={String(mesh.peers.size)} />
           <Field label="Sharing" value={`${local.length} markets`} />
         </div>
+        {mesh.linkStats.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-2 border-t border-edge px-2.5 py-1.5">
+            <span className="eyebrow mr-1">Latency</span>
+            {mesh.linkStats.map((l) => (
+              <span
+                key={l.peer}
+                className="flex items-center gap-1 border border-edge px-1.5 py-[1px] text-[11px]"
+                title={`${l.peer} — ${l.rttMs}ms round-trip (${l.region})`}
+              >
+                <span className="text-faint">{l.peer}</span>
+                <span className="text-ink">{l.rttMs}ms</span>
+                <span className={l.region === "local" ? "text-up" : "text-muted"}>{l.region}</span>
+              </span>
+            ))}
+          </div>
+        ) : null}
+
         <p className="border-t border-edge px-2.5 py-1.5 text-[11px] leading-[15px] text-faint">
           Peer-to-peer over WebRTC, no server. Host makes an offer, the other side pastes it and
           returns an answer, host pastes that back. Signals stream both ways once connected. Nothing
-          here places a trade — it is a second opinion.
+          here places a trade — it is a second opinion. &ldquo;Latency&rdquo; is the round-trip to
+          each direct link — the only geographic read a browser gives for free.
         </p>
       </Panel>
 

@@ -1,11 +1,15 @@
 import { describe, expect, test } from "vitest";
 import {
   consensus,
+  decodeControl,
   decodeMessage,
   encodeMessage,
+  encodePing,
+  encodePong,
   mergeRemote,
   MESH_PROTOCOL_VERSION,
   parseSignaling,
+  regionFromRtt,
   PEER_TTL_MS,
   prune,
   relayFrames,
@@ -124,6 +128,37 @@ describe("parseSignaling", () => {
     expect(parseSignaling('{"type":"pranswer","sdp":"x"}')).toBeNull();
     expect(parseSignaling('{"type":"offer"}')).toBeNull();
     expect(parseSignaling('{"type":"offer","sdp":""}')).toBeNull();
+  });
+});
+
+describe("latency / geo control frames", () => {
+  test("ping/pong round-trip through their own decoder", () => {
+    expect(decodeControl(encodePing(1234))).toEqual({ kind: "ping", t: 1234 });
+    expect(decodeControl(encodePong(5678))).toEqual({ kind: "pong", t: 5678 });
+  });
+
+  test("control and signal decoders are disjoint — neither accepts the other's frame", () => {
+    // A signal frame is not a control frame...
+    expect(decodeControl(encodeMessage("p", 1, [sig()]))).toBeNull();
+    // ...and a control frame is not a signal frame.
+    expect(decodeMessage(encodePing(1))).toBeNull();
+  });
+
+  test("decodeControl rejects junk and version mismatch", () => {
+    expect(decodeControl("nope")).toBeNull();
+    expect(
+      decodeControl(JSON.stringify({ v: MESH_PROTOCOL_VERSION + 1, kind: "ping", t: 1 }))
+    ).toBeNull();
+    expect(decodeControl(JSON.stringify({ v: MESH_PROTOCOL_VERSION, kind: "ping" }))).toBeNull();
+  });
+
+  test("regionFromRtt tiers milliseconds into a coarse distance", () => {
+    expect(regionFromRtt(2)).toBe("local");
+    expect(regionFromRtt(24)).toBe("local");
+    expect(regionFromRtt(25)).toBe("regional");
+    expect(regionFromRtt(74)).toBe("regional");
+    expect(regionFromRtt(120)).toBe("continental");
+    expect(regionFromRtt(300)).toBe("intercontinental");
   });
 });
 
