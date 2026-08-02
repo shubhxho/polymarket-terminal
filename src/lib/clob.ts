@@ -28,13 +28,22 @@
 /** Polygon — the chain Polymarket clears on. */
 const CHAIN_ID = 137;
 
-/** CTF Exchange contracts on Polygon. Neg-risk markets clear on their own. */
-const EXCHANGE = "0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E";
-const NEG_RISK_EXCHANGE = "0xC5d563A36AE78145C45a50134d48A1215220f80a";
+/**
+ * CTF Exchange **V2** contracts on Polygon. Polymarket cut production over to
+ * CLOB V2 on 2026-04-28; the V1 exchange (0x4bFb41d5…B8982E, neg-risk
+ * 0xC5d563A3…20f80a, domain version "1") no longer accepts orders. V2 dropped
+ * `taker`, `expiration`, `nonce` and `feeRateBps` from the signed order, added
+ * `timestamp`, `metadata` and `builder`, and bumped the domain to version "2".
+ * Neg-risk markets clear on their own exchange.
+ */
+const EXCHANGE = "0xE111180000d2663C0091e4f400237545B87B996B";
+const NEG_RISK_EXCHANGE = "0xe2222d279d744050d28e00520010520000310F59";
 /** Both exchanges share this EIP-712 domain name; only the address differs. */
 const EXCHANGE_DOMAIN_NAME = "Polymarket CTF Exchange";
+/** V2 domain version. Bumped from "1" at the CLOB V2 cutover. */
+const EXCHANGE_DOMAIN_VERSION = "2";
 
-const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+const ZERO_BYTES32 = "0x0000000000000000000000000000000000000000000000000000000000000000";
 
 /** Signature schemes the exchange understands. */
 export const SIG_TYPE = {
@@ -79,19 +88,25 @@ const CLOB_AUTH_TYPES = [
   { name: "message", type: "string" },
 ] as const;
 
+/**
+ * The V2 signed Order struct. Field order and types must match the exchange's
+ * `hashStruct` exactly or the signature won't verify. `timestamp` (ms since
+ * epoch) replaces `nonce` for per-address uniqueness; `feeRateBps` is gone (fees
+ * are set by the protocol at match time); `taker` defaults to zero and is no
+ * longer signed; `expiration` moved to the unsigned POST body for GTD handling.
+ */
 const ORDER_TYPES = [
   { name: "salt", type: "uint256" },
   { name: "maker", type: "address" },
   { name: "signer", type: "address" },
-  { name: "taker", type: "address" },
   { name: "tokenId", type: "uint256" },
   { name: "makerAmount", type: "uint256" },
   { name: "takerAmount", type: "uint256" },
-  { name: "expiration", type: "uint256" },
-  { name: "nonce", type: "uint256" },
-  { name: "feeRateBps", type: "uint256" },
   { name: "side", type: "uint8" },
   { name: "signatureType", type: "uint8" },
+  { name: "timestamp", type: "uint256" },
+  { name: "metadata", type: "bytes32" },
+  { name: "builder", type: "bytes32" },
 ] as const;
 
 // ── small numeric helpers ───────────────────────────────────────────────────
@@ -164,20 +179,27 @@ export type OrderDraft = {
   expiration?: number;
 };
 
-/** The order object as it appears in the POST body (side as a string). */
+/**
+ * The order object as it appears in the POST body (side as a string).
+ *
+ * Carries every signed field plus `expiration` — which is NOT part of the V2
+ * signature but is still sent for GTD/order-expiry handling. `taker`, `nonce`
+ * and `feeRateBps` are gone.
+ */
 export type OrderPost = {
   salt: number;
   maker: string;
   signer: string;
-  taker: string;
   tokenId: string;
   makerAmount: string;
   takerAmount: string;
-  expiration: string;
-  nonce: string;
-  feeRateBps: string;
   side: Side;
   signatureType: SignatureType;
+  timestamp: string;
+  metadata: string;
+  builder: string;
+  /** Unsigned; GTD expiry only. "0" for GTC/FOK. */
+  expiration: string;
 };
 
 export type BuiltOrder = {
@@ -199,19 +221,23 @@ export type BuiltOrder = {
 export function buildOrder(d: OrderDraft): BuiltOrder {
   const salt = randomSalt();
   const { makerAmount, takerAmount } = amounts(d.side, d.price, d.size);
-  const expiration = d.expiration ? String(d.expiration) : "0";
+  // Order-creation time, milliseconds — the V2 per-address uniqueness field
+  // (not an expiry). The exact string must be identical in the struct and the
+  // POST body, so it is computed once here.
+  const timestamp = String(Date.now());
 
+  // Fields common to the signature and the POST body, at one salt/timestamp.
   const shared = {
     salt: String(salt),
     maker: d.funder,
     signer: d.signer,
-    taker: ZERO_ADDRESS,
     tokenId: d.tokenId,
     makerAmount,
     takerAmount,
-    expiration,
-    nonce: "0",
-    feeRateBps: "0",
+    signatureType: d.signatureType,
+    timestamp,
+    metadata: ZERO_BYTES32,
+    builder: ZERO_BYTES32,
   };
 
   const typedData = {
@@ -219,22 +245,20 @@ export function buildOrder(d: OrderDraft): BuiltOrder {
     primaryType: "Order",
     domain: {
       name: EXCHANGE_DOMAIN_NAME,
-      version: "1",
+      version: EXCHANGE_DOMAIN_VERSION,
       chainId: CHAIN_ID,
       verifyingContract: d.negRisk ? NEG_RISK_EXCHANGE : EXCHANGE,
     },
-    message: {
-      ...shared,
-      side: d.side === "BUY" ? 0 : 1,
-      signatureType: d.signatureType,
-    },
+    // side is a uint8 in the signed struct; taker is no longer part of it.
+    message: { ...shared, side: d.side === "BUY" ? 0 : 1 },
   };
 
   const post: OrderPost = {
     ...shared,
     salt,
     side: d.side,
-    signatureType: d.signatureType,
+    // Unsigned — GTD expiry only, "0" otherwise.
+    expiration: d.expiration ? String(d.expiration) : "0",
   };
 
   return {
