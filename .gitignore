@@ -61,3 +61,6 @@ ml/data/bigdata_gbdt.txt
 ml/data/bigdata_gbdt.json
 ml/data/mega_call_ids.json
 ml/data/mega_mega_gbdt.txt
+
+# allow the example env to be committed (real .env stays ignored above)
+!.env.example
