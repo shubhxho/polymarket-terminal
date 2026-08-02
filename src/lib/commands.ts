@@ -11,6 +11,7 @@ export type ScreenName =
   | "TAS"
   | "PORT"
   | "ALRT"
+  | "MESH"
   | "CAT"
   | "HELP";
 
@@ -24,6 +25,7 @@ export type Screen =
   | { fn: "TAS" }
   | { fn: "PORT"; user: string }
   | { fn: "ALRT" }
+  | { fn: "MESH" }
   | { fn: "CAT"; tag: string; label: string }
   | { fn: "HELP" };
 
@@ -106,6 +108,13 @@ export const COMMANDS: CommandSpec[] = [
     title: "ALERTS",
     blurb: "Price alerts that fire on live quotes",
     fkey: 9,
+  },
+  {
+    code: "MESH",
+    short: "Mesh",
+    aliases: ["PEER", "PEERS", "P2P"],
+    title: "SIGNAL MESH",
+    blurb: "Share signals peer-to-peer over WebRTC; see desk consensus",
   },
   {
     code: "CAT",
@@ -249,6 +258,8 @@ export function parseCommand(input: string): ParseResult {
       return { kind: "screen", screen: { fn: "TAS" } };
     case "ALRT":
       return { kind: "screen", screen: { fn: "ALRT" } };
+    case "MESH":
+      return { kind: "screen", screen: { fn: "MESH" } };
     case "HELP":
       return { kind: "screen", screen: { fn: "HELP" } };
   }
