@@ -21,8 +21,10 @@ Pipeline (all inside Modal, streaming from the Hub):
   2. Slide windows → per-window `ctx` bundles → `unified_features(ctx)` = the full
      six-family vector. Two labels per example: next-move DIRECTION and eventual
      RESOLUTION (multi-task).
-  3. Train a strong ensemble — LightGBM + a multi-task torch MLP — with isotonic
-     (PAV) calibration done in-repo (no sklearn). Report AUC + Brier + a decile
+  3. Train a strong 3-member ensemble — a primary LightGBM booster, a decorrelated
+     extra-trees GBDT, and a deep residual multi-task torch MLP (EMA weights, label
+     smoothing) — with isotonic (PAV) calibration done in-repo (no sklearn). Report
+     AUC + Brier + a decile
      backtest on a strict OUT-OF-TIME split, a walk-forward, and a per-family
      feature-importance table (which family contributes most). Push to
      `shubhxho/polymarket-mega-model`.
@@ -853,7 +855,7 @@ def run(max_rows: int = 20_000_000, top_tokens: int = 6000, epochs: int = 60,
     Xn = (X - fmean) / fstd
 
     result = {
-        "runtime": "modal H100 / mega unified (LightGBM + multi-task torch MLP)",
+        "runtime": "modal H100 / mega unified (LightGBM + extra-trees GBDT + residual multi-task MLP, 3-member ensemble)",
         "dataset": REPO, "trades_file": TRADES_FILE, "markets_file": MARKETS_FILE,
         "source": "union of all six feature families (flow+resolve+smart+crossmarket+event+micro)",
         "families": [f for f, _ in FAMILIES], "unified_features": N_FEATURES,
@@ -879,6 +881,19 @@ def run(max_rows: int = 20_000_000, top_tokens: int = 6000, epochs: int = 60,
                       "brier": round(float(np.mean((gp - ydir[va_i]) ** 2)), 4),
                       "backtest": _decile_backtest(list(gp), list(fwds[va_i]))}
 
+    # 3a') Extra-trees GBDT — a decorrelated second forest (random split thresholds,
+    # deeper leaves, thinner column sampling). Its errors differ from the primary
+    # booster's, so averaging the two is a real ensemble gain, not a copy.
+    params_et = {**params, "extra_trees": True, "num_leaves": 127,
+                 "feature_fraction": 0.6, "min_data_in_leaf": 100, "seed": 23}
+    bst_et = lgb.train(params_et, dtr, num_boost_round=1500, valid_sets=[dva],
+                       callbacks=[lgb.early_stopping(100, verbose=False), lgb.log_evaluation(0)])
+    gp_et = bst_et.predict(X[va_i])
+    result["gbdt_et"] = {"val_auc": round(_auc(gp_et, ydir[va_i]), 4),
+                         "brier": round(float(np.mean((gp_et - ydir[va_i]) ** 2)), 4),
+                         "backtest": _decile_backtest(list(gp_et), list(fwds[va_i]))}
+    print(f"[gbdt_et] {result['gbdt_et']}", flush=True)
+
     # Per-family importance rolled up from LightGBM gain.
     gain = dict(zip(UNIFIED_FEATURE_NAMES, bst.feature_importance("gain")))
     fam_gain = []
@@ -902,17 +917,40 @@ def run(max_rows: int = 20_000_000, top_tokens: int = 6000, epochs: int = 60,
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     torch.manual_seed(11)
 
-    class MegaMLP(nn.Module):
-        def __init__(self, n_in, hidden=256):
+    class ResBlock(nn.Module):
+        """Pre-norm residual block (LayerNorm → expand → SiLU → project → +skip).
+        The skip path lets the trunk go deep without the signal washing out, which
+        a plain stacked-Linear trunk can't — depth here buys real capacity."""
+
+        def __init__(self, d, drop):
             super().__init__()
-            self.trunk = nn.Sequential(
-                nn.Linear(n_in, hidden), nn.LayerNorm(hidden), nn.GELU(), nn.Dropout(0.3),
-                nn.Linear(hidden, hidden), nn.LayerNorm(hidden), nn.GELU(), nn.Dropout(0.3))
+            self.norm = nn.LayerNorm(d)
+            self.fc1 = nn.Linear(d, d * 2)
+            self.fc2 = nn.Linear(d * 2, d)
+            self.drop = nn.Dropout(drop)
+
+        def forward(self, x):
+            h = nn.functional.silu(self.fc1(self.norm(x)))
+            return x + self.fc2(self.drop(h))
+
+    class MegaMLP(nn.Module):
+        """Deep pre-norm residual trunk with a multi-task head. Wider and much
+        deeper than the old 2-layer MLP, but stable to train thanks to the residual
+        blocks + final norm; heads stay linear so calibration behaves."""
+
+        def __init__(self, n_in, hidden=320, blocks=4, drop=0.3):
+            super().__init__()
+            self.stem = nn.Sequential(nn.Linear(n_in, hidden), nn.LayerNorm(hidden), nn.SiLU())
+            self.blocks = nn.ModuleList([ResBlock(hidden, drop) for _ in range(blocks)])
+            self.out_norm = nn.LayerNorm(hidden)
             self.dir_head = nn.Linear(hidden, 1)
             self.res_head = nn.Linear(hidden, 1)
 
         def forward(self, x):
-            h = self.trunk(x)
+            h = self.stem(x)
+            for blk in self.blocks:
+                h = blk(h)
+            h = self.out_norm(h)
             return self.dir_head(h).squeeze(-1), self.res_head(h).squeeze(-1)
 
     Xt = torch.tensor(Xn, device=dev)
@@ -923,9 +961,18 @@ def run(max_rows: int = 20_000_000, top_tokens: int = 6000, epochs: int = 60,
     vi = torch.tensor(va_i, device=dev)
     net = MegaMLP(X.shape[1]).to(dev)
     opt = torch.optim.AdamW(net.parameters(), lr=2e-3, weight_decay=1e-3)
-    sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=max(epochs, 1))
-    bce = nn.BCEWithLogitsLoss()
+    # Warmup then cosine: the deep residual trunk trains cleaner with a short ramp.
+    warm = max(1, epochs // 12)
+    sched = torch.optim.lr_scheduler.SequentialLR(
+        opt,
+        [torch.optim.lr_scheduler.LinearLR(opt, 0.1, 1.0, total_iters=warm),
+         torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=max(epochs - warm, 1))],
+        milestones=[warm])
     bce_none = nn.BCEWithLogitsLoss(reduction="none")
+    # EMA (Polyak) shadow weights: evaluate/ship the averaged model, not the noisy
+    # last step — a cheap, reliable generalisation win on tabular deep nets.
+    ema = {k: v.detach().clone().float() for k, v in net.state_dict().items()}
+    EMA_DECAY, SMOOTH = 0.998, 0.03
     best_auc, best_state, mlp_probs = -1.0, None, None
     BATCH = 4096
     for _ in range(epochs):
@@ -935,38 +982,55 @@ def run(max_rows: int = 20_000_000, top_tokens: int = 6000, epochs: int = 60,
             bi = perm[b0:b0 + BATCH]
             opt.zero_grad(set_to_none=True)
             dlogit, rlogit = net(Xt[bi])
-            loss_dir = bce(dlogit, ydt[bi])
+            # Label smoothing on the direction target damps overconfident logits and
+            # improves both AUC ranking stability and calibration.
+            dtgt = ydt[bi] * (1.0 - 2.0 * SMOOTH) + SMOOTH
+            loss_dir = bce_none(dlogit, dtgt).mean()
             rm = res_mask[bi]
             loss_res = (bce_none(rlogit, yrt[bi]) * rm).sum() / (rm.sum() + 1e-6)
             (loss_dir + 0.5 * loss_res).backward()
             nn.utils.clip_grad_norm_(net.parameters(), 1.0)
             opt.step()
+            with torch.no_grad():
+                for k, v in net.state_dict().items():
+                    ema[k].mul_(EMA_DECAY).add_(v.detach().float(), alpha=1.0 - EMA_DECAY)
         sched.step()
+        # Evaluate the EMA snapshot — load into a clone so live weights keep training.
         net.eval()
+        live = {k: v.detach().clone() for k, v in net.state_dict().items()}
+        net.load_state_dict({k: ema[k].to(v.dtype) for k, v in live.items()})
         with torch.no_grad():
             pv = torch.sigmoid(net(Xt[vi])[0]).cpu().numpy()
         a = _auc(pv, ydir[va_i])
         if a > best_auc:
             best_auc, mlp_probs = a, pv
-            best_state = {k: v.detach().cpu().clone() for k, v in net.state_dict().items()}
+            best_state = {k: ema[k].cpu().clone() for k in ema}
+        net.load_state_dict(live)
     result["mlp"] = {"val_auc": round(best_auc, 4),
                      "brier": round(float(np.mean((mlp_probs - ydir[va_i]) ** 2)), 4),
                      "backtest": _decile_backtest(list(mlp_probs), list(fwds[va_i]))}
     print(f"[mlp] {result['mlp']}", flush=True)
 
-    # 3c) Ensemble + isotonic (PAV) calibration on the out-of-time slice.
-    ens = (np.asarray(gp) + np.asarray(mlp_probs)) / 2
+    # 3c) Ensemble of three decorrelated members (primary GBDT + extra-trees GBDT +
+    # residual MLP), then isotonic (PAV) calibration on the out-of-time slice.
+    ens = (np.asarray(gp) + np.asarray(gp_et) + np.asarray(mlp_probs)) / 3
     cal = _isotonic_pav(list(ens), list(ydir[va_i]))
     ens_cal = np.asarray([_apply_isotonic(cal, float(s)) for s in ens])
     result["ensemble"] = {
+        "members": ["gbdt", "gbdt_et", "mlp"],
         "val_auc": round(_auc(ens, ydir[va_i]), 4),
         "brier": round(float(np.mean((ens - ydir[va_i]) ** 2)), 4),
         "brier_calibrated": round(float(np.mean((ens_cal - ydir[va_i]) ** 2)), 4),
         "backtest": _decile_backtest(list(ens), list(fwds[va_i]))}
-    result["overall_best"] = max(("gbdt", "mlp", "ensemble"), key=lambda k: result[k]["val_auc"])
+    result["overall_best"] = max(("gbdt", "gbdt_et", "mlp", "ensemble"),
+                                 key=lambda k: result[k]["val_auc"])
     print(f"[ensemble] {result['ensemble']} | best {result['overall_best']}", flush=True)
 
     # 3d) Resolution head eval on resolved val markets (multi-task second target).
+    # Load the shipped EMA weights so this measures the model we actually save.
+    if best_state is not None:
+        net.load_state_dict({k: best_state[k].to(dev) for k in best_state})
+    net.eval()
     with torch.no_grad():
         rpv = torch.sigmoid(net(Xt[vi])[1]).cpu().numpy()
     rmask = yres[va_i] >= 0
@@ -999,7 +1063,8 @@ def run(max_rows: int = 20_000_000, top_tokens: int = 6000, epochs: int = 60,
     # 4) Artifacts: gbdt + mlp safetensors + normalizer json + calibration + card.
     norm = {"fmean": fmean.tolist(), "fstd": fstd.tolist(), "features": UNIFIED_FEATURE_NAMES,
             "families": {fam: FAMILY_SPANS[fam] for fam, _ in FAMILIES},
-            "arch": {"type": "multitask_mlp", "hidden": 256, "heads": ["direction", "resolution"]},
+            "arch": {"type": "residual_multitask_mlp", "hidden": 320, "blocks": 4,
+                     "activation": "silu", "ema": True, "heads": ["direction", "resolution"]},
             "window": WINDOW, "horizon": HORIZON, "bar_seconds": bar_seconds,
             "calibration": {"type": "isotonic_pav", "xs": cal[0], "ys": cal[1]}}
     bst.save_model("/tmp/mega_gbdt.txt")
@@ -1017,7 +1082,14 @@ def run(max_rows: int = 20_000_000, top_tokens: int = 6000, epochs: int = 60,
     artifacts["README.md"] = _model_card(result).encode()
     result["_artifacts_b64"] = {k: base64.b64encode(v).decode() for k, v in artifacts.items()}
 
-    if push and hf_token:
+    if push and not hf_token:
+        # Loud, recorded skip. The old code silently dropped the upload when --push
+        # was set without a token, so a costly H100 run finished with nothing on the
+        # Hub and no error to show for it — exactly the trap `HF_TOKEN` unset hits.
+        result["push_error"] = ("push requested but HF_TOKEN unset — nothing "
+                                "uploaded (artifacts saved locally only)")
+        print("PUSH SKIPPED:", result["push_error"], flush=True)
+    elif push and hf_token:
         try:
             api = HfApi(token=hf_token)
             api.create_repo(repo_id=HF_MODEL_REPO, repo_type="model", exist_ok=True)
@@ -1075,13 +1147,15 @@ example, two targets (next-move **direction** + eventual **resolution**).
 - window {result.get('window')} bars, horizon {result.get('horizon')} bars ahead
 - {result.get('windows', 0):,} windows over {result.get('markets')} markets
 - strict out-of-time (tfrac >= 0.8) validation split; walk-forward over time
-- LightGBM + multi-task torch MLP, isotonic (PAV) calibrated
+- 3-member ensemble: LightGBM + extra-trees GBDT + deep residual multi-task MLP
+  (EMA weights, label smoothing), isotonic (PAV) calibrated
 
 ## Metrics (out-of-time)
 
 | model | val AUC | brier | decile up-rate spread |
 |-------|---------|-------|-----------------------|
 {line('gbdt')}
+{line('gbdt_et')}
 {line('mlp')}
 {line('ensemble')}
 
@@ -1111,6 +1185,12 @@ def main(max_rows: int = 20_000_000, top_tokens: int = 6000, epochs: int = 60,
     import base64
 
     token = os.environ.get("HF_TOKEN", "")
+    if push and not token:
+        # Fail fast BEFORE spending an H100 hour: --push with no token would train,
+        # then silently skip the upload. Surface it up front so it can be fixed.
+        print("WARNING: --push set but HF_TOKEN is empty — the model will train and "
+              "save locally, but NOTHING will be pushed. Set HF_TOKEN and relaunch to "
+              "push. Continuing (local artifacts only) …", flush=True)
     report = run.remote(max_rows=max_rows, top_tokens=top_tokens, epochs=epochs,
                         bar_seconds=bar_seconds, push=push, hf_token=token)
     data_dir = os.path.join(os.path.dirname(__file__), "data")
@@ -1123,6 +1203,34 @@ def main(max_rows: int = 20_000_000, top_tokens: int = 6000, epochs: int = 60,
         json.dump(report, f, indent=2)
     print(json.dumps(report, indent=2))
     print(f"\nwrote {data_dir}/mega_metrics.json")
+
+
+@_remote(image=image, timeout=1200)
+def push_artifacts(artifacts_b64: dict, hf_token: str, best_resolution: str = "") -> str:
+    """Upload one resolution's artifact set to `HF_MODEL_REPO` from inside Modal.
+
+    The parallel bakeoff picks a winner on the local entrypoint, which may run in a
+    bare env with no `huggingface_hub`; doing the upload in a tiny remote keeps the
+    push on the same image the training used and off the caller's machine. Returns
+    the model URL, or an `ERROR:` string the caller can surface without crashing."""
+    import base64
+
+    from huggingface_hub import HfApi
+
+    try:
+        api = HfApi(token=hf_token)
+        api.create_repo(repo_id=HF_MODEL_REPO, repo_type="model", exist_ok=True)
+        for name, b64 in artifacts_b64.items():
+            sub = name if name == "README.md" else f"mega/{name}"
+            api.upload_file(path_or_fileobj=base64.b64decode(b64), path_in_repo=sub,
+                            repo_id=HF_MODEL_REPO, repo_type="model")
+        if best_resolution:
+            api.upload_file(
+                path_or_fileobj=f"winning resolution: bar_seconds={best_resolution}\n".encode(),
+                path_in_repo="mega/BEST_RESOLUTION.txt", repo_id=HF_MODEL_REPO, repo_type="model")
+        return f"https://huggingface.co/{HF_MODEL_REPO}"
+    except Exception as e:  # noqa: BLE001
+        return f"ERROR: {type(e).__name__}: {e}"[:300]
 
 
 @_entrypoint()
@@ -1145,16 +1253,23 @@ def parallel(max_rows: int = 30_000_000, top_tokens: int = 3000, epochs: int = 4
     calls = {bs: run.spawn(max_rows=max_rows, top_tokens=top_tokens, epochs=epochs,
                            bar_seconds=bs, push=False, hf_token=token) for bs in resolutions}
 
-    reports, best_key, best_auc, best_art = {}, None, -1.0, {}
+    reports, best_key, best_score, best_auc, best_art = {}, None, -1.0, -1.0, {}
     for bs, c in calls.items():
         rep = c.get()                       # blocks until this H100 finishes
         art = rep.pop("_artifacts_b64", {})
-        auc = rep.get("ensemble", {}).get("val_auc", 0.0)
+        auc = rep.get("ensemble", {}).get("val_auc", 0.0) or 0.0
         sp = rep.get("ensemble", {}).get("backtest", {}).get("up_rate_spread")
-        print(f"  bar_seconds={bs}: ensemble AUC {auc}  spread {sp}", flush=True)
+        # Select on a STABILITY-weighted score: half the last-slice ensemble AUC,
+        # half the walk-forward mean AUC (fall back to the slice AUC when walk-
+        # forward is absent). Picks the resolution whose edge holds across time,
+        # not one that got lucky on a single out-of-time slice.
+        wf = rep.get("walk_forward", {}).get("mean_auc")
+        score = 0.5 * auc + 0.5 * (wf if wf is not None else auc)
+        print(f"  bar_seconds={bs}: ensemble AUC {auc}  walk-fwd {wf}  "
+              f"score {score:.4f}  spread {sp}", flush=True)
         reports[str(bs)] = rep
-        if auc > best_auc:
-            best_auc, best_key, best_art = auc, str(bs), art
+        if score > best_score:
+            best_score, best_auc, best_key, best_art = score, auc, str(bs), art
 
     data_dir = os.path.join(os.path.dirname(__file__), "data")
     os.makedirs(data_dir, exist_ok=True)
@@ -1164,7 +1279,20 @@ def parallel(max_rows: int = 30_000_000, top_tokens: int = 3000, epochs: int = 4
         print(f"saved data/mega_{name.replace('/', '_')}")
     combined = {"runtime": "modal parallel H100s / multi-resolution mega",
                 "best_resolution": best_key, "best_ensemble_auc": best_auc,
+                "best_selection_score": round(best_score, 4),
+                "selection": "0.5*ensemble_val_auc + 0.5*walk_forward_mean_auc",
                 "by_resolution": reports}
+
+    # Push ONLY the winning resolution's artifacts — one clean model on the Hub, not
+    # three competing ones. Done in a remote so the caller needs no huggingface_hub.
+    if push and token and best_art:
+        url = push_artifacts.remote(best_art, token, best_key)
+        combined["hf_repo"] = url
+        print(f"pushed winner (bar_seconds={best_key}) → {url}", flush=True)
+    elif push and not token:
+        combined["push_error"] = "push requested but HF_TOKEN unset — nothing uploaded"
+        print("push skipped: HF_TOKEN unset", flush=True)
+
     with open(os.path.join(data_dir, "mega_parallel_metrics.json"), "w") as f:
         json.dump(combined, f, indent=2)
     print(f"\nbest resolution: bar_seconds={best_key} (ensemble AUC {best_auc})")
