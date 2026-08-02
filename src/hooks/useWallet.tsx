@@ -72,6 +72,15 @@ type WalletCtx = {
   connect: () => Promise<void>;
   disconnect: () => void;
   switchToPolygon: () => Promise<void>;
+  /**
+   * Sign an EIP-712 typed-data payload with the connected account via
+   * `eth_signTypedData_v4`. The wallet does the struct hashing, so the caller
+   * only builds the `{ types, primaryType, domain, message }` JSON — no keccak
+   * needed on our side. This is the one write the CLOB order path leans on
+   * (both the L1 auth attestation and the order itself). Throws if no wallet
+   * is connected.
+   */
+  signTypedData: (typedData: unknown) => Promise<string>;
 };
 
 const Ctx = createContext<WalletCtx | null>(null);
@@ -225,6 +234,22 @@ export function WalletProvider({
     }
   }, []);
 
+  const signTypedData = useCallback(
+    async (typedData: unknown): Promise<string> => {
+      const provider = getProvider();
+      if (!provider || !address) throw new Error("connect a wallet first");
+      // v4 wants the address first and the payload as a JSON string; Phantom
+      // returns the 0x… signature hex.
+      const sig = await provider.request({
+        method: "eth_signTypedData_v4",
+        params: [address, JSON.stringify(typedData)],
+      });
+      if (typeof sig !== "string") throw new Error("wallet returned no signature");
+      return sig;
+    },
+    [address]
+  );
+
   const isMe = useCallback(
     (addr: string) => address !== null && address === addr.toLowerCase(),
     [address]
@@ -250,8 +275,19 @@ export function WalletProvider({
       connect,
       disconnect,
       switchToPolygon,
+      signTypedData,
     }),
-    [status, address, chainId, providerState, isMe, connect, disconnect, switchToPolygon]
+    [
+      status,
+      address,
+      chainId,
+      providerState,
+      isMe,
+      connect,
+      disconnect,
+      switchToPolygon,
+      signTypedData,
+    ]
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
