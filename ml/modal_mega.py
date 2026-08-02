@@ -873,7 +873,12 @@ def run(max_rows: int = 20_000_000, top_tokens: int = 6000, epochs: int = 60,
     dva = lgb.Dataset(X[va_i], label=ydir[va_i], reference=dtr)
     params = {"objective": "binary", "metric": "auc", "learning_rate": 0.02, "num_leaves": 63,
               "min_data_in_leaf": 200, "feature_fraction": 0.8, "bagging_fraction": 0.8,
-              "bagging_freq": 1, "lambda_l2": 1.0, "is_unbalance": True, "seed": 11, "verbose": -1}
+              "bagging_freq": 1, "lambda_l2": 1.0, "is_unbalance": True, "seed": 11, "verbose": -1,
+              # The extra-trees member reuses this Dataset with a smaller
+              # min_data_in_leaf (100 < 200); LightGBM errors if the Dataset was
+              # built with feature pre-filtering at the larger value. Disable it so
+              # the shared Dataset supports both members.
+              "feature_pre_filter": False}
     bst = lgb.train(params, dtr, num_boost_round=1500, valid_sets=[dva],
                     callbacks=[lgb.early_stopping(100, verbose=False), lgb.log_evaluation(0)])
     gp = bst.predict(X[va_i])

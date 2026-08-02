@@ -65,16 +65,34 @@ KW = dict(max_rows=30_000_000, epochs=40)
 
 
 def _collect(ids: dict) -> None:
-    reports, best, best_auc, best_art = {}, None, -1.0, {}
+    reports, best, best_score, best_auc, best_art = {}, None, -1.0, -1.0, {}
     for bs, cid in ids.items():
-        rep = _robust_get(cid)                     # blocks; reconnects across client network drops
+        # One crashed worker must not sink the whole run: a real worker exception
+        # (including one whose remote exception can't even be deserialized locally)
+        # is caught here so the surviving resolutions are still collected, saved and
+        # ranked. _robust_get already retries transient network drops; only genuine
+        # failures reach this except.
+        try:
+            rep = _robust_get(cid)
+        except Exception as e:  # noqa: BLE001
+            reports[str(bs)] = {"error": f"{type(e).__name__}: {str(e)[:200]}"}
+            print(f"  bar_seconds={bs}: FAILED — {type(e).__name__} (skipped)", flush=True)
+            continue
         art = rep.pop("_artifacts_b64", {})
-        auc = rep.get("ensemble", {}).get("val_auc", 0.0)
+        auc = rep.get("ensemble", {}).get("val_auc", 0.0) or 0.0
         sp = rep.get("ensemble", {}).get("backtest", {}).get("up_rate_spread")
-        print(f"  bar_seconds={bs}: ensemble AUC {auc}  spread {sp}", flush=True)
+        # Rank on a stability-weighted score (matches modal_mega.parallel): half the
+        # slice ensemble AUC, half the walk-forward mean, so the shipped resolution
+        # holds up across time rather than winning one lucky slice.
+        wf = rep.get("walk_forward", {}).get("mean_auc")
+        score = 0.5 * auc + 0.5 * (wf if wf is not None else auc)
+        print(f"  bar_seconds={bs}: ensemble AUC {auc}  walk-fwd {wf}  "
+              f"score {score:.4f}  spread {sp}", flush=True)
         reports[str(bs)] = rep
-        if auc > best_auc:
-            best_auc, best, best_art = auc, str(bs), art
+        if score > best_score:
+            best_score, best_auc, best, best_art = score, auc, str(bs), art
+    if best is None:
+        print("all resolutions failed — nothing to save", flush=True)
     os.makedirs(DATA, exist_ok=True)
     for name, b64 in best_art.items():
         with open(os.path.join(DATA, "mega_" + name.replace("/", "_")), "wb") as f:
@@ -83,6 +101,9 @@ def _collect(ids: dict) -> None:
     with open(os.path.join(DATA, "mega_parallel_metrics.json"), "w") as f:
         json.dump({"runtime": "modal parallel H100s / multi-resolution mega (deployed)",
                    "best_resolution": best, "best_ensemble_auc": best_auc,
+                   "best_selection_score": round(best_score, 4) if best is not None else None,
+                   "selection": "0.5*ensemble_val_auc + 0.5*walk_forward_mean_auc",
+                   "failed_resolutions": [k for k, v in reports.items() if "error" in v],
                    "by_resolution": reports}, f, indent=2, default=lambda o: o.tolist())
     print(f"\nbest resolution: bar_seconds={best} (ensemble AUC {best_auc})", flush=True)
     print(f"wrote {DATA}/mega_parallel_metrics.json", flush=True)
