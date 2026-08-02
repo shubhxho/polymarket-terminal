@@ -5,6 +5,7 @@ import type { Summary } from "@/app/api/summary/route";
 import { useClock } from "@/hooks/useClock";
 import { useTerminal } from "@/components/TerminalProvider";
 import { WalletButton } from "@/components/WalletButton";
+import { Logo } from "@/components/ui/Logo";
 import { cn } from "@/lib/cn";
 import { screenTitle } from "@/lib/commands";
 import { clock, compact } from "@/lib/format";
@@ -42,12 +43,7 @@ export function TopBar({
       transition={transition}
       className="flex h-[46px] shrink-0 items-center gap-3 border-b border-edge bg-canvas px-3"
     >
-      <div className="flex shrink-0 items-center gap-2">
-        <span className="flex h-[22px] w-[22px] items-center justify-center rounded-md bg-ink text-[11px] font-bold text-canvas">
-          P
-        </span>
-        <span className="text-sm2 font-semibold tracking-[-0.01em]">Polymarket Terminal</span>
-      </div>
+      <Logo className="shrink-0" />
 
       <span className="h-4 w-px shrink-0 bg-edge" />
 
