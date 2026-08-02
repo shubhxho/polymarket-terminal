@@ -101,6 +101,15 @@ export function MarketHeatmap({ markets }: { markets: readonly Market[] }) {
         device.destroy?.();
         return null;
       }
+      // A cached device can be lost (GPU reset, driver hiccup, tab backgrounded).
+      // Drop the cache when that happens so the next render re-inits a fresh device
+      // — or falls back to Canvas2D — instead of drawing into a dead device forever.
+      device.lost.then((info) => {
+        if (gpuRef.current?.device === device) {
+          gpuRef.current = null;
+          if (info.reason !== "destroyed") setBackend("canvas");
+        }
+      });
       const ctx = canvas.getContext("webgpu");
       if (!ctx) return null;
       const format = navigator.gpu.getPreferredCanvasFormat();
