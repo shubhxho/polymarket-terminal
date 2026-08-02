@@ -25,6 +25,7 @@ run test_features_deriv.py     # derivative family + frozen signal parity
 run test_backtest_deriv.py     # P&L primitives
 run test_backtest_horizons.py  # horizon backtest primitives
 run test_deriv_gbdt.py         # GBDT walker == booster.predict (needs lightgbm)
+run test_automaton_trader.py   # Conway-style survival loop economics
 run test_e2e_deriv.py          # full train->freeze->serve->backtest roundtrip
 
 echo; echo "ALL ML TESTS PASSED"
