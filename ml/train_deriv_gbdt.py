@@ -29,7 +29,9 @@ Run:  ml/.venv/bin/python train_deriv_gbdt.py
 from __future__ import annotations
 
 import json
+import multiprocessing as mp
 import os
+from concurrent.futures import ProcessPoolExecutor
 from typing import List, Sequence, Tuple
 
 import numpy as np
@@ -108,6 +110,14 @@ def _M(rs):
     return np.array([r[0] for r in rs], float), np.array([r[1] for r in rs], float)
 
 
+def _wf_fold(payload):
+    """One walk-forward fold (parallel worker): train on the block, score the next.
+    ``payload`` = ((Xtr, ytr), (Xval, yval), rounds)."""
+    (Xf, yf), (Xv, yv), rounds = payload
+    booster = lgb.train(PARAMS, lgb.Dataset(Xf, yf), num_boost_round=rounds)
+    return _auc(booster.predict(Xv), yv)
+
+
 def _fit(Xtr, ytr, Xes, yes, rounds=3000):
     booster = lgb.train(
         PARAMS, lgb.Dataset(Xtr, ytr), num_boost_round=rounds,
@@ -144,8 +154,9 @@ def main() -> int:
     oot_spread = _spread(sv, yva)
 
     # Honest walk-forward: expanding train blocks, retrain, score the NEXT block.
-    wf_aucs = []
+    # The folds are independent retrains, so fit them in PARALLEL (fork pool).
     folds = 4
+    fold_data = []
     for k in range(1, folds + 1):
         tr_f, va_f = [], []
         for r in rbs:
@@ -154,12 +165,14 @@ def main() -> int:
             step = len(r) / (folds + 1)
             tr_f += r[: max(0, int(step * k) - HORIZON)]
             va_f += r[int(step * k) : int(step * (k + 1))]
-        if not tr_f or not va_f:
-            continue
-        Xf, yf = _M(tr_f)
-        bf = lgb.train(PARAMS, lgb.Dataset(Xf, yf), num_boost_round=best_iter)
-        Xv, yv = _M(va_f)
-        wf_aucs.append(_auc(bf.predict(Xv), yv))
+        if tr_f and va_f:
+            fold_data.append((_M(tr_f), _M(va_f), best_iter))
+    if fold_data:
+        with ProcessPoolExecutor(max_workers=min(folds, (os.cpu_count() or 2)),
+                                 mp_context=mp.get_context("fork")) as ex:
+            wf_aucs = list(ex.map(_wf_fold, fold_data))
+    else:
+        wf_aucs = []
     wf_mean = sum(wf_aucs) / len(wf_aucs) if wf_aucs else 0.5
     wf_min_str = min(abs(a - 0.5) for a in wf_aucs) if wf_aucs else 0.0
 
