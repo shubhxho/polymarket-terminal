@@ -259,13 +259,18 @@ export function CommandPalette({
   }, [query, address, go, onClose, toast]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // Keys the palette handles must not also reach the window keydown listeners of
+    // a grid mounted behind the scrim (which lets nav keys through even while
+    // typing) — stop them here so Arrow/Enter/Escape drive only the palette.
     if (e.key === "Escape") {
       e.preventDefault();
+      e.stopPropagation();
       onClose();
       return;
     }
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
+      e.stopPropagation();
       setSel((s) => {
         const next = e.key === "ArrowDown" ? s + 1 : s - 1;
         return Math.max(0, Math.min(rows.length - 1, next));
@@ -274,6 +279,7 @@ export function CommandPalette({
     }
     if (e.key === "Enter") {
       e.preventDefault();
+      e.stopPropagation();
       const row = rows[sel];
       if (row) run(row, e.metaKey || e.ctrlKey);
       else submitRaw();
