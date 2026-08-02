@@ -15,6 +15,7 @@ import AlertsScreen from "@/components/screens/AlertsScreen";
 import CategoryScreen from "@/components/screens/CategoryScreen";
 import DetailScreen from "@/components/screens/DetailScreen";
 import HelpScreen from "@/components/screens/HelpScreen";
+import MeshScreen from "@/components/screens/MeshScreen";
 import MonitorScreen from "@/components/screens/MonitorScreen";
 import MoversScreen from "@/components/screens/MoversScreen";
 import PortfolioScreen from "@/components/screens/PortfolioScreen";
@@ -118,6 +119,8 @@ function Workspace({ screen }: { screen: Screen }) {
       return <PortfolioScreen user={screen.user} />;
     case "ALRT":
       return <AlertsScreen />;
+    case "MESH":
+      return <MeshScreen />;
     case "CAT":
       return <CategoryScreen tag={screen.tag} label={screen.label} />;
     case "HELP":
