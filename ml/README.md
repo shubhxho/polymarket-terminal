@@ -12,9 +12,9 @@ H100.
 The window features mirror the terminal's quant lib and add the standard
 technical oscillators:
 
-| group | features |
-|-------|----------|
-| path  | `last`, `mean_ret`, `vol`, `drift`, `band_z`, `momentum`, `autocorr`, `activity` |
+| group       | features                                                                                                                                                                           |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| path        | `last`, `mean_ret`, `vol`, `drift`, `band_z`, `momentum`, `autocorr`, `activity`                                                                                                   |
 | oscillators | `rsi` (Wilder, recentred to ±1), `cci` (Commodity Channel Index / 100), `macd_hist` (MACD 3/8 − 4-EMA signal), `stoch_k` (%K in 0..1), `downside_vol` (std of negative increments) |
 
 All are pure stdlib in `features.py`, finite on degenerate/flat windows, and
@@ -50,10 +50,10 @@ the upgrade path for true order-flow).
 The honest question isn't val accuracy on a random split — it's whether a signal
 **survives into the future**. So validation is strictly **out-of-time**:
 
-- **Temporal split** — each market's earlier windows train, its *later* windows
+- **Temporal split** — each market's earlier windows train, its _later_ windows
   validate, with a `HORIZON` purge between so no forward label peeks across the
   boundary (`_split` in `train_seq.py`).
-- **Walk-forward** — each series is cut into time blocks; fold *k* trains on
+- **Walk-forward** — each series is cut into time blocks; fold _k_ trains on
   blocks `0..k` and validates on `k+1`. Reporting AUC per fold shows whether the
   edge is stable across epochs or a one-slice fluke. See `walk_forward` in
   `data/seq_metrics.json`.
@@ -70,11 +70,11 @@ spread** on 27k out-of-time windows. Walk-forward confirms it holds across time
 rather than lucking into one slice:
 
 | fold (train → val, later in time) | val AUC | up-rate spread |
-|---|---|---|
-| 1 | 0.603 | +0.220 |
-| 2 | 0.621 | +0.228 |
-| 3 | 0.640 | +0.268 |
-| 4 | 0.649 | +0.270 |
+| --------------------------------- | ------- | -------------- |
+| 1                                 | 0.603   | +0.220         |
+| 2                                 | 0.621   | +0.228         |
+| 3                                 | 0.640   | +0.268         |
+| 4                                 | 0.649   | +0.270         |
 
 Mean walk-forward AUC **0.628**, min **0.603** — the signal persists (and even
 strengthens) as the training window expands. `up_rate_spread` is the outlier-proof
@@ -85,7 +85,7 @@ headline; full numbers in `data/seq_metrics.json`.
 `amazon/chronos-bolt-base` (205M, T5; top of the fev-bench / GIFT-Eval board) is
 the teacher. `modal_distill.py` reads a **soft up-probability** for every window
 straight from where the current price sits in Chronos's predictive quantile
-distribution, then trains a tiny GRU student to match the soft target *and* the
+distribution, then trains a tiny GRU student to match the soft target _and_ the
 realised outcome. Feature extraction is imported from `features.py` (Modal mounts
 it), so the student sees the exact same 13 features.
 
@@ -102,19 +102,19 @@ To prove the distillation earns its keep, the job trains the same student
 zero-shot teacher is near-chance on this specific short-horizon direction task
 (**AUC 0.527**), so it has little to transfer — the ablation honestly shows KD is
 **neutral** here (`kd_auc_gain ≈ +0.003`). The lesson is real, not a failure: a
-foundation model that tops general forecasting boards does *not* automatically
+foundation model that tops general forecasting boards does _not_ automatically
 beat purpose-built microstructure features on Polymarket's noisy, short-horizon
 prints. The hand features carry the signal. Full numbers in
 `data/distill_metrics.json`.
 
 ### H100 cost, estimated before spending
 
-| stage | wall | USD @ $3.95/hr |
-|-------|------|----------------|
-| chronos zero-shot (800 mkts) | ~4 min | $0.26 |
-| chronos fine-tune 1000 steps | ~22 min | $1.45 |
-| distillation (teacher + 2 students) | ~30 min | $1.98 |
-| **full pipeline** | **< 2 hr** | **~$6.65** |
+| stage                               | wall       | USD @ $3.95/hr |
+| ----------------------------------- | ---------- | -------------- |
+| chronos zero-shot (800 mkts)        | ~4 min     | $0.26          |
+| chronos fine-tune 1000 steps        | ~22 min    | $1.45          |
+| distillation (teacher + 2 students) | ~30 min    | $1.98          |
+| **full pipeline**                   | **< 2 hr** | **~$6.65**     |
 
 ## Serving over MCP
 
@@ -128,7 +128,7 @@ model_info()              which model is loaded + walk-forward stability
 ```
 
 `market_signal` now returns an `oscillators` block (RSI/CCI states, %K, MACD
-histogram) so a caller sees *why*, and `model_info` surfaces the walk-forward
+histogram) so a caller sees _why_, and `model_info` surfaces the walk-forward
 AUCs so the persistence of the signal is inspectable, not just asserted.
 
 Register:
