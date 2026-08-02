@@ -18,17 +18,46 @@ import type { Market } from "@/lib/types";
  * browser has no `navigator.gpu` it falls back to Canvas2D, which paints the
  * identical layout the pure `lib/heatmap` core produces. Hit-testing is always
  * CPU-side against that same cell list, so hover and click work either way.
+ *
+ * The GPU device, shader, pipeline and quad buffer are created ONCE and cached
+ * across re-renders — a data tick or resize only rewrites two buffers (the
+ * per-cell instance data and a resolution uniform) and re-encodes one pass.
+ * Requesting a fresh `GPUDevice` per update — the old behaviour — is the most
+ * expensive thing a WebGPU app can do, and it leaked a device on every frame.
  */
+
+/** Persistent per-canvas GPU resources — survive re-renders; freed on unmount. */
+type GpuState = {
+  device: GPUDevice;
+  ctx: GPUCanvasContext;
+  pipeline: GPURenderPipeline;
+  quadBuf: GPUBuffer;
+  resBuf: GPUBuffer; // uniform: canvas [w, h] in CSS px
+  bindGroup: GPUBindGroup;
+  instBuf: GPUBuffer | null;
+  instCap: number; // instance-buffer capacity, in cells
+};
+
 export function MarketHeatmap({ markets }: { markets: readonly Market[] }) {
   const { go } = useTerminal();
   const [wrapRef, size] = useElementSize<HTMLDivElement>();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const cellsRef = useRef<HeatCell[]>([]);
+  const gpuRef = useRef<GpuState | null>(null);
   const [hover, setHover] = useState<{ market: Market; x: number; y: number } | null>(null);
   const [backend, setBackend] = useState<"webgpu" | "canvas">("canvas");
 
   // Sorted brightest-first so the board reads as a ranked field, not a shuffle.
   const ordered = markets;
+
+  // Free the cached device only when the component unmounts — never on a data or
+  // size change, which is the whole point of caching it.
+  useEffect(() => {
+    return () => {
+      gpuRef.current?.device.destroy?.();
+      gpuRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -47,7 +76,6 @@ export function MarketHeatmap({ markets }: { markets: readonly Market[] }) {
     cellsRef.current = cells;
 
     let disposed = false;
-    let gpu: { device: GPUDevice; ctx: GPUCanvasContext } | null = null;
 
     // Draw the same cells on the CPU — the guaranteed path, and the fallback
     // whenever WebGPU init throws or is unavailable.
@@ -62,97 +90,138 @@ export function MarketHeatmap({ markets }: { markets: readonly Market[] }) {
       }
     };
 
-    const renderWebGPU = async () => {
-      if (!navigator.gpu) return false;
-      try {
-        const adapter = await navigator.gpu.requestAdapter();
-        if (!adapter || disposed) return false;
-        const device = await adapter.requestDevice();
-        if (disposed) return false;
-        const ctx = canvas.getContext("webgpu");
-        if (!ctx) return false;
-        const format = navigator.gpu.getPreferredCanvasFormat();
-        ctx.configure({ device, format, alphaMode: "premultiplied" });
-        gpu = { device, ctx };
+    // One-time device + pipeline creation, cached in `gpuRef`. Resolution lives in
+    // a uniform (not baked into the shader), so a resize never rebuilds anything.
+    const initGpu = async (): Promise<GpuState | null> => {
+      if (!navigator.gpu) return null;
+      const adapter = await navigator.gpu.requestAdapter();
+      if (!adapter || disposed) return null;
+      const device = await adapter.requestDevice();
+      if (disposed) {
+        device.destroy?.();
+        return null;
+      }
+      const ctx = canvas.getContext("webgpu");
+      if (!ctx) return null;
+      const format = navigator.gpu.getPreferredCanvasFormat();
+      ctx.configure({ device, format, alphaMode: "premultiplied" });
 
-        // Per-instance data: pixel rect + rgb, packed as 7 floats.
+      // Unit quad (two triangles), expanded to each instance's rect in the shader.
+      const quad = new Float32Array([0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1]);
+      const quadBuf = device.createBuffer({
+        size: quad.byteLength,
+        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+      });
+      device.queue.writeBuffer(quadBuf, 0, quad);
+
+      // Resolution uniform (vec2f, padded to the 16-byte uniform alignment).
+      const resBuf = device.createBuffer({
+        size: 16,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+      });
+
+      const shader = device.createShaderModule({
+        code: /* wgsl */ `
+          struct Res { size: vec2f };
+          @group(0) @binding(0) var<uniform> res: Res;
+          struct VsOut { @builtin(position) pos: vec4f, @location(0) color: vec3f };
+          @vertex fn vs(
+            @location(0) corner: vec2f,
+            @location(1) rect: vec4f,
+            @location(2) color: vec3f
+          ) -> VsOut {
+            let px = rect.xy + corner * rect.zw;            // pixel position
+            let ndc = vec2f(px.x / res.size.x * 2.0 - 1.0, 1.0 - px.y / res.size.y * 2.0);
+            var o: VsOut;
+            o.pos = vec4f(ndc, 0.0, 1.0);
+            o.color = color;
+            return o;
+          }
+          @fragment fn fs(@location(0) color: vec3f) -> @location(0) vec4f {
+            return vec4f(color, 1.0);
+          }`,
+      });
+
+      const pipeline = device.createRenderPipeline({
+        layout: "auto",
+        vertex: {
+          module: shader,
+          entryPoint: "vs",
+          buffers: [
+            {
+              arrayStride: 8,
+              attributes: [{ shaderLocation: 0, offset: 0, format: "float32x2" }],
+            },
+            {
+              arrayStride: 28,
+              stepMode: "instance",
+              attributes: [
+                { shaderLocation: 1, offset: 0, format: "float32x4" },
+                { shaderLocation: 2, offset: 16, format: "float32x3" },
+              ],
+            },
+          ],
+        },
+        fragment: { module: shader, entryPoint: "fs", targets: [{ format }] },
+        primitive: { topology: "triangle-list" },
+      });
+
+      const bindGroup = device.createBindGroup({
+        layout: pipeline.getBindGroupLayout(0),
+        entries: [{ binding: 0, resource: { buffer: resBuf } }],
+      });
+
+      return { device, ctx, pipeline, quadBuf, resBuf, bindGroup, instBuf: null, instCap: 0 };
+    };
+
+    const renderWebGPU = async (): Promise<boolean> => {
+      try {
+        if (!gpuRef.current) gpuRef.current = await initGpu();
+        const g = gpuRef.current;
+        if (!g || disposed) return false;
+        const { device } = g;
+
+        // Re-configure the context each render: on a resize the canvas backing
+        // store changed, and the uniform carries the new logical size.
+        g.ctx.configure({
+          device,
+          format: navigator.gpu.getPreferredCanvasFormat(),
+          alphaMode: "premultiplied",
+        });
+        device.queue.writeBuffer(g.resBuf, 0, new Float32Array([w, h]));
+
+        // Grow the instance buffer only when the cell count outruns its capacity;
+        // otherwise reuse it and just overwrite the bytes.
+        if (!g.instBuf || g.instCap < cells.length) {
+          g.instBuf?.destroy?.();
+          g.instBuf = device.createBuffer({
+            size: cells.length * 7 * 4,
+            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+          });
+          g.instCap = cells.length;
+        }
         const inst = new Float32Array(cells.length * 7);
         cells.forEach((c, k) => {
-          const [r, g, b] = heatColor(c.t);
-          inst.set([c.x, c.y, Math.max(1, c.w), Math.max(1, c.h), r, g, b], k * 7);
+          const [r, gr, b] = heatColor(c.t);
+          inst.set([c.x, c.y, Math.max(1, c.w), Math.max(1, c.h), r, gr, b], k * 7);
         });
-        const instBuf = device.createBuffer({
-          size: inst.byteLength,
-          usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-        });
-        device.queue.writeBuffer(instBuf, 0, inst);
-
-        // Unit quad (two triangles), expanded to the instance rect in the shader.
-        const quad = new Float32Array([0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1]);
-        const quadBuf = device.createBuffer({
-          size: quad.byteLength,
-          usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-        });
-        device.queue.writeBuffer(quadBuf, 0, quad);
-
-        const shader = device.createShaderModule({
-          code: /* wgsl */ `
-            struct VsOut { @builtin(position) pos: vec4f, @location(0) color: vec3f };
-            @vertex fn vs(
-              @location(0) corner: vec2f,
-              @location(1) rect: vec4f,
-              @location(2) color: vec3f
-            ) -> VsOut {
-              let px = rect.xy + corner * rect.zw;            // pixel position
-              let ndc = vec2f(px.x / ${w}.0 * 2.0 - 1.0, 1.0 - px.y / ${h}.0 * 2.0);
-              var o: VsOut;
-              o.pos = vec4f(ndc, 0.0, 1.0);
-              o.color = color;
-              return o;
-            }
-            @fragment fn fs(@location(0) color: vec3f) -> @location(0) vec4f {
-              return vec4f(color, 1.0);
-            }`,
-        });
-
-        const pipeline = device.createRenderPipeline({
-          layout: "auto",
-          vertex: {
-            module: shader,
-            entryPoint: "vs",
-            buffers: [
-              {
-                arrayStride: 8,
-                attributes: [{ shaderLocation: 0, offset: 0, format: "float32x2" }],
-              },
-              {
-                arrayStride: 28,
-                stepMode: "instance",
-                attributes: [
-                  { shaderLocation: 1, offset: 0, format: "float32x4" },
-                  { shaderLocation: 2, offset: 16, format: "float32x3" },
-                ],
-              },
-            ],
-          },
-          fragment: { module: shader, entryPoint: "fs", targets: [{ format }] },
-          primitive: { topology: "triangle-list" },
-        });
+        device.queue.writeBuffer(g.instBuf, 0, inst);
 
         const encoder = device.createCommandEncoder();
         const pass = encoder.beginRenderPass({
           colorAttachments: [
             {
-              view: ctx.getCurrentTexture().createView(),
+              view: g.ctx.getCurrentTexture().createView(),
               clearValue: { r: 0, g: 0, b: 0, a: 0 },
               loadOp: "clear",
               storeOp: "store",
             },
           ],
         });
-        pass.setPipeline(pipeline);
-        pass.setVertexBuffer(0, quadBuf);
-        pass.setVertexBuffer(1, instBuf);
+        pass.setPipeline(g.pipeline);
+        pass.setBindGroup(0, g.bindGroup);
+        pass.setVertexBuffer(0, g.quadBuf);
+        pass.setVertexBuffer(1, g.instBuf);
         pass.draw(6, cells.length);
         pass.end();
         device.queue.submit([encoder.finish()]);
@@ -170,7 +239,6 @@ export function MarketHeatmap({ markets }: { markets: readonly Market[] }) {
 
     return () => {
       disposed = true;
-      gpu?.device.destroy?.();
     };
   }, [ordered, size.width, size.height]);
 
