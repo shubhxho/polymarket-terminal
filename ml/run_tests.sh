@@ -14,11 +14,13 @@ run() { echo; echo ">> $*"; "$PY" "$@"; }
 # Pure-stdlib module selfchecks (exit non-zero on any failed assertion).
 run features.py
 run features_deriv.py
+run deriv_estimators.py
 run signal_engine.py
 run evaluate_all.py
 
 # Test suites.
 run test_ml.py                 # feature layer + leakage-safe split
+run test_deriv_estimators.py   # causal derivative estimator zoo
 run test_features_deriv.py     # derivative family + frozen signal parity
 run test_backtest_deriv.py     # P&L primitives
 run test_backtest_horizons.py  # horizon backtest primitives
