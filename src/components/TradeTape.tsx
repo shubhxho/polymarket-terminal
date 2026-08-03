@@ -28,6 +28,10 @@ export function TradeTape({
 
   if (trades.length === 0) return <Empty text="no prints" />;
 
+  // Scale the per-row size bar to the largest print in view, so magnitude reads
+  // down the tape continuously rather than only crossing the $10k whale line.
+  const maxNotional = Math.max(...trades.map((t) => t.size * t.price), 1);
+
   return (
     <div className="text-tiny">
       <div className="sticky top-0 z-10 flex items-center gap-1 border-b border-edge-strong bg-surface-2 px-1 py-[3px] text-[10px] tracking-wide text-accent-weak uppercase">
@@ -63,13 +67,20 @@ export function TradeTape({
                   go({ fn: "DES", slug: t.slug, kind: "market" }, `DES ${t.slug}`);
                 }
               }}
-              className={`flex items-center gap-1 border-b border-edge/30 px-1 ${
+              className={`relative isolate flex items-center gap-1 overflow-hidden border-b border-edge/30 px-1 ${
                 dense ? "py-0" : "py-[2px]"
               } ${t.slug ? "cursor-pointer hover:bg-surface-2" : ""} ${
                 // Prints above $10k get a persistent wash, not just a flash.
                 notional >= 10_000 ? (buy ? "bg-up/8" : "bg-down/8") : ""
               }`}
             >
+              {/* Continuous size bar, behind the row via negative z; neutral fill
+                  so it encodes magnitude without spending a direction hue. */}
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-y-0 left-0 -z-10 bg-edge-strong/50"
+                style={{ width: `${(notional / maxNotional) * 100}%` }}
+              />
               <span className="w-[52px] shrink-0 text-muted">{timeOfDay(t.timestamp)}</span>
               <span className={`w-[34px] shrink-0 font-bold ${buy ? "text-up" : "text-down"}`}>
                 {buy ? "BUY" : "SELL"}
