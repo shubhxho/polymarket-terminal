@@ -15,7 +15,10 @@ import type { SignalsPayload } from "@/app/api/signals/route";
 /** How many ranked markets to keep in the snapshot's compact `markets` blob. */
 const KEEP = 30;
 
-export function snapshotRow(p: SignalsPayload): SignalSnapshotRow {
+/** Payload-derived columns; `capturedAt`/`minuteBucket` are set by the writer. */
+export type SnapshotInsert = Omit<SignalSnapshotRow, "capturedAt" | "minuteBucket">;
+
+export function snapshotRow(p: SignalsPayload): SnapshotInsert {
   const s = p.stats;
   const top = p.markets[0];
   return {
@@ -44,8 +47,19 @@ export function snapshotRow(p: SignalsPayload): SignalSnapshotRow {
 export async function recordSignalSnapshot(p: SignalsPayload): Promise<void> {
   const d = await db();
   if (!d) return;
+  // One clock for both fields so the bucket is exactly `capturedAt` floored to
+  // the minute.
+  const capturedAt = new Date();
+  const minuteBucket = new Date(capturedAt);
+  minuteBucket.setSeconds(0, 0);
   try {
-    await d.insert(signalSnapshots).values(snapshotRow(p));
+    // At most one row per minute — the unique `minute_bucket` index turns a
+    // concurrent second write in the same minute into a no-op rather than a
+    // duplicate or an error.
+    await d
+      .insert(signalSnapshots)
+      .values({ ...snapshotRow(p), capturedAt, minuteBucket })
+      .onConflictDoNothing();
   } catch (err) {
     logError("snapshot.insert_failed", {
       message: err instanceof Error ? err.message : String(err),

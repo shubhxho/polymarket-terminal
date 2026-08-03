@@ -53,6 +53,12 @@ describe("snapshotRow", () => {
     expect(row.topHeat).toBe(70);
   });
 
+  test("leaves capturedAt/minuteBucket to the writer (dedup clock)", () => {
+    const row = snapshotRow(payload()) as Record<string, unknown>;
+    expect(row).not.toHaveProperty("capturedAt");
+    expect(row).not.toHaveProperty("minuteBucket");
+  });
+
   test("keeps a compact per-market blob, model prob null when unmodeled", () => {
     const row = snapshotRow(payload());
     const markets = row.markets as { id: string; prob: number | null }[];

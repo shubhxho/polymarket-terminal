@@ -19,6 +19,7 @@ import {
   jsonb,
   pgTable,
   timestamp,
+  uniqueIndex,
   varchar,
 } from "drizzle-orm/pg-core";
 
@@ -41,8 +42,24 @@ export const signalSnapshots = pgTable(
     topHeat: integer("top_heat"),
     /** Compact top-N rows (id, question, heat, bias, model prob) for backtesting. */
     markets: jsonb("markets"),
+    /**
+     * `capturedAt` floored to the minute, set at insert time. A unique index on
+     * it makes the write path idempotent per minute: every `/api/signals` scan
+     * attempts an insert, but at most one row per minute survives
+     * (`onConflictDoNothing`). Without it each edge revalidation (~4/min at
+     * s-maxage=15, more across instances) wrote a near-duplicate row, bloating
+     * the table and giving the backtest a ragged, uneven series.
+     *
+     * A plain column, not a Postgres generated one: `date_trunc('minute', …)`
+     * over a `timestamptz` is not IMMUTABLE, so it can't back a stored generated
+     * column. Computing the bucket in the writer sidesteps that.
+     */
+    minuteBucket: timestamp("minute_bucket", { withTimezone: true }).notNull(),
   },
-  (t) => [index("captured_at_idx").on(t.capturedAt)]
+  (t) => [
+    index("captured_at_idx").on(t.capturedAt),
+    uniqueIndex("snapshot_minute_uq").on(t.minuteBucket),
+  ]
 );
 
 export const eventLog = pgTable(
