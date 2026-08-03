@@ -4,7 +4,7 @@ import { motion } from "motion/react";
 import { useCallback, useMemo } from "react";
 import { MarketGrid } from "@/components/MarketGrid";
 import { useTerminal } from "@/components/TerminalProvider";
-import { Empty, ErrorBox, Loading, Panel, Refreshing } from "@/components/ui/Panel";
+import { AsyncBody, Empty, Panel, Refreshing } from "@/components/ui/Panel";
 import { Sparkline } from "@/components/ui/Sparkline";
 import { dirClass, signed, truncate } from "@/lib/format";
 import { usePoll } from "@/hooks/usePoll";
@@ -127,13 +127,7 @@ export default function WatchlistScreen() {
           </span>
         }
       >
-        {loading ? (
-          <Loading text="quoting" />
-        ) : error && !data ? (
-          <div className="p-1.5">
-            <ErrorBox message={error} />
-          </div>
-        ) : (
+        <AsyncBody loading={loading} error={error} hasData={!!data} loadingText="quoting">
           <MarketGrid
             markets={markets}
             columns={[
@@ -151,7 +145,7 @@ export default function WatchlistScreen() {
             showRank={false}
             emptyText="pinned markets unavailable"
           />
-        )}
+        </AsyncBody>
       </Panel>
 
       <Panel
@@ -161,13 +155,12 @@ export default function WatchlistScreen() {
         animate
         right={`${trend.length}/${watchlist.length}`}
       >
-        {history.loading ? (
-          <Loading text="loading history" />
-        ) : history.error && !history.data ? (
-          <div className="p-1.5">
-            <ErrorBox message={history.error} />
-          </div>
-        ) : (
+        <AsyncBody
+          loading={history.loading}
+          error={history.error}
+          hasData={!!history.data}
+          loadingText="loading history"
+        >
           <div className="text-tiny">
             {trend.map((w) => {
               const points = seriesByToken.get(w.tokenId) ?? [];
@@ -203,7 +196,7 @@ export default function WatchlistScreen() {
               );
             })}
           </div>
-        )}
+        </AsyncBody>
       </Panel>
     </motion.div>
   );
