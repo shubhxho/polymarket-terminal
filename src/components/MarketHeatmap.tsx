@@ -289,6 +289,18 @@ export function MarketHeatmap({ markets }: { markets: readonly Market[] }) {
       <span className="pointer-events-none absolute top-1 right-1.5 text-[10px] tracking-wide text-faint uppercase">
         {backend === "webgpu" ? "GPU" : "2D"} · {ordered.length}
       </span>
+      {/* Colour scale: without it a shade is unreadable — the eye can see one
+          cell is greener than another but not what that maps to. Swatches are
+          the exact heatColor ramp the cells use, red (down) to green (up). */}
+      <span className="pointer-events-none absolute bottom-1 left-1.5 flex items-center gap-1 text-[9px] tracking-wide text-faint uppercase">
+        <span>24h −</span>
+        <span className="flex overflow-hidden rounded-[1px]">
+          {[-1, -0.6, -0.3, 0, 0.3, 0.6, 1].map((t) => (
+            <span key={t} className="h-1.5 w-2.5" style={{ background: heatColorCss(t) }} />
+          ))}
+        </span>
+        <span>+</span>
+      </span>
       {hover && (
         <div
           className="pointer-events-none absolute z-10 max-w-[240px] rounded-sm border border-edge bg-canvas px-2 py-1 text-tiny shadow-[var(--shadow-pop)]"
