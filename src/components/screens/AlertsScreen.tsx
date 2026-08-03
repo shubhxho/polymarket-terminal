@@ -183,7 +183,10 @@ function ArmForm({
   return (
     <Panel title="Arm New Alert" className="shrink-0" animate>
       {watchlist.length === 0 ? (
-        <Empty text="add markets to your watchlist first (press W on any row)" />
+        <Empty
+          text="No markets to alert on"
+          hint="Add markets to your watchlist first — press W on any row"
+        />
       ) : (
         <form onSubmit={submit} className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <label className="text-[10px] tracking-wide text-info uppercase" htmlFor="alrt-market">
