@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
 import { useTerminal } from "@/components/TerminalProvider";
 import { PriceChart, SERIES_COLORS, type Series } from "@/components/ui/PriceChart";
-import { Empty, ErrorBox, Field, Loading, Panel } from "@/components/ui/Panel";
+import { Empty, ErrorBox, Field, Loading, Panel, Refreshing } from "@/components/ui/Panel";
 import { useMarketSocket } from "@/hooks/useMarketSocket";
 import { usePoll } from "@/hooks/usePoll";
 import {
@@ -410,7 +410,7 @@ export default function DetailScreen({ slug, kind }: { slug: string; kind: "even
 
           <Panel
             title={`TIME & SALES · ${truncate(selected?.label ?? "", 28)}`}
-            right={tradesQ.refreshing ? "sync…" : undefined}
+            right={<Refreshing show={tradesQ.refreshing} />}
             className="min-h-0 flex-1 max-xl:min-h-[220px]"
             flush
           >

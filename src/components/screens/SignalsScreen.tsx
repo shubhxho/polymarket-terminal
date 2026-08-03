@@ -4,7 +4,7 @@ import { motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SignalsPayload } from "@/app/api/signals/route";
 import { useTerminal } from "@/components/TerminalProvider";
-import { Chip, Empty, ErrorBox, Field, Loading, Panel } from "@/components/ui/Panel";
+import { Chip, Empty, ErrorBox, Field, Loading, Panel, Refreshing } from "@/components/ui/Panel";
 import { usePoll } from "@/hooks/usePoll";
 import { useMarketSocket } from "@/hooks/useMarketSocket";
 import { useLiveModel } from "@/hooks/useLiveModel";
@@ -208,7 +208,7 @@ export default function SignalsScreen() {
         right={
           <span className="flex items-center gap-2">
             {stale ? <span className="text-warn">stale</span> : null}
-            {refreshing ? <span className="text-accent">···</span> : null}
+            <Refreshing show={refreshing} />
             {feed.status === "live" ? (
               <span
                 className="flex items-center gap-1 text-up"

@@ -4,7 +4,7 @@ import { motion } from "motion/react";
 import { useCallback, useMemo } from "react";
 import { MarketGrid } from "@/components/MarketGrid";
 import { useTerminal } from "@/components/TerminalProvider";
-import { Empty, ErrorBox, Loading, Panel } from "@/components/ui/Panel";
+import { Empty, ErrorBox, Loading, Panel, Refreshing } from "@/components/ui/Panel";
 import { Sparkline } from "@/components/ui/Sparkline";
 import { dirClass, signed, truncate } from "@/lib/format";
 import { usePoll } from "@/hooks/usePoll";
@@ -115,7 +115,7 @@ export default function WatchlistScreen() {
             <span>
               {watchlist.length} {watchlist.length === 1 ? "item" : "items"}
             </span>
-            {refreshing ? <span className="opacity-60">···</span> : null}
+            <Refreshing show={refreshing} />
             <motion.button
               whileTap={tapScale}
               onClick={clearAll}

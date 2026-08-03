@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { MarketGrid } from "@/components/MarketGrid";
 import { MarketHeatmap } from "@/components/MarketHeatmap";
 import { useTerminal } from "@/components/TerminalProvider";
-import { Empty, ErrorBox, Loading, Panel, Segmented } from "@/components/ui/Panel";
+import { Empty, ErrorBox, Loading, Panel, Refreshing, Segmented } from "@/components/ui/Panel";
 import { usePoll } from "@/hooks/usePoll";
 import { clock, compact, truncate } from "@/lib/format";
 import { panelVariants, staggerContainer, tapScale } from "@/lib/motion";
@@ -75,7 +75,7 @@ export default function MonitorScreen() {
               {stale ? (
                 <span className="text-warn">stale</span>
               ) : markets.refreshing ? (
-                <span className="text-faint">sync…</span>
+                <Refreshing show />
               ) : (
                 <span className="text-faint">{rows.length} rows</span>
               )}

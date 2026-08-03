@@ -4,7 +4,7 @@ import { motion } from "motion/react";
 import type { ReactNode } from "react";
 import { MarketGrid } from "@/components/MarketGrid";
 import { useTerminal } from "@/components/TerminalProvider";
-import { Empty, ErrorBox, Loading, Panel } from "@/components/ui/Panel";
+import { Empty, ErrorBox, Loading, Panel, Refreshing } from "@/components/ui/Panel";
 import { usePoll } from "@/hooks/usePoll";
 import { compact, timeToExpiry, truncate } from "@/lib/format";
 import { panelVariants, staggerContainer } from "@/lib/motion";
@@ -50,7 +50,7 @@ export default function SearchScreen({ q }: { q: string }) {
             <span className="text-info">MKT</span> {markets.length}
           </span>
           {stale ? <span className="text-warn">stale</span> : null}
-          {refreshing ? <span className="text-accent-weak">···</span> : null}
+          <Refreshing show={refreshing} />
         </span>
       </motion.div>
 

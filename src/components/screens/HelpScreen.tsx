@@ -83,6 +83,14 @@ export default function HelpScreen() {
                   onClick={() => {
                     if (screen) go(screen, c.code);
                   }}
+                  onKeyDown={(e) => {
+                    if (screen && (e.key === "Enter" || e.key === " ")) {
+                      e.preventDefault();
+                      go(screen, c.code);
+                    }
+                  }}
+                  role={screen ? "button" : undefined}
+                  tabIndex={screen ? 0 : undefined}
                   title={c.args ? `${c.code} ${c.args}` : c.title}
                   className={`flex items-baseline gap-2 border-b border-edge/40 px-1 py-[2px] hover:bg-surface-2 ${
                     screen ? "cursor-pointer" : ""

@@ -3,7 +3,7 @@
 import { motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { MarketGrid, type GridColumn } from "@/components/MarketGrid";
-import { ErrorBox, Loading, Panel } from "@/components/ui/Panel";
+import { ErrorBox, Loading, Panel, Refreshing } from "@/components/ui/Panel";
 import { usePoll } from "@/hooks/usePoll";
 import { panelVariants, staggerContainer, tapScale } from "@/lib/motion";
 import type { Market } from "@/lib/types";
@@ -143,7 +143,7 @@ export default function MoversScreen() {
             <span className="text-info">MIN VOL</span> 5K
           </span>
           {stale ? <span className="text-warn">stale</span> : null}
-          {refreshing ? <span className="text-accent-weak">···</span> : null}
+          <Refreshing show={refreshing} />
         </span>
       </motion.div>
 

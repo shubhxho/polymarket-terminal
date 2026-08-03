@@ -102,6 +102,20 @@ export function Field({
   );
 }
 
+/**
+ * The one refreshing indicator, for a Panel's `right` header. Every screen was
+ * rolling its own — two glyphs (`···`/`sync…`) across four colours — for the
+ * same "a background refetch is in flight" concept; this makes it one mark.
+ * Renders nothing when idle.
+ */
+export function Refreshing({ show }: { show: boolean }) {
+  return show ? (
+    <span className="text-faint" title="Refreshing…" aria-hidden>
+      ···
+    </span>
+  ) : null;
+}
+
 export function Empty({ text = "no data" }: { text?: string }) {
   return (
     <div className="flex h-full min-h-[64px] items-center justify-center px-4 text-center text-[11px] text-faint">
