@@ -124,6 +124,9 @@ function NavButton({
       onClick={onClick}
       disabled={disabled}
       title={title}
+      // The glyph alone reads as "left arrow" to a screen reader; the title
+      // ("Back (Alt+←)") is the name a caller actually means.
+      aria-label={title}
       className={cn(
         "flex h-[24px] w-[24px] items-center justify-center rounded-md text-[13px]",
         disabled ? "text-edge-strong" : "text-muted hover:bg-surface-2 hover:text-ink"
