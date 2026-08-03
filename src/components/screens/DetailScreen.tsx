@@ -282,6 +282,19 @@ export default function DetailScreen({ slug, kind }: { slug: string; kind: "even
             </div>
           </div>
 
+          {/* Mark + 24h change in the masthead — every asset detail page leads
+              with the current price and its move, rather than making the reader
+              hunt for it in the chart legend below. */}
+          {selectedMarket ? (
+            <div className="flex shrink-0 items-baseline gap-1.5" title="Last mark and 24h change">
+              <span className="text-sm2 font-bold text-ink">{cents(selectedMarket.last)}¢</span>
+              <span className={`text-[11px] ${dirClass(selectedMarket.chg24h)}`}>
+                {signed(selectedMarket.chg24h)}
+              </span>
+              <span className="text-[9px] tracking-wide text-faint uppercase">24h</span>
+            </div>
+          ) : null}
+
           <div className="flex shrink-0 items-center gap-1">
             <motion.button
               whileTap={tapScale}
