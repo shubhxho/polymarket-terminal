@@ -58,6 +58,9 @@ export default function MonitorScreen() {
               key={s.key}
               whileTap={tapScale}
               onClick={() => setSort(s.key)}
+              // Toggle group: expose the active sort to assistive tech, not by
+              // the accent colour alone (matches the movers/category groups).
+              aria-pressed={sort === s.key}
               className={`border px-1.5 py-[1px] text-[10px] tracking-wide ${
                 sort === s.key
                   ? "border-accent bg-accent/8 font-medium text-accent"
