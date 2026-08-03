@@ -29,7 +29,7 @@ const TREND_LIMIT = 8;
  * 1-day sparklines underneath for the shape of how those numbers got there.
  */
 export default function WatchlistScreen() {
-  const { watchlist, toggleWatch, toast } = useTerminal();
+  const { watchlist, toggleWatch, toast, go } = useTerminal();
 
   // Keys, not the array itself: the poller must not be rebuilt just because a
   // toast or a nav change re-rendered the provider.
@@ -176,10 +176,21 @@ export default function WatchlistScreen() {
                   ? // Probability points, matching the grid's change columns.
                     (points[points.length - 1].p - points[0].p) * 100
                   : undefined;
+              // Open the market, the way every other row in the terminal does.
+              const open = () => go({ fn: "DES", slug: w.slug, kind: "event" }, `DES ${w.slug}`);
               return (
                 <div
                   key={w.tokenId}
-                  className="flex items-center gap-2 border-b border-edge/40 px-1 py-[2px] last:border-0"
+                  onClick={open}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      open();
+                    }
+                  }}
+                  className="flex cursor-pointer items-center gap-2 border-b border-edge/40 px-1 py-[2px] last:border-0 hover:bg-surface-2"
                 >
                   <span className="min-w-0 flex-1 truncate text-ink" title={w.label}>
                     {truncate(w.label, 56)}
