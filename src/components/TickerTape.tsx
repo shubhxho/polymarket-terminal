@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { motion } from "motion/react";
 import type { Summary } from "@/app/api/summary/route";
 import { useTerminal } from "@/components/TerminalProvider";
-import { cents, signed } from "@/lib/format";
+import { cents, dirClass, signed } from "@/lib/format";
 import { transition } from "@/lib/motion";
 
 /**
@@ -54,9 +54,7 @@ export function TickerTape({ summary }: { summary: Summary | null }) {
                 >
                   <span className="text-muted">{t.label}</span>
                   <span className="text-ink">{cents(t.price)}¢</span>
-                  <span
-                    className={t.chg24h > 0 ? "text-up" : t.chg24h < 0 ? "text-down" : "text-muted"}
-                  >
+                  <span className={dirClass(t.chg24h)}>
                     {t.chg24h > 0 ? "▲" : t.chg24h < 0 ? "▼" : "•"}
                     {signed(t.chg24h)}
                   </span>
