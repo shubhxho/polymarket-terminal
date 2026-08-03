@@ -295,6 +295,24 @@ export function OrderTicket({
         </span>
       </label>
 
+      {/* Quick-size by target cost. Traders size in dollars; convert to shares
+          at the working price the way every exchange offers amount presets.
+          Disabled until a price is set, since shares = cost / price. */}
+      <div className="flex items-center gap-2">
+        <span className="w-[38px] shrink-0" aria-hidden />
+        <span className="flex shrink-0 gap-0.5">
+          {[25, 50, 100, 250].map((dollars) => (
+            <QuickPrice
+              key={dollars}
+              label={`$${dollars}`}
+              onClick={() => setSize(String(Math.max(1, Math.round(dollars / price))))}
+              disabled={!(price > 0)}
+            />
+          ))}
+        </span>
+        <span className="text-[9px] text-faint">target cost</span>
+      </div>
+
       {/* Advanced: funder + signature type */}
       <button
         onClick={() => setAdvanced((a) => !a)}
