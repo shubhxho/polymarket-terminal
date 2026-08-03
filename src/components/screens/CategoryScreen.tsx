@@ -59,6 +59,9 @@ export default function CategoryScreen({ tag, label }: { tag: string; label: str
               whileTap={tapScale}
               onClick={() => go({ fn: "CAT", tag: s.tag, label: s.label }, `CAT ${s.key}`)}
               title={`CAT ${s.key}`}
+              // Mirror the sidebar: the current sector is conveyed to assistive
+              // tech, not by the accent colour alone.
+              aria-current={active ? "page" : undefined}
               className={`border px-1.5 py-[1px] text-[10px] tracking-wide uppercase ${
                 active
                   ? "border-accent bg-accent/8 font-medium text-accent"
