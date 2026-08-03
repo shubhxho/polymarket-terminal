@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { MarketGrid, type GridColumn } from "@/components/MarketGrid";
 import { ErrorBox, Loading, Panel, Refreshing } from "@/components/ui/Panel";
 import { usePoll } from "@/hooks/usePoll";
+import { compact } from "@/lib/format";
 import { panelVariants, staggerContainer, tapScale } from "@/lib/motion";
 import type { Market } from "@/lib/types";
 
@@ -140,7 +141,7 @@ export default function MoversScreen() {
             <span className="text-info">UNIV</span> {breadth}
           </span>
           <span>
-            <span className="text-info">MIN VOL</span> 5K
+            <span className="text-info">MIN VOL</span> {compact(MIN_VOLUME_24H)}
           </span>
           {stale ? <span className="text-warn">stale</span> : null}
           <Refreshing show={refreshing} />
