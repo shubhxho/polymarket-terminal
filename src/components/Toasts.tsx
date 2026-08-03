@@ -22,7 +22,7 @@ export function Toasts() {
             t.tone === "error"
               ? "border-down text-down"
               : t.tone === "warn"
-                ? "border-accent text-accent"
+                ? "border-warn text-warn"
                 : "border-edge-strong text-ink";
           return (
             <motion.button
