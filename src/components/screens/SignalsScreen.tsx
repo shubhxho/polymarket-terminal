@@ -472,7 +472,11 @@ export default function SignalsScreen() {
 function Stat({ label, value, title }: { label: string; value: string; title: string }) {
   return (
     <div className="flex flex-col gap-[1px]" title={title}>
-      <span className="eyebrow">{label}</span>
+      {/* Signal the definition the way Field does — a dotted underline so the
+          reader knows the label carries an explanation on hover. */}
+      <span className="eyebrow cursor-help decoration-edge-strong decoration-dotted underline-offset-2 hover:underline">
+        {label}
+      </span>
       <span className="text-sm2 font-medium text-ink">{value}</span>
     </div>
   );
