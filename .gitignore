@@ -62,5 +62,17 @@ ml/data/bigdata_gbdt.json
 ml/data/mega_call_ids.json
 ml/data/mega_mega_gbdt.txt
 
+# automaton/ is its own git repo (516M incl. node_modules) — keep it separate,
+# never embed it in this repo's history.
+/automaton/
+
+# more regenerable ml/data artifacts (leaderboard, resolve/series scans, top
+# signals, mega readme) — outputs, not source
+ml/data/leaderboard.json
+ml/data/sii_resolve.json
+ml/data/sii_series.json
+ml/data/top_signals.json
+ml/data/mega_README.md
+
 # allow the example env to be committed (real .env stays ignored above)
 !.env.example
