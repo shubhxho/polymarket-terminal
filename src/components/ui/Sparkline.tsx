@@ -18,7 +18,7 @@ export function Sparkline({
   height?: number;
   className?: string;
 }) {
-  const path = useMemo(() => {
+  const model = useMemo(() => {
     if (points.length < 2) return null;
     const ps = points.length > 120 ? decimate(points, 120) : points;
     const ys = ps.map((p) => p.p);
@@ -31,12 +31,14 @@ export function Sparkline({
     }
     const dx = width / (ps.length - 1);
     const y = (v: number) => height - ((v - lo) / (hi - lo)) * (height - 2) - 1;
-    return ps
+    const d = ps
       .map((p, i) => `${i === 0 ? "M" : "L"}${(i * dx).toFixed(2)},${y(p.p).toFixed(2)}`)
       .join(" ");
+    // Latest point, so the eye can find "now" without tracing the whole line.
+    return { d, endX: (ps.length - 1) * dx, endY: y(ps[ps.length - 1].p) };
   }, [points, width, height]);
 
-  if (!path) {
+  if (!model) {
     return <div style={{ width, height }} className={className} />;
   }
 
@@ -54,12 +56,13 @@ export function Sparkline({
       aria-hidden
     >
       <path
-        d={path}
+        d={model.d}
         fill="none"
         stroke={stroke}
         strokeWidth={1}
         vectorEffect="non-scaling-stroke"
       />
+      <circle cx={model.endX} cy={model.endY} r={1.4} fill={stroke} />
     </svg>
   );
 }
