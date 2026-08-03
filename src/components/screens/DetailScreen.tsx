@@ -707,6 +707,7 @@ function OutcomeList({
 }
 
 function HolderList({ groups, loading }: { groups: Holder[][] | null; loading: boolean }) {
+  const { go } = useTerminal();
   if (loading) return <Loading />;
   const rows = (groups ?? []).flat();
   if (rows.length === 0) return <Empty text="no holder data" />;
@@ -717,28 +718,43 @@ function HolderList({ groups, loading }: { groups: Holder[][] | null; loading: b
       {rows
         .sort((a, b) => b.amount - a.amount)
         .slice(0, 20)
-        .map((h, i) => (
-          <div
-            key={`${h.wallet}-${h.outcomeIndex}-${i}`}
-            className="relative flex items-center gap-1.5 border-b border-edge/40 px-1.5 py-[2px]"
-          >
-            <span
-              className="absolute inset-y-0 right-0 bg-info/8"
-              style={{ width: `${(h.amount / max) * 100}%` }}
-              aria-hidden
-            />
-            <span className="relative w-[10px] shrink-0 text-right text-faint">{i + 1}</span>
-            <span className="relative min-w-0 flex-1 truncate text-ink/85">
-              {h.name ? truncate(h.name, 16) : shortAddr(h.wallet)}
-            </span>
-            <span className="relative w-[22px] shrink-0 text-center text-[10px] text-info-weak">
-              {h.outcomeIndex === 0 ? "YES" : "NO"}
-            </span>
-            <span className="relative w-[52px] shrink-0 text-right text-ink">
-              {compact(h.amount)}
-            </span>
-          </div>
-        ))}
+        .map((h, i) => {
+          // A holder row opens that wallet's book, the way the leaderboard
+          // tables it borrows from let you drill into a trader.
+          const open = () => go({ fn: "PORT", user: h.wallet }, `PORT ${h.wallet}`);
+          return (
+            <div
+              key={`${h.wallet}-${h.outcomeIndex}-${i}`}
+              onClick={open}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  open();
+                }
+              }}
+              title={`Open ${h.name ?? h.wallet}'s portfolio`}
+              className="relative flex cursor-pointer items-center gap-1.5 border-b border-edge/40 px-1.5 py-[2px] hover:bg-surface-2"
+            >
+              <span
+                className="absolute inset-y-0 right-0 bg-info/8"
+                style={{ width: `${(h.amount / max) * 100}%` }}
+                aria-hidden
+              />
+              <span className="relative w-[10px] shrink-0 text-right text-faint">{i + 1}</span>
+              <span className="relative min-w-0 flex-1 truncate text-ink/85">
+                {h.name ? truncate(h.name, 16) : shortAddr(h.wallet)}
+              </span>
+              <span className="relative w-[22px] shrink-0 text-center text-[10px] text-info-weak">
+                {h.outcomeIndex === 0 ? "YES" : "NO"}
+              </span>
+              <span className="relative w-[52px] shrink-0 text-right text-ink">
+                {compact(h.amount)}
+              </span>
+            </div>
+          );
+        })}
     </div>
   );
 }
