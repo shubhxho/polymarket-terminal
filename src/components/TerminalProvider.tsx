@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
+import { cents } from "@/lib/format";
 import type { Screen } from "@/lib/commands";
 import type { Alert } from "@/lib/types";
 
@@ -205,9 +206,7 @@ export function TerminalProvider({ children }: { children: ReactNode }) {
         );
         return [...dedup, alert];
       });
-      toast(
-        `alert armed · ${a.label} ${a.op === "gte" ? "≥" : "≤"} ${(a.target * 100).toFixed(1)}¢`
-      );
+      toast(`alert armed · ${a.label} ${a.op === "gte" ? "≥" : "≤"} ${cents(a.target)}¢`);
     },
     [setAlerts, toast]
   );
