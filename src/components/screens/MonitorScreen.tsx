@@ -39,6 +39,10 @@ export default function MonitorScreen() {
     [markets.updatedAt]
   );
 
+  // Top event's 24h turnover, so the leaders rail can size a magnitude bar the
+  // way the board's other ranked lists do.
+  const eventMaxVol = Math.max(...(events.data ?? []).map((e) => e.volume24h), 1);
+
   return (
     <motion.div
       className="flex h-full min-h-0 gap-2"
@@ -126,8 +130,15 @@ export default function MonitorScreen() {
                 <button
                   key={ev.id}
                   onClick={() => go({ fn: "DES", slug: ev.slug, kind: "event" }, `DES ${ev.slug}`)}
-                  className="flex w-full items-baseline gap-1.5 border-b border-edge/40 px-1.5 py-[3px] text-left hover:bg-surface-2"
+                  className="relative isolate flex w-full items-baseline gap-1.5 overflow-hidden border-b border-edge/40 px-1.5 py-[3px] text-left hover:bg-surface-2"
                 >
+                  {/* Turnover bar, scaled to the top event — same ranked-magnitude
+                      idiom the order book, tape and holder lists use. */}
+                  <span
+                    aria-hidden
+                    className="pointer-events-none absolute inset-y-0 left-0 -z-10 bg-info/8"
+                    style={{ width: `${(ev.volume24h / eventMaxVol) * 100}%` }}
+                  />
                   <span className="w-[16px] shrink-0 text-right text-faint">{i + 1}</span>
                   <span className="min-w-0 flex-1 truncate text-ink" title={ev.title}>
                     {truncate(ev.title, 34)}
