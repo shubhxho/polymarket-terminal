@@ -270,7 +270,23 @@ export default function PortfolioScreen({ user }: { user: string }) {
                   <span className="w-[46px] shrink-0 text-right font-bold text-ink">
                     {cents(p.curPrice)}
                   </span>
-                  <span className="w-[62px] shrink-0 text-right text-ink/85">{usd(p.value)}</span>
+                  <span
+                    className="relative w-[62px] shrink-0 overflow-hidden text-right text-ink/85"
+                    title={`${signed(totals.value > 0 ? (p.value / totals.value) * 100 : 0, 1).replace("+", "")}% of book value`}
+                  >
+                    {/* Allocation weight: a neutral hairline fill sized to this
+                        position's share of total book value, so the eye reads
+                        concentration down the column without spending a hue that
+                        the table reserves for direction. */}
+                    <span
+                      aria-hidden
+                      className="pointer-events-none absolute inset-y-[1px] right-0 bg-edge-strong"
+                      style={{
+                        width: `${Math.min(100, totals.value > 0 ? (p.value / totals.value) * 100 : 0)}%`,
+                      }}
+                    />
+                    <span className="relative">{usd(p.value)}</span>
+                  </span>
                   <span className={`w-[62px] shrink-0 text-right ${dirClass(p.cashPnl)}`}>
                     {usd(p.cashPnl)}
                   </span>
