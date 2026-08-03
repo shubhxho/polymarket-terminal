@@ -1,5 +1,37 @@
 import { describe, expect, it } from "vitest";
-import { fail, limitOf, ok } from "@/lib/api-util";
+import { fail, limitOf, ok, readEnvelope } from "@/lib/api-util";
+
+const jsonRes = (body: unknown, init?: ResponseInit) =>
+  new Response(JSON.stringify(body), {
+    headers: { "content-type": "application/json" },
+    ...init,
+  });
+
+describe("readEnvelope", () => {
+  it("unwraps a successful JSON envelope's data", async () => {
+    await expect(readEnvelope(jsonRes({ ok: true, data: { x: 1 }, ts: 0 }))).resolves.toEqual({
+      x: 1,
+    });
+  });
+
+  it("throws the envelope's error when ok is false", async () => {
+    await expect(
+      readEnvelope(jsonRes({ ok: false, error: "upstream 502", ts: 0 }))
+    ).rejects.toThrow("upstream 502");
+  });
+
+  it("turns an HTML page (auth wall / error page) into a legible error, not a JSON crash", async () => {
+    const html = new Response("<!DOCTYPE html><html>login</html>", {
+      headers: { "content-type": "text/html" },
+    });
+    await expect(readEnvelope(html)).rejects.toThrow(/Vercel authentication/);
+  });
+
+  it("reports the status for a non-JSON, non-HTML error body", async () => {
+    const res = new Response("oops", { status: 500, headers: { "content-type": "text/plain" } });
+    await expect(readEnvelope(res)).rejects.toThrow(/HTTP 500/);
+  });
+});
 
 describe("ok", () => {
   it("wraps data in a success envelope with a timestamp", async () => {
