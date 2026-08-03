@@ -21,7 +21,7 @@ import {
   type SignatureType,
   type Side,
 } from "@/lib/clob";
-import { usd } from "@/lib/format";
+import { cents, usd } from "@/lib/format";
 import { tapScale } from "@/lib/motion";
 import type { OrderBook } from "@/lib/types";
 
@@ -107,7 +107,7 @@ export function OrderTicket({
 
   const prefill = (p: number | undefined) => {
     if (p === undefined) return;
-    setPriceCents((p * 100).toFixed(tickSize >= 0.01 ? 0 : 1));
+    setPriceCents(cents(p, tickSize >= 0.01 ? 0 : 1));
   };
 
   const draft = () => ({
@@ -148,7 +148,7 @@ export function OrderTicket({
     }
     const verb = side === "BUY" ? "Buy" : "Sell";
     const confirmed = window.confirm(
-      `${verb} ${shares} × "${outcomeLabel ?? "outcome"}" @ ${(price * 100).toFixed(1)}¢\n` +
+      `${verb} ${shares} × "${outcomeLabel ?? "outcome"}" @ ${cents(price)}¢\n` +
         `Notional ${usd(notional)} · ${orderType}\n\n` +
         `This signs and submits a REAL order to Polymarket. Continue?`
     );
