@@ -48,20 +48,21 @@ export const WalletButton = memo(function WalletButton() {
 
   if (status !== "connected" || !address) {
     const connecting = status === "connecting";
+    const unavailable = status === "unavailable";
     return (
       <motion.button
         whileTap={tapScale}
         onClick={connect}
         disabled={connecting}
         title={
-          status === "unavailable"
-            ? "Phantom not detected — click to install"
-            : "Connect your Phantom wallet"
+          unavailable ? "Phantom not detected — click to install" : "Connect your Phantom wallet"
         }
         className="flex h-[24px] shrink-0 items-center gap-1.5 rounded-md border border-edge px-2 text-tiny font-medium text-ink hover:border-accent-weak hover:text-accent disabled:opacity-60"
       >
         <PhantomMark />
-        <span>{connecting ? "Connecting…" : "Connect"}</span>
+        {/* Name the install state instead of a "Connect" that can't connect —
+            the way Binance/Uniswap surface a missing wallet. */}
+        <span>{unavailable ? "Install" : connecting ? "Connecting…" : "Connect"}</span>
       </motion.button>
     );
   }
