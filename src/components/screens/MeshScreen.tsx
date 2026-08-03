@@ -6,11 +6,11 @@ import type { SignalsPayload } from "@/app/api/signals/route";
 import { Empty, Field, Panel } from "@/components/ui/Panel";
 import { usePoll } from "@/hooks/usePoll";
 import { useMesh } from "@/components/MeshProvider";
+import { useTerminal } from "@/components/TerminalProvider";
+import { copyToClipboard } from "@/lib/clipboard";
 import { cents, truncate } from "@/lib/format";
 import { panelVariants, staggerContainer } from "@/lib/motion";
 import type { SharedSignal } from "@/lib/signalMesh";
-
-const copy = (text: string) => void navigator.clipboard?.writeText(text);
 
 /**
  * Signal mesh — share what this terminal computed with other terminals, directly.
@@ -43,6 +43,7 @@ export default function MeshScreen() {
   );
 
   const mesh = useMesh();
+  const { toast } = useTerminal();
   const [offerIn, setOfferIn] = useState("");
   const [answerIn, setAnswerIn] = useState("");
 
@@ -147,7 +148,7 @@ export default function MeshScreen() {
                   className="h-20 w-full resize-none border border-edge bg-surface-2 p-1 text-[10px] text-muted"
                 />
                 <button
-                  onClick={() => copy(mesh.localBlob)}
+                  onClick={() => copyToClipboard(mesh.localBlob, toast)}
                   className="self-start border border-edge px-2 py-0.5 text-tiny text-accent hover:bg-surface-2"
                 >
                   copy
