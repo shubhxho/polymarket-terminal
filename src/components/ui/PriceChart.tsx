@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { useElementSize } from "@/hooks/useElementSize";
-import { cents } from "@/lib/format";
+import { cents, dirClass } from "@/lib/format";
 import type { PricePoint } from "@/lib/types";
 
 export type Series = {
@@ -132,6 +132,8 @@ export function PriceChart({ series, height = 200 }: { series: Series[]; height?
                 label: s.label,
                 color: s.color,
                 price: pt.p,
+                // Move since the window opened — context the bare mark can't give.
+                chg: pt.p - s.points[0].p,
                 y: y(pt.p),
               };
             }),
@@ -250,6 +252,9 @@ export function PriceChart({ series, height = 200 }: { series: Series[]; height?
               <span className="inline-block h-1.5 w-1.5" style={{ background: r.color }} />
               <span className="text-muted">{r.label}</span>
               <span className="ml-auto text-ink">{cents(r.price)}¢</span>
+              <span className={`w-9 text-right ${dirClass(r.chg)}`}>
+                {`${r.chg >= 0 ? "+" : "-"}${cents(Math.abs(r.chg))}`}
+              </span>
             </div>
           ))}
         </div>
