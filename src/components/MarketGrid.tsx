@@ -309,9 +309,14 @@ function Row({
       case "chg24h":
       case "chg1w": {
         const v = c === "chg1h" ? market.chg1h : c === "chg24h" ? market.chg24h : market.chg1w;
+        // Arrow carries the sign the way TickerTape and the source exchanges
+        // (OKX, Uniswap) do it, so direction reads pre-attentively and the
+        // colour is reinforcement rather than the only cue. Magnitude keeps
+        // signed()'s formatting; the leading +/- is dropped onto the glyph.
+        const arrow = (v ?? 0) > 0 ? "▲" : (v ?? 0) < 0 ? "▼" : "";
         return (
           <span className={`${COLUMN_META[c].width} shrink-0 text-right ${dirClass(v)}`}>
-            {signed(v)}
+            {v === undefined ? signed(v) : `${arrow}${signed(v).replace(/^[+-]/, "")}`}
           </span>
         );
       }
