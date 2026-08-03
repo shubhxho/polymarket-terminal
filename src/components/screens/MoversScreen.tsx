@@ -109,6 +109,9 @@ export default function MoversScreen() {
               whileTap={tapScale}
               onClick={() => setTf(t)}
               title={`Rank by change over ${t}`}
+              // Toggle group: expose the selected timeframe to assistive tech,
+              // not by the accent colour alone.
+              aria-pressed={t === tf}
               className={`border px-1.5 py-[1px] text-[10px] tracking-wide uppercase ${
                 t === tf
                   ? "border-accent bg-accent/8 text-accent"
