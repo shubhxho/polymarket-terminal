@@ -1,10 +1,9 @@
 "use client";
 
 import { motion } from "motion/react";
-import type { ReactNode } from "react";
 import { MarketGrid } from "@/components/MarketGrid";
 import { useTerminal } from "@/components/TerminalProvider";
-import { Empty, ErrorBox, Loading, Panel, Refreshing } from "@/components/ui/Panel";
+import { AsyncBody, Empty, Panel, Refreshing } from "@/components/ui/Panel";
 import { usePoll } from "@/hooks/usePoll";
 import { compact, timeToExpiry } from "@/lib/format";
 import { fuzzyMatch, highlight } from "@/lib/fuzzy";
@@ -60,7 +59,7 @@ export default function SearchScreen({ q }: { q: string }) {
         className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-y-auto lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] lg:overflow-visible"
       >
         <Panel title="Events" right={`${events.length}`} flush className="min-h-0" animate>
-          <Body loading={loading} error={error} hasData={!!data}>
+          <AsyncBody loading={loading} error={error} hasData={!!data} loadingText="searching">
             {!query ? (
               <Empty text="enter a query" />
             ) : events.length === 0 ? (
@@ -68,39 +67,17 @@ export default function SearchScreen({ q }: { q: string }) {
             ) : (
               <EventList events={events} query={query} />
             )}
-          </Body>
+          </AsyncBody>
         </Panel>
 
         <Panel title="Markets" right={`${markets.length}`} flush className="min-h-0" animate>
-          <Body loading={loading} error={error} hasData={!!data}>
+          <AsyncBody loading={loading} error={error} hasData={!!data} loadingText="searching">
             {!query ? <Empty text="enter a query" /> : <MarketGrid markets={markets} />}
-          </Body>
+          </AsyncBody>
         </Panel>
       </motion.div>
     </motion.div>
   );
-}
-
-/** The three non-data states, resolved once so both panels agree. */
-function Body({
-  loading,
-  error,
-  hasData,
-  children,
-}: {
-  loading: boolean;
-  error: string | null;
-  hasData: boolean;
-  children: ReactNode;
-}) {
-  if (loading) return <Loading text="searching" />;
-  if (error && !hasData)
-    return (
-      <div className="p-1.5">
-        <ErrorBox message={error} />
-      </div>
-    );
-  return <>{children}</>;
 }
 
 function EventList({ events, query }: { events: EventSummary[]; query: string }) {

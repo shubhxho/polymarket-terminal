@@ -3,7 +3,7 @@
 import { motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { MarketGrid, type GridColumn } from "@/components/MarketGrid";
-import { ErrorBox, Loading, Panel, Refreshing } from "@/components/ui/Panel";
+import { AsyncBody, Panel, Refreshing } from "@/components/ui/Panel";
 import { usePoll } from "@/hooks/usePoll";
 import { compact } from "@/lib/format";
 import { panelVariants, staggerContainer, tapScale } from "@/lib/motion";
@@ -162,9 +162,9 @@ export default function MoversScreen() {
             flush
             className="min-h-0 flex-1"
           >
-            <Body loading={loading} error={error} hasData={!!data}>
+            <AsyncBody loading={loading} error={error} hasData={!!data} loadingText="ranking">
               <MarketGrid markets={gainers} columns={columns} emptyText="no advancers" />
-            </Body>
+            </AsyncBody>
           </Panel>
         </motion.div>
 
@@ -175,34 +175,12 @@ export default function MoversScreen() {
             flush
             className="min-h-0 flex-1"
           >
-            <Body loading={loading} error={error} hasData={!!data}>
+            <AsyncBody loading={loading} error={error} hasData={!!data} loadingText="ranking">
               <MarketGrid markets={losers} columns={columns} emptyText="no decliners" />
-            </Body>
+            </AsyncBody>
           </Panel>
         </motion.div>
       </motion.div>
     </motion.div>
   );
-}
-
-/** The three non-data states, resolved once so both panels agree. */
-function Body({
-  loading,
-  error,
-  hasData,
-  children,
-}: {
-  loading: boolean;
-  error: string | null;
-  hasData: boolean;
-  children: React.ReactNode;
-}) {
-  if (loading) return <Loading text="ranking" />;
-  if (error && !hasData)
-    return (
-      <div className="p-1.5">
-        <ErrorBox message={error} />
-      </div>
-    );
-  return <>{children}</>;
 }

@@ -153,6 +153,36 @@ export function ErrorBox({ message }: { message: string }) {
 }
 
 /**
+ * The three async states a polled panel body cycles through, resolved in one
+ * place: a spinner while loading, an inset error box once a fetch fails with no
+ * prior data, and otherwise the children. `error && !hasData` keeps the last
+ * good content on screen through a failed refresh — the caller flags staleness
+ * in its header instead.
+ */
+export function AsyncBody({
+  loading,
+  error,
+  hasData,
+  loadingText,
+  children,
+}: {
+  loading: boolean;
+  error: string | null;
+  hasData: boolean;
+  loadingText?: string;
+  children: ReactNode;
+}) {
+  if (loading) return <Loading text={loadingText} />;
+  if (error && !hasData)
+    return (
+      <div className="p-1.5">
+        <ErrorBox message={error} />
+      </div>
+    );
+  return <>{children}</>;
+}
+
+/**
  * ami's segmented control: a pill track with the active segment lifted onto a
  * white chip. Used for every interval / timeframe / filter switch so those all
  * read as one control rather than a dozen ad-hoc button rows.
