@@ -77,10 +77,10 @@ describe("snapshotRow", () => {
 });
 
 describe("db graceful degradation", () => {
-  test("dbEnabled() reflects DATABASE_URL, db() matches", () => {
+  test("dbEnabled() reflects DATABASE_URL, db() matches", async () => {
     const has = Boolean(process.env.DATABASE_URL);
     expect(dbEnabled()).toBe(has);
-    if (!has) expect(db()).toBeNull();
+    if (!has) await expect(db()).resolves.toBeNull();
   });
 
   test("recordSignalSnapshot resolves without throwing even with no DB", async () => {

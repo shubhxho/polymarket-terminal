@@ -42,7 +42,7 @@ export function snapshotRow(p: SignalsPayload): SignalSnapshotRow {
 }
 
 export async function recordSignalSnapshot(p: SignalsPayload): Promise<void> {
-  const d = db();
+  const d = await db();
   if (!d) return;
   try {
     await d.insert(signalSnapshots).values(snapshotRow(p));

@@ -21,14 +21,17 @@ export function log(level: LogLevel, event: string, context?: unknown): void {
   else console.log(tag, context ?? "");
   /* eslint-enable no-console */
 
-  const d = db();
-  if (!d) return;
-  void d
-    .insert(eventLog)
-    .values({ level, event: event.slice(0, 160), context: context ?? null })
-    .catch(() => {
-      // A logging failure is never allowed to surface.
-    });
+  // Fire-and-forget: resolve the (memoised) client, then write. `log` stays
+  // synchronous for its hot-path callers — the database round-trip is detached.
+  void db().then((d) => {
+    if (!d) return;
+    void d
+      .insert(eventLog)
+      .values({ level, event: event.slice(0, 160), context: context ?? null })
+      .catch(() => {
+        // A logging failure is never allowed to surface.
+      });
+  });
 }
 
 export const logInfo = (event: string, context?: unknown) => log("info", event, context);

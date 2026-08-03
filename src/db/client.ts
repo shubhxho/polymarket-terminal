@@ -8,19 +8,30 @@
  * added persistence just switches on with no code change.
  */
 
-import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
+import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import * as schema from "./schema";
 
 export type Db = NodePgDatabase<typeof schema>;
 
-let cached: Db | null | undefined;
+let cached: Promise<Db | null> | undefined;
 
-/** The Drizzle client, or `null` when `DATABASE_URL` is unset. Memoised. */
-export function db(): Db | null {
-  if (cached !== undefined) return cached;
-  const url = process.env.DATABASE_URL;
-  cached = url ? drizzle(url, { schema }) : null;
-  return cached;
+/**
+ * The Drizzle client, or `null` when `DATABASE_URL` is unset. Memoised.
+ *
+ * `drizzle-orm/node-postgres` (and its `pg` dependency) is loaded through a
+ * dynamic `import()` *inside* the URL guard, never at module scope. Without a
+ * database that graph is never touched — which also sidesteps a Turbopack dev
+ * bug that crashes on the ESM-default import of the CommonJS `pg` package. The
+ * cost is that `db()` is async; the result is a cached promise, so every call
+ * after the first resolves instantly.
+ */
+export function db(): Promise<Db | null> {
+  return (cached ??= (async () => {
+    const url = process.env.DATABASE_URL;
+    if (!url) return null;
+    const { drizzle } = await import("drizzle-orm/node-postgres");
+    return drizzle(url, { schema });
+  })());
 }
 
 /** Whether a database is configured — cheap check without building a client. */
