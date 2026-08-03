@@ -405,6 +405,11 @@ export function CommandPalette({
               <Hint keys="⏎" label="open" />
               <Hint keys="⌘⏎" label="open in new tab" />
               <Hint keys="esc" label="close" />
+              {/* Result count, right-aligned — the palettes this borrows from
+                  (Juicebox, Vapi) keep it in view so a shrinking list is legible. */}
+              <span className="ml-auto tabular-nums">
+                {rows.length} {rows.length === 1 ? "result" : "results"}
+              </span>
             </div>
           </motion.div>
         </motion.div>
