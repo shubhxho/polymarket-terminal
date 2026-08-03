@@ -50,6 +50,10 @@ export function OrderBookLadder({
     const spread = bestBid !== undefined && bestAsk !== undefined ? bestAsk - bestBid : undefined;
     const mid =
       bestBid !== undefined && bestAsk !== undefined ? (bestBid + bestAsk) / 2 : undefined;
+    // Spread as a fraction of mid — a 3¢ spread means something very different
+    // around a 5¢ tail than around a 50¢ coin-flip, so quote it relative too.
+    const spreadPct =
+      spread !== undefined && mid !== undefined && mid > 0 ? (spread / mid) * 100 : undefined;
 
     // Sum of resting notional on each side — a crude but useful skew read.
     const bidNotional = book.bids.reduce((s, l) => s + l.price * l.size, 0);
@@ -57,7 +61,7 @@ export function OrderBookLadder({
     const imbalance =
       bidNotional + askNotional > 0 ? (bidNotional - askNotional) / (bidNotional + askNotional) : 0;
 
-    return { bids, asks, maxCum, spread, mid, imbalance, bidNotional, askNotional };
+    return { bids, asks, maxCum, spread, spreadPct, mid, imbalance, bidNotional, askNotional };
   }, [book, depth]);
 
   if (!model) return <Empty text="waiting for book" />;
@@ -94,6 +98,9 @@ export function OrderBookLadder({
         <span className="text-[10px] tracking-wide text-muted uppercase">Spread</span>
         <span className="text-ink">
           {model.spread === undefined ? "--" : `${cents(model.spread)}¢`}
+          {model.spreadPct !== undefined ? (
+            <span className="ml-1 text-faint">({model.spreadPct.toFixed(1)}%)</span>
+          ) : null}
         </span>
       </div>
 
