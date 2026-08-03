@@ -24,6 +24,9 @@ export function Toasts() {
               : t.tone === "warn"
                 ? "border-warn text-warn"
                 : "border-edge-strong text-ink";
+          // A severity mark, so an error/warning reads as one without relying on
+          // colour alone; info keeps the quiet chevron.
+          const info = t.tone !== "error" && t.tone !== "warn";
           return (
             <motion.button
               key={t.id}
@@ -35,7 +38,9 @@ export function Toasts() {
               onClick={() => dismissToast(t.id)}
               className={`pointer-events-auto border bg-canvas px-2 py-1 text-left text-tiny ${tone}`}
             >
-              <span className="mr-1 text-faint">›</span>
+              <span className={`mr-1 ${info ? "text-faint" : "font-bold"}`} aria-hidden>
+                {info ? "›" : "!"}
+              </span>
               {t.text}
             </motion.button>
           );
