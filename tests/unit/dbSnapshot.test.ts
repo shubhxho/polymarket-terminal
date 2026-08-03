@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { recordSignalSnapshot, snapshotRow } from "@/db/snapshot";
 import { db, dbEnabled } from "@/db/client";
+import { pgConnectionUrl } from "@/db/url";
 import type { SignalsPayload } from "@/app/api/signals/route";
 
 const market = (id: string, over: Record<string, unknown> = {}) =>
@@ -85,5 +86,26 @@ describe("db graceful degradation", () => {
 
   test("recordSignalSnapshot resolves without throwing even with no DB", async () => {
     await expect(recordSignalSnapshot(payload())).resolves.toBeUndefined();
+  });
+});
+
+describe("pgConnectionUrl", () => {
+  test("drops sslrootcert=system, keeps sslmode and everything else", () => {
+    const out = pgConnectionUrl(
+      "postgresql://u:p@host.example:5432/db?sslmode=verify-full&sslrootcert=system",
+    );
+    expect(out).toContain("sslmode=verify-full");
+    expect(out).not.toContain("sslrootcert");
+    expect(out).toContain("host.example:5432/db");
+  });
+
+  test("leaves a real sslrootcert path untouched", () => {
+    const raw = "postgresql://u:p@host/db?sslrootcert=/etc/ssl/ca.pem";
+    expect(pgConnectionUrl(raw)).toContain("sslrootcert=/etc/ssl/ca.pem");
+  });
+
+  test("passes through URLs with no ssl params and unparseable strings", () => {
+    expect(pgConnectionUrl("postgres://u:p@host/db")).toBe("postgres://u:p@host/db");
+    expect(pgConnectionUrl("/var/run/postgresql")).toBe("/var/run/postgresql");
   });
 });

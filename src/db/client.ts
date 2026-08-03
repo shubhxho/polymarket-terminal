@@ -10,6 +10,7 @@
 
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import * as schema from "./schema";
+import { pgConnectionUrl } from "./url";
 
 export type Db = NodePgDatabase<typeof schema>;
 
@@ -30,7 +31,7 @@ export function db(): Promise<Db | null> {
     const url = process.env.DATABASE_URL;
     if (!url) return null;
     const { drizzle } = await import("drizzle-orm/node-postgres");
-    return drizzle(url, { schema });
+    return drizzle(pgConnectionUrl(url), { schema });
   })());
 }
 

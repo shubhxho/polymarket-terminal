@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { defineConfig } from "drizzle-kit";
+import { pgConnectionUrl } from "./src/db/url";
 
 /**
  * Drizzle Kit config — used only by the `db:*` scripts (generate/migrate/push/
@@ -9,5 +10,5 @@ export default defineConfig({
   out: "./drizzle",
   schema: "./src/db/schema.ts",
   dialect: "postgresql",
-  dbCredentials: { url: process.env.DATABASE_URL ?? "" },
+  dbCredentials: { url: pgConnectionUrl(process.env.DATABASE_URL ?? "") },
 });
