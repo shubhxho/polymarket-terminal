@@ -2,8 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useCallback } from "react";
-
-type Envelope<T> = { ok: boolean; data?: T; error?: string; ts: number };
+import { readEnvelope } from "@/lib/api-util";
 
 export type PollState<T> = {
   data: T | null;
@@ -47,9 +46,7 @@ export function usePoll<T>(url: string | null, intervalMs = 5000): PollState<T> 
     // guarantee the hand-rolled version made by resetting state on url change.
     queryFn: async ({ signal }) => {
       const res = await fetch(url as string, { signal });
-      const json = (await res.json()) as Envelope<T>;
-      if (!json.ok) throw new Error(json.error ?? `HTTP ${res.status}`);
-      return (json.data ?? null) as T | null;
+      return readEnvelope<T>(res);
     },
   });
 

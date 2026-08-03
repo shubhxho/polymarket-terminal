@@ -26,10 +26,25 @@ const mono = JetBrains_Mono({
   variable: "--font-terminal",
 });
 
+const TITLE = "PMT · Polymarket Terminal";
+const DESCRIPTION =
+  "A trading terminal for Polymarket — live order books, depth, time & sales, movers, signals and basket arbitrage.";
+
+// Absolute base for og:image / twitter:image. Vercel provides the canonical
+// production host at build; fall back to localhost in dev.
+const SITE_URL = process.env.VERCEL_PROJECT_PRODUCTION_URL
+  ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+  : "http://localhost:3000";
+
+// og:image / twitter:image are wired automatically from app/opengraph-image.tsx
+// and app/twitter-image.tsx; here we set the card type, title and description.
 export const metadata: Metadata = {
-  title: "PMT · Polymarket Terminal",
-  description:
-    "A trading terminal for Polymarket — live order books, depth, time & sales, movers, signals and basket arbitrage.",
+  metadataBase: new URL(SITE_URL),
+  title: TITLE,
+  description: DESCRIPTION,
+  applicationName: "PMT",
+  openGraph: { title: TITLE, description: DESCRIPTION, type: "website", siteName: "PMT" },
+  twitter: { card: "summary_large_image", title: TITLE, description: DESCRIPTION },
 };
 
 export const viewport: Viewport = {

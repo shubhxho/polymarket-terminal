@@ -14,7 +14,10 @@ import {
   type SignalKind,
 } from "@/lib/signals";
 import { fail, ok } from "@/lib/api-util";
+import { logError, logInfo } from "@/lib/logger";
+import { recordSignalSnapshot } from "@/db/snapshot";
 import type { PricePoint } from "@/lib/types";
+import { after } from "next/server";
 
 export type SignalsPayload = {
   arbs: ArbOpportunity[];
@@ -129,8 +132,27 @@ export async function GET() {
       },
     };
 
+    // Persist the scan and log it AFTER the response is sent, so the database
+    // round-trip never sits on the request's hot path. No-op without DATABASE_URL.
+    // `after` throws outside a request scope (e.g. a unit test); that must not
+    // fail the scan, so it is guarded.
+    try {
+      after(() => {
+        logInfo("signals.scan", {
+          scanned: payload.stats.scanned,
+          flagged: payload.stats.flagged,
+          modeled: payload.stats.modeled,
+          confirms: payload.stats.modelConfirms,
+        });
+        void recordSignalSnapshot(payload);
+      });
+    } catch {
+      // no request scope — skip post-response work
+    }
+
     return ok(payload, 15);
   } catch (err) {
+    logError("signals.scan_failed", { message: err instanceof Error ? err.message : String(err) });
     return fail(err);
   }
 }

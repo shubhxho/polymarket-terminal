@@ -62,11 +62,33 @@ describe("buildOrder", () => {
     expect(post.side).toBe("SELL");
   });
 
-  it("maker is the funder, signer is the EOA, taker is zero", () => {
+  it("maker is the funder, signer is the EOA", () => {
     const { post } = buildOrder(draft());
     expect(post.maker).toBe(FUNDER);
     expect(post.signer).toBe(EOA);
-    expect(post.taker).toBe("0x0000000000000000000000000000000000000000");
+  });
+
+  it("signs the V2 struct: timestamp/metadata/builder present, no V1 fields", () => {
+    const built = buildOrder(draft());
+    const types = (built.typedData as { types: { Order: { name: string }[] } }).types.Order;
+    const names = types.map((t) => t.name);
+    // V2 additions
+    expect(names).toContain("timestamp");
+    expect(names).toContain("metadata");
+    expect(names).toContain("builder");
+    // V1 fields dropped from the signed struct
+    for (const gone of ["taker", "expiration", "nonce", "feeRateBps"]) {
+      expect(names).not.toContain(gone);
+    }
+    // domain version bumped to "2"
+    const domain = (built.typedData as { domain: { version: string } }).domain;
+    expect(domain.version).toBe("2");
+    // timestamp is milliseconds and shared verbatim with the POST body
+    const msg = (built.typedData as { message: { timestamp: string } }).message;
+    expect(built.post.timestamp).toBe(msg.timestamp);
+    expect(Number(msg.timestamp)).toBeGreaterThan(1_700_000_000_000);
+    // expiration lives only in the unsigned POST body
+    expect(built.post.expiration).toBe("0");
   });
 
   it("keeps the signed struct and the POST body on the same salt & amounts", () => {
@@ -87,11 +109,25 @@ describe("buildOrder", () => {
     expect(built.post.salt).toBeLessThan(Number.MAX_SAFE_INTEGER);
   });
 
-  it("routes neg-risk markets to the neg-risk exchange", () => {
+  it("carries a GTD expiration in the POST body but never in the signed struct", () => {
+    const built = buildOrder(draft({ expiration: 1_900_000_000 }));
+    expect(built.post.expiration).toBe("1900000000");
+    const names = (built.typedData as { types: { Order: { name: string }[] } }).types.Order.map(
+      (t) => t.name
+    );
+    expect(names).not.toContain("expiration");
+  });
+
+  it("defaults expiration to 0 when none is given (GTC/FOK)", () => {
+    expect(buildOrder(draft()).post.expiration).toBe("0");
+  });
+
+  it("routes neg-risk markets to the V2 neg-risk exchange", () => {
     const std = buildOrder(draft({ negRisk: false }));
     const neg = buildOrder(draft({ negRisk: true }));
     expect(addrOf(std)).not.toBe(addrOf(neg));
-    expect(addrOf(neg)).toBe("0xC5d563A36AE78145C45a50134d48A1215220f80a");
+    expect(addrOf(std)).toBe("0xE111180000d2663C0091e4f400237545B87B996B");
+    expect(addrOf(neg)).toBe("0xe2222d279d744050d28e00520010520000310F59");
   });
 
   it("emits a fresh salt each call", () => {
