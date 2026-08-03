@@ -90,7 +90,7 @@ export default function WatchlistScreen() {
         animate="animate"
       >
         <Panel title="Watchlist" flush className="min-h-0 flex-1" animate>
-          <Empty text="watchlist empty — press W on any market row to pin it" />
+          <Empty text="Watchlist empty" hint="Press W on any market row to pin it" />
         </Panel>
       </motion.div>
     );

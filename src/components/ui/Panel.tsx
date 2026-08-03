@@ -116,10 +116,17 @@ export function Refreshing({ show }: { show: boolean }) {
   ) : null;
 }
 
-export function Empty({ text = "no data" }: { text?: string }) {
+/**
+ * Empty slot. `hint` opts into a two-tier message — a plain headline over a
+ * fainter line of guidance — the way polished empty states separate "nothing
+ * here" from "here's how to fill it". Without it, the single faint line renders
+ * exactly as before, so existing callers are untouched.
+ */
+export function Empty({ text = "no data", hint }: { text?: string; hint?: string }) {
   return (
-    <div className="flex h-full min-h-[64px] items-center justify-center px-4 text-center text-[11px] text-faint">
-      {text}
+    <div className="flex h-full min-h-[64px] flex-col items-center justify-center gap-1 px-4 text-center">
+      <span className={`text-[11px] ${hint ? "text-muted" : "text-faint"}`}>{text}</span>
+      {hint ? <span className="text-[10px] text-faint">{hint}</span> : null}
     </div>
   );
 }
