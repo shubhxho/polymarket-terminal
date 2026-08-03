@@ -6,7 +6,8 @@ import { MarketGrid } from "@/components/MarketGrid";
 import { useTerminal } from "@/components/TerminalProvider";
 import { Empty, ErrorBox, Loading, Panel, Refreshing } from "@/components/ui/Panel";
 import { usePoll } from "@/hooks/usePoll";
-import { compact, timeToExpiry, truncate } from "@/lib/format";
+import { compact, timeToExpiry } from "@/lib/format";
+import { fuzzyMatch, highlight } from "@/lib/fuzzy";
 import { panelVariants, staggerContainer } from "@/lib/motion";
 import type { EventSummary, Market } from "@/lib/types";
 
@@ -65,7 +66,7 @@ export default function SearchScreen({ q }: { q: string }) {
             ) : events.length === 0 ? (
               <Empty text="no events" />
             ) : (
-              <EventList events={events} />
+              <EventList events={events} query={query} />
             )}
           </Body>
         </Panel>
@@ -102,7 +103,7 @@ function Body({
   return <>{children}</>;
 }
 
-function EventList({ events }: { events: EventSummary[] }) {
+function EventList({ events, query }: { events: EventSummary[]; query: string }) {
   const { go } = useTerminal();
 
   return (
@@ -138,7 +139,13 @@ function EventList({ events }: { events: EventSummary[] }) {
           className="flex cursor-pointer items-center gap-1 border-b border-edge/40 px-1 py-[2px] hover:bg-surface-2"
         >
           <span className="min-w-0 flex-1 truncate text-ink" title={ev.title}>
-            {truncate(ev.title, 56)}
+            {/* Bold the matched characters, the way every search result list
+                (and our own command palette) shows why a row was returned. */}
+            {highlight(ev.title, fuzzyMatch(query, ev.title)?.positions ?? []).map((part, k) => (
+              <span key={k} className={part.hit ? "font-semibold text-accent" : undefined}>
+                {part.text}
+              </span>
+            ))}
           </span>
           <span className="w-[30px] shrink-0 text-right text-muted">{ev.markets.length}</span>
           <span className="w-[56px] shrink-0 text-right text-ink/80">{compact(ev.volume24h)}</span>
