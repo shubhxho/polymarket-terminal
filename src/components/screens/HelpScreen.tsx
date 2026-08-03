@@ -119,12 +119,13 @@ export default function HelpScreen() {
               >
                 <span className="flex w-[92px] shrink-0 flex-wrap gap-1">
                   {k.keys.map((key) => (
-                    <span
+                    // Semantic <kbd> for real keys, matching the command palette.
+                    <kbd
                       key={key}
                       className="border border-edge-strong bg-surface-2 px-1 text-[10px] text-accent"
                     >
                       {key}
-                    </span>
+                    </kbd>
                   ))}
                 </span>
                 <span className="min-w-0 flex-1 text-ink/85">{k.action}</span>
