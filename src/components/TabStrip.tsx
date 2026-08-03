@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { useTerminal } from "@/components/TerminalProvider";
+import { MAX_TABS, useTerminal } from "@/components/TerminalProvider";
 import { screenTitle } from "@/lib/commands";
 import { popVariants, tapScale, transition } from "@/lib/motion";
 
@@ -118,7 +118,7 @@ export function TabStrip() {
         })}
       </AnimatePresence>
 
-      {tabs.length < 8 ? (
+      {tabs.length < MAX_TABS ? (
         <motion.button
           whileTap={tapScale}
           onClick={() => openTab()}

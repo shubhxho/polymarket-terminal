@@ -72,7 +72,7 @@ const Ctx = createContext<TerminalCtx | null>(null);
 const HOME: Screen = { fn: "MON" };
 const MAX_HISTORY = 40;
 /** Beyond this the strip stops being scannable and starts being a menu. */
-const MAX_TABS = 8;
+export const MAX_TABS = 8;
 
 let tabSeq = 0;
 const newTab = (screen: Screen = HOME): Tab => ({
