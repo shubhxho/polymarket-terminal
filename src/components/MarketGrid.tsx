@@ -274,8 +274,10 @@ function Row({
   const spread = bid !== undefined && ask !== undefined ? ask - bid : market.spread;
   const flash = useFlash(last, feedVersion);
 
-  const label = market.groupItemTitle ? `${market.groupItemTitle}` : market.question;
-  const context = market.groupItemTitle ? market.eventTitle : market.eventTitle;
+  const label = market.groupItemTitle || market.question;
+  // The event title is the row's context regardless of whether this leg carries
+  // its own short title; it is only hidden below when it would repeat the label.
+  const context = market.eventTitle;
 
   const cell = (c: GridColumn) => {
     switch (c) {
