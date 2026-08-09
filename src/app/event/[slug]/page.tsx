@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
+import { DerivativesRow } from "@/components/derivatives-row";
 import { type ChartSeries, PriceChart } from "@/components/price-chart";
+import { buildDesk, matchCoin } from "@/lib/derivatives";
 import {
   daysUntil,
   eventOutcomes,
@@ -10,6 +12,7 @@ import {
   fmtDate,
   fmtPct,
   fmtUsd,
+  type GammaEvent,
   getEventBySlug,
   getPriceHistory,
   getRelatedEvents,
@@ -152,6 +155,13 @@ export default async function EventPage({
         <Chart outcomes={outcomes} range={range} multiMarket={multiMarket} />
       </Suspense>
 
+      {/* Derivatives read — only for crypto claims the desk can price. Streamed
+          in its own boundary so two Hyperliquid round trips never delay the
+          price history or the book below. */}
+      <Suspense fallback={null}>
+        <DerivativesPanel event={event} />
+      </Suspense>
+
       {/* Order book */}
       <h2 className="mt-1 text-xs tracking-widest text-muted">ORDER BOOK</h2>
       <div className="overflow-x-auto border border-edge">
@@ -231,6 +241,50 @@ export default async function EventPage({
         </Suspense>
       )}
     </main>
+  );
+}
+
+/**
+ * Model price for this market, when it is a crypto claim on a Hyperliquid-listed
+ * underlying. Renders nothing at all otherwise — a market the desk cannot price
+ * should look exactly as it did before, not carry an empty panel.
+ *
+ * `buildDesk` over a single event reuses the whole pricing path, so this panel
+ * and /derivatives can never disagree about a number.
+ */
+async function DerivativesPanel({ event }: { event: GammaEvent }) {
+  if (!matchCoin(event.title)) return null;
+
+  let rows: Awaited<ReturnType<typeof buildDesk>>["rows"];
+  try {
+    ({ rows } = await buildDesk([event], { maxRows: 6 }));
+  } catch {
+    // The desk is supplementary — a Hyperliquid outage must not take the
+    // market page down with it.
+    return null;
+  }
+  if (rows.length === 0) return null;
+
+  return (
+    <>
+      <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-xs tracking-widest text-muted">DERIVATIVES READ · VS HYPERLIQUID</h2>
+        <Link
+          href="/derivatives"
+          className="text-[10px] tracking-widest text-muted/60 hover:text-accent"
+        >
+          FULL DESK →
+        </Link>
+      </div>
+      <div className="grid gap-px border border-edge bg-edge lg:grid-cols-2">
+        {rows.map((r) => (
+          <DerivativesRow
+            key={`${r.claim.coin}-${r.claim.strike}-${r.claim.style}-${r.outcomeLabel}`}
+            quote={r}
+          />
+        ))}
+      </div>
+    </>
   );
 }
 

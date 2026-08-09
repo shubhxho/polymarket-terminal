@@ -29,9 +29,6 @@ import type { Candle } from "./quant";
 
 const HL_INFO = "https://api.hyperliquid.xyz/info";
 
-/** HL settles funding hourly, on the hour. */
-export const FUNDING_INTERVAL_HOURS = 1;
-
 async function info<T>(body: Record<string, unknown>, revalidate: number): Promise<T> {
   const res = await fetch(HL_INFO, {
     method: "POST",
@@ -219,8 +216,7 @@ export async function getFundingComparison(
       // Prefer an interval the API actually sent; otherwise the known clock for
       // this venue. A venue we don't know the clock for is dropped — a wrong
       // normalization is worse than a missing peer.
-      const intervalHours =
-        data.fundingIntervalHours ?? VENUE_INTERVAL_HOURS[venue];
+      const intervalHours = data.fundingIntervalHours ?? VENUE_INTERVAL_HOURS[venue];
       if (!(intervalHours > 0)) continue;
       venues.push({
         venue,

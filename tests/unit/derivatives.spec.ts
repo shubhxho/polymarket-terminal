@@ -1,10 +1,5 @@
 import { expect, test } from "@playwright/test";
-import {
-  matchCoin,
-  parseClaim,
-  parseStrike,
-  priceClaim,
-} from "../../src/lib/derivatives";
+import { matchCoin, parseClaim, parseStrike, priceClaim } from "../../src/lib/derivatives";
 import type { PerpContext } from "../../src/lib/hyperliquid";
 import { intervalForHorizon } from "../../src/lib/hyperliquid";
 import type { Candle } from "../../src/lib/quant";
@@ -35,9 +30,7 @@ test.describe("strike parsing", () => {
   });
 
   test("takes the threshold, not a trailing date", () => {
-    expect(parseStrike("Bitcoin above $120,000 on December 31 2025")).toBe(
-      120_000,
-    );
+    expect(parseStrike("Bitcoin above $120,000 on December 31 2025")).toBe(120_000);
   });
 });
 
@@ -81,21 +74,13 @@ test.describe("claim classification", () => {
   });
 
   test("downside phrasing flips the direction", () => {
-    expect(parseClaim("Ethereum below $2,000 on Friday?")?.direction).toBe(
-      "DOWN",
-    );
-    expect(parseClaim("Will Bitcoin dip to $80,000 this month?")?.direction).toBe(
-      "DOWN",
-    );
-    expect(parseClaim("Will Bitcoin dip to $80,000 this month?")?.style).toBe(
-      "TOUCH",
-    );
+    expect(parseClaim("Ethereum below $2,000 on Friday?")?.direction).toBe("DOWN");
+    expect(parseClaim("Will Bitcoin dip to $80,000 this month?")?.direction).toBe("DOWN");
+    expect(parseClaim("Will Bitcoin dip to $80,000 this month?")?.style).toBe("TOUCH");
   });
 
   test("'hits' outranks a stray 'above'", () => {
-    expect(
-      parseClaim("Will BTC hit $150k, trading above its old high?")?.style,
-    ).toBe("TOUCH");
+    expect(parseClaim("Will BTC hit $150k, trading above its old high?")?.style).toBe("TOUCH");
   });
 
   test("returns null rather than guessing", () => {
@@ -192,10 +177,7 @@ test.describe("priceClaim", () => {
     expect(quote.modelProbability).toBeGreaterThanOrEqual(0);
     expect(quote.modelProbability).toBeLessThanOrEqual(1);
     // Edge is defined as model − market, exactly.
-    expect(quote.edge).toBeCloseTo(
-      quote.modelProbability - quote.marketProbability,
-      12,
-    );
+    expect(quote.edge).toBeCloseTo(quote.modelProbability - quote.marketProbability, 12);
     // Positive funding ⇒ forward above spot.
     expect(quote.forward).toBeGreaterThan(quote.spot);
     expect(quote.vol.blended).toBeGreaterThan(0);
@@ -203,10 +185,7 @@ test.describe("priceClaim", () => {
     expect(Number.isFinite(quote.z)).toBe(true);
     expect(quote.greeks).not.toBeNull();
     // Venue context comes straight off the perp context.
-    expect(quote.basisBps).toBeCloseTo(
-      ((PERP.markPx - PERP.oraclePx) / PERP.oraclePx) * 10_000,
-      9,
-    );
+    expect(quote.basisBps).toBeCloseTo(((PERP.markPx - PERP.oraclePx) / PERP.oraclePx) * 10_000, 9);
     expect(quote.perpChange24h).toBeCloseTo(PERP.markPx / PERP.prevDayPx - 1, 12);
   });
 
@@ -214,8 +193,7 @@ test.describe("priceClaim", () => {
     // Anchor on the model's OWN probability rather than absolute numbers: the
     // fixture's σ is whatever the synthetic candles imply, so a hardcoded
     // "0.01 is cheap" would be asserting the fixture, not the invariant.
-    const model = (quoteWith() as NonNullable<ReturnType<typeof quoteWith>>)
-      .modelProbability;
+    const model = (quoteWith() as NonNullable<ReturnType<typeof quoteWith>>).modelProbability;
     const cheap = quoteWith({ marketProbability: Math.max(model / 2, 1e-4) });
     const rich = quoteWith({ marketProbability: Math.min(model * 2 + 0.05, 0.999) });
 
@@ -242,9 +220,9 @@ test.describe("priceClaim", () => {
     expect(touch).not.toBeNull();
     // Touching is strictly likelier than finishing above the same level, so the
     // two models must not agree — that difference IS the reason both exist.
-    expect(
-      (touch as NonNullable<typeof touch>).modelProbability,
-    ).toBeGreaterThan((terminal as NonNullable<typeof terminal>).modelProbability);
+    expect((touch as NonNullable<typeof touch>).modelProbability).toBeGreaterThan(
+      (terminal as NonNullable<typeof terminal>).modelProbability,
+    );
     // No closed-form greeks for a barrier.
     expect((touch as NonNullable<typeof touch>).greeks).toBeNull();
   });

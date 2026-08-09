@@ -278,9 +278,7 @@ test.describe("digital options", () => {
     expect(
       impliedVolFromDigitalCall(Math.min(probability * 1.5, 0.999), forward, strike, years),
     ).toBeNull();
-    expect(
-      impliedVolFromDigitalCall(probability * 0.5, forward, strike, years),
-    ).not.toBeNull();
+    expect(impliedVolFromDigitalCall(probability * 0.5, forward, strike, years)).not.toBeNull();
     // In the money there is no interior peak.
     expect(digitalProbabilityExtremum(100, 90, years)).toBeNull();
   });

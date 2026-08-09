@@ -33,8 +33,8 @@ export async function Ticker() {
   // Lay the belt end-to-end so the -33.333% keyframe wraps seamlessly. Pairing
   // each item with its pass index keeps keys unique across the copies without
   // cloning the item objects.
-  const belt = Array.from({ length: BELT_COPIES }, (_, pass) => pass).flatMap(
-    (pass) => items.map((item) => [`${pass}-${item.slug}`, item] as const),
+  const belt = Array.from({ length: BELT_COPIES }, (_, pass) => pass).flatMap((pass) =>
+    items.map((item) => [`${pass}-${item.slug}`, item] as const),
   );
 
   return (
