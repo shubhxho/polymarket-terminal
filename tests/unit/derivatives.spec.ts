@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import {
   bookLiquidity,
+  hedgeNotionalFor,
   matchCoin,
   parseClaim,
   parseStrike,
@@ -224,6 +225,13 @@ test.describe("bookLiquidity", () => {
     expect((bookLiquidity(thin) as NonNullable<typeof deep>).hedgeFilled).toBe(false);
   });
 
+  test("depth coverage is depth measured against the clip actually needed", () => {
+    const liq = bookLiquidity(ladder(100_000, 5, 5, 40), 50_000);
+    const l = liq as NonNullable<typeof liq>;
+    expect(l.hedgeNotionalUsd).toBe(50_000);
+    expect(l.depthCoverage).toBeCloseTo(l.depthUsd / 50_000, 9);
+  });
+
   test("an empty or one-sided book yields nothing rather than NaN", () => {
     expect(bookLiquidity({ tokenId: "HL:BTC", asks: [], bids: [] })).toBeNull();
     expect(
@@ -233,6 +241,28 @@ test.describe("bookLiquidity", () => {
         bids: [],
       }),
     ).toBeNull();
+  });
+});
+
+test.describe("hedgeNotionalFor", () => {
+  test("scales with delta and with how many contracts the position buys", () => {
+    // Same dollars, same delta, cheaper contract ⇒ more contracts ⇒ bigger hedge.
+    const cheap = hedgeNotionalFor(0.5, 100_000, 0.05);
+    const dear = hedgeNotionalFor(0.5, 100_000, 0.5);
+    expect(cheap).toBeGreaterThan(dear);
+    expect(cheap / dear).toBeCloseTo(10, 6);
+    // Zero delta needs no hedge at all.
+    expect(hedgeNotionalFor(0, 100_000, 0.25)).toBe(0);
+    // Sign of delta is irrelevant — a hedge has a size, not a direction.
+    expect(hedgeNotionalFor(-0.3, 100_000, 0.25)).toBeCloseTo(
+      hedgeNotionalFor(0.3, 100_000, 0.25),
+      9,
+    );
+  });
+
+  test("degenerate inputs return zero rather than NaN", () => {
+    expect(hedgeNotionalFor(0.5, 0, 0.25)).toBe(0);
+    expect(hedgeNotionalFor(Number.NaN, 100_000, 0.25)).toBe(0);
   });
 });
 
@@ -252,6 +282,8 @@ test.describe("priceClaim", () => {
     expect(quote.band.lo).toBeLessThanOrEqual(quote.band.hi);
     expect(Number.isFinite(quote.z)).toBe(true);
     expect(quote.greeks).not.toBeNull();
+    // No ladder was supplied, so there is no book read — not a fabricated one.
+    expect(quote.book).toBeNull();
     // Venue context comes straight off the perp context.
     expect(quote.basisBps).toBeCloseTo(((PERP.markPx - PERP.oraclePx) / PERP.oraclePx) * 10_000, 9);
     expect(quote.perpChange24h).toBeCloseTo(PERP.markPx / PERP.prevDayPx - 1, 12);

@@ -57,11 +57,18 @@ export interface ScanEdgeOptions {
    * out the signals that aren't.
    */
   minLiquidity?: number;
+  /**
+   * Restrict output to these kinds. Applied BEFORE the limit, which is the
+   * whole point: filtering the already-truncated list shows only the signals
+   * of that kind which happened to survive a global top-N cut, not the best
+   * signals of that kind.
+   */
+  kinds?: EdgeKind[];
   /** Max signals returned. Default 60. */
   limit?: number;
 }
 
-const DEFAULTS: Required<ScanEdgeOptions> = {
+const DEFAULTS: Required<Omit<ScanEdgeOptions, "kinds">> = {
   arbMinBps: 40,
   momentumMinPts: 4,
   liqMinUsd: 25_000,
@@ -103,6 +110,8 @@ export function scanEdges(events: GammaEvent[], opts: ScanEdgeOptions = {}): Edg
     minLiquidity,
     limit,
   } = { ...DEFAULTS, ...opts };
+  const wanted = opts.kinds ? new Set<EdgeKind>(opts.kinds) : null;
+  const want = (kind: EdgeKind) => !wanted || wanted.has(kind);
   const signals: EdgeSignal[] = [];
 
   for (const event of events) {
@@ -117,6 +126,9 @@ export function scanEdges(events: GammaEvent[], opts: ScanEdgeOptions = {}): Edg
     const volW = volumeWeight(volume24h);
     const lead = outs[0];
     const spreadBps = spreadBpsOf(lead);
+    // True only when every market in the event survived the active/closed
+    // filter, i.e. the outcome set we are summing is the whole event.
+    const completeSet = outs.length > 0 && event.markets.every((m) => m.active && !m.closed);
 
     // Fields every signal for this event shares — spread once, reuse per kind.
     const base = {
@@ -128,11 +140,18 @@ export function scanEdges(events: GammaEvent[], opts: ScanEdgeOptions = {}): Edg
     };
 
     // ── ARB: mutually-exclusive outcomes should price to a sum of 1 ──
+    // That identity holds ONLY over a COMPLETE outcome set. `eventOutcomes`
+    // drops markets that are inactive or closed, so if any were dropped we are
+    // summing a subset — which always undershoots 1 and manufactures a
+    // "buy-all underround" that does not exist. Polymarket's own neg-risk docs
+    // make the same point from the other side: augmented neg-risk events carry
+    // unnamed placeholder outcomes that the UI hides and warns against trading,
+    // so a set that isn't whole cannot be arbitraged.
     // Requires ≥3 outcomes. A 2-outcome negRisk market is a plain binary whose
     // Yes/No prices are constructed to sum to ~1, so any "edge" there is the
     // rounding on the quote, not a mispricing — including them floods the board
     // with phantom ARB signals.
-    if (event.negRisk && outs.length >= 3) {
+    if (want("ARB") && event.negRisk && outs.length >= 3 && completeSet) {
       const sum = outs.reduce((s, o) => s + o.price, 0);
       const edgeBps = (1 - sum) * 10000; // >0 underround (buyable), <0 overround
       if (Math.abs(edgeBps) >= arbMinBps) {
@@ -151,7 +170,7 @@ export function scanEdges(events: GammaEvent[], opts: ScanEdgeOptions = {}): Edg
     // ── MOMENTUM: strongest directional 24h mover on the board ──
     const mover = outs.reduce((a, b) => (Math.abs(b.change24h) > Math.abs(a.change24h) ? b : a));
     const movePts = mover.change24h * 100;
-    if (Math.abs(movePts) >= momentumMinPts) {
+    if (want("MOMENTUM") && Math.abs(movePts) >= momentumMinPts) {
       // Compare against the weekly change of the SAME market that moved. Using
       // markets[0] classifies the mover against a different contract entirely in
       // any multi-outcome event, which mislabels most ACCEL/REVERSAL calls.
@@ -177,7 +196,12 @@ export function scanEdges(events: GammaEvent[], opts: ScanEdgeOptions = {}): Edg
     // ── LIQUIDITY: a deep book carrying a capturable spread ──
     // Only meaningful where the book is deep enough to actually work: a wide
     // spread on a dead market is noise, not an opportunity.
-    if (spreadBps != null && spreadBps >= liqMinSpreadBps && liquidity >= liqMinUsd) {
+    if (
+      want("LIQUIDITY") &&
+      spreadBps != null &&
+      spreadBps >= liqMinSpreadBps &&
+      liquidity >= liqMinUsd
+    ) {
       // Reward spread width, but gate hard on depth so shallow books can't rank.
       const score = clamp((spreadBps / 400) * 100 * (0.25 + 0.75 * liqW), 0, 100);
       signals.push({
@@ -195,6 +219,7 @@ export function scanEdges(events: GammaEvent[], opts: ScanEdgeOptions = {}): Edg
     // the repricing tends to be.
     const days = daysUntil(event.endDate);
     if (
+      want("RESOLUTION") &&
       Number.isFinite(days) &&
       days >= 0 &&
       days <= resolutionMaxDays &&

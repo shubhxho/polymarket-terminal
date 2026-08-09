@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { type DerivativeQuote, HEDGE_NOTIONAL_USD } from "@/lib/derivatives";
+import { type DerivativeQuote, REFERENCE_POSITION_USD } from "@/lib/derivatives";
 import { fmtUsd } from "@/lib/polymarket";
 
 /**
@@ -183,14 +183,17 @@ export function DerivativesRow({ quote: q }: { quote: DerivativeQuote }) {
             <span title="True top-of-book spread on Hyperliquid's live ladder.">
               SPR {q.book.spreadBps.toFixed(1)}BPS
             </span>
-            <span title="Resting notional within ±25bps of mid, both sides.">
-              DEPTH ±25BPS {fmtUsd(q.book.depthUsd)}
+            <span
+              className={q.book.depthCoverage < 1 ? "text-amber/70" : undefined}
+              title="Resting notional within ±25bps of mid (both sides), and how many times over it covers the hedge this claim needs."
+            >
+              DEPTH {fmtUsd(q.book.depthUsd)} · {q.book.depthCoverage.toFixed(1)}× HEDGE
             </span>
             <span
               className={q.book.hedgeFilled ? undefined : "text-amber/70"}
-              title={`Slippage walking the real ladder for a $${HEDGE_NOTIONAL_USD.toLocaleString("en-US")} delta hedge — the same fill simulator used on the Polymarket leg.`}
+              title={`Delta hedge for a $${REFERENCE_POSITION_USD.toLocaleString("en-US")} position in this claim is ${fmtUsd(q.book.hedgeNotionalUsd)} of perp. This is the slippage of walking the real ladder for it — same fill simulator as the Polymarket leg.`}
             >
-              HEDGE {q.book.hedgeSlippageBps.toFixed(1)}BPS
+              HEDGE {fmtUsd(q.book.hedgeNotionalUsd)} @ {q.book.hedgeSlippageBps.toFixed(1)}BPS
               {q.book.hedgeFilled ? "" : " · DEPTH DRY"}
             </span>
           </>

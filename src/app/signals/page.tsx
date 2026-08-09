@@ -166,9 +166,22 @@ function buildHref(p: { tag: string; kind: string; sort: string }): string {
 
 async function ScanResults({ tag, kind, sort }: { tag: string; kind: string; sort: string }) {
   let signals: EdgeSignal[];
+  let shown: EdgeSignal[];
   try {
     const events = await getTopEvents(tag || undefined, SCAN_DEPTH, 0);
+    // Scanned twice on purpose, from one fetch. `signals` is the board-wide
+    // picture the composition bar describes; `shown` is a true top-N of the
+    // selected kind. Filtering the board-wide list instead would show only the
+    // signals of that kind which survived a global cut — so a kind with many
+    // moderate signals would look empty.
     signals = scanEdges(events, { limit: SHOW_LIMIT });
+    shown =
+      kind === "all"
+        ? signals
+        : scanEdges(events, {
+            kinds: [kind.toUpperCase() as EdgeKind],
+            limit: SHOW_LIMIT,
+          });
   } catch {
     return (
       <div className="border border-red/40 bg-panel p-5 panel-lit">
@@ -212,8 +225,7 @@ async function ScanResults({ tag, kind, sort }: { tag: string; kind: string; sor
   const liqPct = pct(liqCount);
   const resPct = pct(resCount);
 
-  const filtered =
-    kind === "all" ? signals : signals.filter((s) => s.kind === (kind.toUpperCase() as EdgeKind));
+  const filtered = shown;
 
   const sorted =
     sort === "edge"

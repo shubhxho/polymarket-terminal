@@ -173,9 +173,19 @@ export function scanSignals(events: GammaEvent[], opts: ScanOptions = {}): Signa
     const hours = hoursUntil(event.endDate, now);
     const lead = outs[0];
     const spreadBps = spreadBpsOf(lead);
+    // True only when every market in the event survived the active/closed
+    // filter, i.e. the outcome set we are summing is the whole event.
+    const completeSet = outs.length > 0 && event.markets.every((m) => m.active && !m.closed);
 
     // ── ARB: mutually-exclusive outcomes should price to a sum of 1 ──
-    if (wantArb && event.negRisk && outs.length >= 3) {
+    // That identity holds ONLY over a COMPLETE outcome set. `eventOutcomes`
+    // drops markets that are inactive or closed, so if any were dropped we are
+    // summing a subset — which always undershoots 1 and manufactures a
+    // "buy-all underround" that does not exist. Polymarket's own neg-risk docs
+    // make the same point from the other side: augmented neg-risk events carry
+    // unnamed placeholder outcomes that the UI hides and warns against trading,
+    // so a set that isn't whole cannot be arbitraged.
+    if (wantArb && event.negRisk && outs.length >= 3 && completeSet) {
       const sum = outs.reduce((s, o) => s + o.price, 0);
       const edgeBps = (1 - sum) * 10000; // >0 underround (buyable), <0 overround
       if (Math.abs(edgeBps) >= arbMinBps) {

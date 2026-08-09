@@ -18,6 +18,7 @@ import {
   basisBps,
   type Candle,
   carryDrift,
+  clamp,
   type DigitalQuote,
   digitalCall,
   digitalProbabilityExtremum,
@@ -290,11 +291,14 @@ export interface DerivativeQuote {
 export const KELLY_FRACTION = 0.25;
 
 /**
- * Notional a hedge is costed at when walking Hyperliquid's ladder. Big enough
- * to leave the top level on a liquid perp (so the number reflects real depth,
- * not a one-lot quote), small enough to be a realistic desk clip.
+ * Reference position the hedge is sized from: $10k of the digital itself.
+ *
+ * The hedge clip is NOT this number — it is derived from it. A $10k position in
+ * a 5-delta contract needs a very different hedge from $10k in a 60-delta one,
+ * so costing every claim at the same flat notional would say nothing about the
+ * claim in front of you. See `hedgeNotionalFor`.
  */
-export const HEDGE_NOTIONAL_USD = 10_000;
+export const REFERENCE_POSITION_USD = 10_000;
 
 /** How far from mid still counts as "depth you could actually lift". */
 const DEPTH_BAND_BPS = 25;
@@ -304,10 +308,40 @@ export interface BookLiquidity {
   spreadBps: number;
   /** Resting notional within ±25bps of mid, both sides, in USD. */
   depthUsd: number;
-  /** Slippage vs the touch for a HEDGE_NOTIONAL_USD market buy, in bps. */
+  /** The delta-derived clip this book was walked for, in USD. */
+  hedgeNotionalUsd: number;
+  /** Slippage vs the touch for that clip, in bps. */
   hedgeSlippageBps: number;
-  /** False when the ladder could not absorb the hedge clip at all. */
+  /** False when the ladder could not absorb the clip at all. */
   hedgeFilled: boolean;
+  /**
+   * `depthUsd / hedgeNotionalUsd`. Under 1 means the near book cannot cover
+   * the hedge — the actionable read, since a raw depth figure means nothing
+   * until you compare it to the size you actually need.
+   */
+  depthCoverage: number;
+}
+
+/**
+ * Hedge clip implied by a claim's delta.
+ *
+ * A digital paying $1 has delta = ∂price/∂S. Holding N contracts leaves you
+ * long N·delta of the underlying, so the offsetting perp position is
+ * |N·delta|·S of notional. N itself is the reference position divided by what
+ * a contract costs. That chain is why a cheap far-out-of-the-money claim can
+ * need a LARGER hedge than an expensive near-the-money one: you own far more
+ * contracts for the same dollars.
+ */
+export function hedgeNotionalFor(
+  delta: number,
+  spot: number,
+  contractPrice: number,
+  positionUsd = REFERENCE_POSITION_USD,
+): number {
+  if (!(spot > 0) || !Number.isFinite(delta)) return 0;
+  const price = clamp(contractPrice, 0.01, 0.99);
+  const contracts = positionUsd / price;
+  return Math.abs(contracts * delta) * spot;
 }
 
 /**
@@ -322,7 +356,7 @@ export interface BookLiquidity {
  */
 export function bookLiquidity(
   book: OrderBook,
-  notionalUsd = HEDGE_NOTIONAL_USD,
+  notionalUsd = REFERENCE_POSITION_USD,
 ): BookLiquidity | null {
   const asks = asksAscending(book);
   const bids = bidsDescending(book);
@@ -348,8 +382,10 @@ export function bookLiquidity(
   return {
     spreadBps: ((bestAsk - bestBid) / mid) * 10_000,
     depthUsd,
+    hedgeNotionalUsd: notionalUsd,
     hedgeSlippageBps: fill.slippageBps,
     hedgeFilled: fill.filled,
+    depthCoverage: notionalUsd > 0 ? depthUsd / notionalUsd : 0,
   };
 }
 
@@ -458,6 +494,16 @@ export function priceClaim(args: {
     return null;
   }
 
+  // Delta for the hedge clip. The terminal digital has a closed form; the
+  // one-touch does not, so it is bumped numerically the same way its vega is.
+  let delta = greeks?.delta ?? 0;
+  if (claim.style === "TOUCH") {
+    const bump = Math.max(spot * 1e-4, 1e-8);
+    delta =
+      (touchProbability(spot + bump, claim.strike, years, sigma, drift) - modelProbability) / bump;
+  }
+  const hedgeNotionalUsd = hedgeNotionalFor(delta, spot, marketProbability);
+
   const band = probabilityBand(modelProbability, vega, vol.spread);
   const edge = modelProbability - marketProbability;
   const z = edgeZ(edge, band.width / 2);
@@ -497,7 +543,7 @@ export function priceClaim(args: {
     openInterest: perp.openInterest,
     perpDayVolume: perp.dayNotionalVolume,
     perpChange24h: perp.prevDayPx > 0 ? perp.markPx / perp.prevDayPx - 1 : 0,
-    book: args.book ? bookLiquidity(args.book) : null,
+    book: args.book ? bookLiquidity(args.book, hedgeNotionalUsd) : null,
     greeks,
   };
 }
