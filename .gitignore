@@ -19,6 +19,15 @@ package-lock.json
 /playwright-report
 /playwright/.cache
 
+# this project installs with bun — bun.lock is the lockfile of record.
+# A stray package-lock.json means two resolvers disagreeing about the tree.
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+/test-results
+/playwright-report
+/playwright/.cache
+
 # next.js
 /.next/
 /out/

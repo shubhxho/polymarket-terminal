@@ -1,0 +1,250 @@
+import { expect, test } from "@playwright/test";
+import { matchCoin, parseClaim, parseStrike, priceClaim } from "../../src/lib/derivatives";
+import type { PerpContext } from "../../src/lib/hyperliquid";
+import { intervalForHorizon } from "../../src/lib/hyperliquid";
+import type { Candle } from "../../src/lib/quant";
+
+/**
+ * Tests for the Polymarket ⇄ Hyperliquid bridge.
+ *
+ * Parsing is the highest-risk part of the desk: a mis-read strike or, worse, a
+ * touch market priced as a terminal digital produces a confident number that is
+ * simply wrong. So the bar here is that anything ambiguous must return `null`
+ * rather than a guess, and that is asserted as hard as the happy paths.
+ */
+
+test.describe("strike parsing", () => {
+  test("reads the common dollar formats", () => {
+    expect(parseStrike("Bitcoin above $120,000 on Dec 31")).toBe(120_000);
+    expect(parseStrike("Will BTC hit $150k in 2025?")).toBe(150_000);
+    expect(parseStrike("ETH above $4,000")).toBe(4_000);
+    expect(parseStrike("Will BTC reach $1.5M?")).toBe(1_500_000);
+    expect(parseStrike("SOL above $250.50 on Friday")).toBe(250.5);
+  });
+
+  test("does not mistake a bare year or day for a strike", () => {
+    // "2025" has no $, no magnitude suffix and no comma grouping.
+    expect(parseStrike("Will Bitcoin go up in 2025?")).toBeNull();
+    expect(parseStrike("Bitcoin price on July 21")).toBeNull();
+    expect(parseStrike("No numbers here at all")).toBeNull();
+  });
+
+  test("takes the threshold, not a trailing date", () => {
+    expect(parseStrike("Bitcoin above $120,000 on December 31 2025")).toBe(120_000);
+  });
+});
+
+test.describe("coin matching", () => {
+  test("maps names and tickers to the Hyperliquid symbol", () => {
+    expect(matchCoin("Will Bitcoin hit 150k")).toBe("BTC");
+    expect(matchCoin("BTC above 120k")).toBe("BTC");
+    expect(matchCoin("Ethereum above $4,000")).toBe("ETH");
+    expect(matchCoin("Solana above $250")).toBe("SOL");
+  });
+
+  test("refuses coins that merely share a prefix", () => {
+    // "Bitcoin Cash" is a different asset; matching it as BTC would price the
+    // claim against the wrong underlying entirely.
+    expect(matchCoin("Will Bitcoin Cash hit $1,000")).toBeNull();
+    expect(matchCoin("Ethereum Classic above $50")).toBeNull();
+  });
+
+  test("does not fire on a substring inside another word", () => {
+    expect(matchCoin("The dotted line will be signed")).toBeNull();
+    expect(matchCoin("Nothing crypto about this market")).toBeNull();
+  });
+});
+
+test.describe("claim classification", () => {
+  test("'above ... on DATE' is a terminal digital call", () => {
+    const claim = parseClaim("Bitcoin above $120,000 on December 31?");
+    expect(claim).not.toBeNull();
+    expect(claim?.coin).toBe("BTC");
+    expect(claim?.strike).toBe(120_000);
+    expect(claim?.style).toBe("TERMINAL");
+    expect(claim?.direction).toBe("UP");
+  });
+
+  test("'hits ... by DATE' is a one-touch", () => {
+    // This is the distinction that matters most: pricing this as a terminal
+    // digital would under-price it by roughly half near the barrier.
+    const claim = parseClaim("Will Bitcoin hit $150k by June 30?");
+    expect(claim?.style).toBe("TOUCH");
+    expect(claim?.direction).toBe("UP");
+  });
+
+  test("downside phrasing flips the direction", () => {
+    expect(parseClaim("Ethereum below $2,000 on Friday?")?.direction).toBe("DOWN");
+    expect(parseClaim("Will Bitcoin dip to $80,000 this month?")?.direction).toBe("DOWN");
+    expect(parseClaim("Will Bitcoin dip to $80,000 this month?")?.style).toBe("TOUCH");
+  });
+
+  test("'hits' outranks a stray 'above'", () => {
+    expect(parseClaim("Will BTC hit $150k, trading above its old high?")?.style).toBe("TOUCH");
+  });
+
+  test("returns null rather than guessing", () => {
+    // No coin.
+    expect(parseClaim("Will the Fed cut rates above $5,000?")).toBeNull();
+    // No strike.
+    expect(parseClaim("Will Bitcoin go up this year?")).toBeNull();
+    // Coin and number, but no comparison word at all.
+    expect(parseClaim("Bitcoin $120,000")).toBeNull();
+  });
+});
+
+test.describe("horizon to bar length", () => {
+  test("scales the bar with the life of the claim", () => {
+    expect(intervalForHorizon(2)).toBe("1m");
+    expect(intervalForHorizon(12)).toBe("5m");
+    expect(intervalForHorizon(72)).toBe("15m");
+    expect(intervalForHorizon(24 * 10)).toBe("1h");
+    expect(intervalForHorizon(24 * 60)).toBe("4h");
+    expect(intervalForHorizon(24 * 365)).toBe("1d");
+  });
+
+  test("degenerate horizons fall back rather than throwing", () => {
+    expect(intervalForHorizon(0)).toBe("1h");
+    expect(intervalForHorizon(-5)).toBe("1h");
+    expect(intervalForHorizon(Number.NaN)).toBe("1h");
+  });
+});
+
+/* ─────────────────────── pricing a parsed claim ─────────────────────── */
+
+const PERP: PerpContext = {
+  coin: "BTC",
+  oraclePx: 100_000,
+  markPx: 100_050,
+  midPx: 100_040,
+  premium: 0.0005,
+  fundingHourly: 0.00001,
+  openInterest: 5_000,
+  dayNotionalVolume: 1e9,
+  prevDayPx: 99_000,
+  impactBid: 99_990,
+  impactAsk: 100_010,
+  maxLeverage: 50,
+  szDecimals: 5,
+};
+
+/** Flat-ish candles with enough movement for the vol suite to be non-zero. */
+function candles(n = 200): Candle[] {
+  let price = 100_000;
+  return Array.from({ length: n }, (_, i) => {
+    const open = price;
+    // Deterministic oscillation — no Math.random in tests.
+    price *= 1 + 0.004 * Math.sin(i * 1.7);
+    return {
+      t: i * 3_600_000,
+      o: open,
+      h: Math.max(open, price) * 1.001,
+      l: Math.min(open, price) * 0.999,
+      c: price,
+      v: 1,
+    };
+  });
+}
+
+const NOW = Date.UTC(2026, 0, 1);
+const IN_30_DAYS = new Date(NOW + 30 * 86_400_000).toISOString();
+
+function quoteWith(overrides: Partial<Parameters<typeof priceClaim>[0]> = {}) {
+  const claim = parseClaim("Bitcoin above $120,000 on January 31?");
+  if (!claim) throw new Error("fixture claim failed to parse");
+  return priceClaim({
+    claim,
+    slug: "btc-120k",
+    title: "Bitcoin above $120,000 on January 31?",
+    outcomeLabel: "Yes",
+    marketProbability: 0.25,
+    perp: PERP,
+    candles: candles(),
+    barMinutes: 60,
+    fundingHourly: 0.00001,
+    endDate: IN_30_DAYS,
+    now: NOW,
+    ...overrides,
+  });
+}
+
+test.describe("priceClaim", () => {
+  test("produces a coherent quote from live-shaped inputs", () => {
+    const q = quoteWith();
+    expect(q).not.toBeNull();
+    const quote = q as NonNullable<typeof q>;
+
+    expect(quote.modelProbability).toBeGreaterThanOrEqual(0);
+    expect(quote.modelProbability).toBeLessThanOrEqual(1);
+    // Edge is defined as model − market, exactly.
+    expect(quote.edge).toBeCloseTo(quote.modelProbability - quote.marketProbability, 12);
+    // Positive funding ⇒ forward above spot.
+    expect(quote.forward).toBeGreaterThan(quote.spot);
+    expect(quote.vol.blended).toBeGreaterThan(0);
+    expect(quote.band.lo).toBeLessThanOrEqual(quote.band.hi);
+    expect(Number.isFinite(quote.z)).toBe(true);
+    expect(quote.greeks).not.toBeNull();
+    // Venue context comes straight off the perp context.
+    expect(quote.basisBps).toBeCloseTo(((PERP.markPx - PERP.oraclePx) / PERP.oraclePx) * 10_000, 9);
+    expect(quote.perpChange24h).toBeCloseTo(PERP.markPx / PERP.prevDayPx - 1, 12);
+  });
+
+  test("Kelly and edge always agree in sign", () => {
+    // Anchor on the model's OWN probability rather than absolute numbers: the
+    // fixture's σ is whatever the synthetic candles imply, so a hardcoded
+    // "0.01 is cheap" would be asserting the fixture, not the invariant.
+    const model = (quoteWith() as NonNullable<ReturnType<typeof quoteWith>>).modelProbability;
+    const cheap = quoteWith({ marketProbability: Math.max(model / 2, 1e-4) });
+    const rich = quoteWith({ marketProbability: Math.min(model * 2 + 0.05, 0.999) });
+
+    expect((cheap as NonNullable<typeof cheap>).edge).toBeGreaterThan(0);
+    expect((cheap as NonNullable<typeof cheap>).kelly).toBeGreaterThan(0);
+    expect((rich as NonNullable<typeof rich>).edge).toBeLessThan(0);
+    expect((rich as NonNullable<typeof rich>).kelly).toBeLessThan(0);
+    // Fair value ⇒ no stake.
+    const fair = quoteWith({ marketProbability: model });
+    expect((fair as NonNullable<typeof fair>).kelly).toBeCloseTo(0, 9);
+  });
+
+  test("an expired or undated market is refused, not extrapolated", () => {
+    expect(quoteWith({ endDate: new Date(NOW - 86_400_000).toISOString() })).toBeNull();
+    expect(quoteWith({ endDate: undefined })).toBeNull();
+    expect(quoteWith({ endDate: "not-a-date" })).toBeNull();
+  });
+
+  test("a touch claim uses the barrier model, not the terminal one", () => {
+    const claim = parseClaim("Will Bitcoin hit $120,000 by January 31?");
+    expect(claim?.style).toBe("TOUCH");
+    const touch = quoteWith({ claim: claim ?? undefined });
+    const terminal = quoteWith();
+    expect(touch).not.toBeNull();
+    // Touching is strictly likelier than finishing above the same level, so the
+    // two models must not agree — that difference IS the reason both exist.
+    expect((touch as NonNullable<typeof touch>).modelProbability).toBeGreaterThan(
+      (terminal as NonNullable<typeof terminal>).modelProbability,
+    );
+    // No closed-form greeks for a barrier.
+    expect((touch as NonNullable<typeof touch>).greeks).toBeNull();
+  });
+
+  test("a barrier on the wrong side of spot is refused", () => {
+    // "hits $80,000" with spot at $100,000 is a DOWN touch; asking for it as an
+    // UP touch is incoherent and must not be priced.
+    const claim = parseClaim("Will Bitcoin hit $80,000 by January 31?");
+    expect(claim?.style).toBe("TOUCH");
+    expect(claim?.direction).toBe("UP");
+    expect(quoteWith({ claim: claim ?? undefined })).toBeNull();
+  });
+
+  test("a flat tape with no volatility is refused", () => {
+    const flat: Candle[] = Array.from({ length: 200 }, (_, i) => ({
+      t: i * 3_600_000,
+      o: 100_000,
+      h: 100_000,
+      l: 100_000,
+      c: 100_000,
+      v: 1,
+    }));
+    expect(quoteWith({ candles: flat })).toBeNull();
+  });
+});
