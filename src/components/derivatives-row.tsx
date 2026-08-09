@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { DerivativeQuote } from "@/lib/derivatives";
+import { type DerivativeQuote, REFERENCE_POSITION_USD } from "@/lib/derivatives";
 import { fmtUsd } from "@/lib/polymarket";
 
 /**
@@ -178,10 +178,31 @@ export function DerivativesRow({ quote: q }: { quote: DerivativeQuote }) {
             {q.crossVenueBpsPerHour.toFixed(2)}BPS/H
           </span>
         )}
-        {q.impactSpreadBps != null && (
-          <span title="Cost of crossing HL's own book at $20k notional.">
-            IMPACT {q.impactSpreadBps.toFixed(1)}BPS
-          </span>
+        {q.book ? (
+          <>
+            <span title="True top-of-book spread on Hyperliquid's live ladder.">
+              SPR {q.book.spreadBps.toFixed(1)}BPS
+            </span>
+            <span
+              className={q.book.depthCoverage < 1 ? "text-amber/70" : undefined}
+              title="Resting notional within ±25bps of mid (both sides), and how many times over it covers the hedge this claim needs."
+            >
+              DEPTH {fmtUsd(q.book.depthUsd)} · {q.book.depthCoverage.toFixed(1)}× HEDGE
+            </span>
+            <span
+              className={q.book.hedgeFilled ? undefined : "text-amber/70"}
+              title={`Delta hedge for a $${REFERENCE_POSITION_USD.toLocaleString("en-US")} position in this claim is ${fmtUsd(q.book.hedgeNotionalUsd)} of perp. This is the slippage of walking the real ladder for it — same fill simulator as the Polymarket leg.`}
+            >
+              HEDGE {fmtUsd(q.book.hedgeNotionalUsd)} @ {q.book.hedgeSlippageBps.toFixed(1)}BPS
+              {q.book.hedgeFilled ? "" : " · DEPTH DRY"}
+            </span>
+          </>
+        ) : (
+          q.impactSpreadBps != null && (
+            <span title="HL's own $20k impact quote — the live ladder was unavailable.">
+              IMPACT {q.impactSpreadBps.toFixed(1)}BPS
+            </span>
+          )
         )}
         <span className="ml-auto">HL 24H {fmtUsd(q.perpDayVolume)}</span>
       </div>

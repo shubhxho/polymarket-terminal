@@ -1,5 +1,13 @@
 import { expect, test } from "@playwright/test";
-import { matchCoin, parseClaim, parseStrike, priceClaim } from "../../src/lib/derivatives";
+import {
+  bookLiquidity,
+  hedgeNotionalFor,
+  matchCoin,
+  parseClaim,
+  parseStrike,
+  priceClaim,
+} from "../../src/lib/derivatives";
+import type { OrderBook } from "../../src/lib/execution";
 import type { PerpContext } from "../../src/lib/hyperliquid";
 import { intervalForHorizon } from "../../src/lib/hyperliquid";
 import type { Candle } from "../../src/lib/quant";
@@ -20,6 +28,26 @@ test.describe("strike parsing", () => {
     expect(parseStrike("ETH above $4,000")).toBe(4_000);
     expect(parseStrike("Will BTC reach $1.5M?")).toBe(1_500_000);
     expect(parseStrike("SOL above $250.50 on Friday")).toBe(250.5);
+  });
+
+  test("a date's comma is not thousands grouping", () => {
+    // REGRESSION: "January 31, 2026" was read as the grouped number "31," and
+    // returned 31 — a $31 Bitcoin strike, which prices to ~100% and prints a
+    // gigantic fabricated edge. Grouping must be `,ddd` with no space.
+    expect(parseStrike("Will Bitcoin close above its high on January 31, 2026?")).toBeNull();
+    expect(parseStrike("Resolves on March 5, 2027")).toBeNull();
+    // A genuinely grouped number still parses.
+    expect(parseStrike("Ethereum above 3,000 on Dec 1, 2025")).toBe(3_000);
+    expect(parseStrike("Bitcoin above $120,000 on January 31, 2026")).toBe(120_000);
+    expect(parseStrike("Above 1,250,000 total")).toBe(1_250_000);
+  });
+
+  test("a two-sided range is refused rather than halved", () => {
+    // A corridor is not a threshold; taking its first number would price a
+    // one-sided claim the market never offered.
+    expect(parseStrike("Will Bitcoin be between $100,000 and $120,000?")).toBeNull();
+    expect(parseStrike("Bitcoin closes between $90k and $110k on Friday")).toBeNull();
+    expect(parseClaim("Bitcoin closes between $90k and $110k on Friday")).toBeNull();
   });
 
   test("does not mistake a bare year or day for a strike", () => {
@@ -168,6 +196,96 @@ function quoteWith(overrides: Partial<Parameters<typeof priceClaim>[0]> = {}) {
   });
 }
 
+/** A symmetric ladder: `levels` rungs each side, `step` apart, `size` each. */
+function ladder(mid = 100_000, step = 5, size = 0.5, levels = 40): OrderBook {
+  return {
+    tokenId: "HL:BTC",
+    asks: Array.from({ length: levels }, (_, i) => ({ price: mid + step * (i + 1), size })),
+    bids: Array.from({ length: levels }, (_, i) => ({ price: mid - step * (i + 1), size })),
+  };
+}
+
+test.describe("bookLiquidity", () => {
+  test("measures the true top-of-book spread", () => {
+    const liq = bookLiquidity(ladder(100_000, 5));
+    expect(liq).not.toBeNull();
+    // Best ask 100_005, best bid 99_995 ⇒ 10 wide on a 100k mid = 1bp.
+    expect((liq as NonNullable<typeof liq>).spreadBps).toBeCloseTo(1, 6);
+  });
+
+  test("counts only depth inside the ±25bps band", () => {
+    // 25bps of $100k is $250. With $50 rungs, offsets 50..250 are inside the
+    // band and 300+ are outside — so the ladder deliberately straddles it.
+    const liq = bookLiquidity(ladder(100_000, 50, 0.5, 10));
+    const expected = [50, 100, 150, 200, 250].reduce(
+      (sum, d) => sum + (100_000 + d) * 0.5 + (100_000 - d) * 0.5,
+      0,
+    );
+    expect((liq as NonNullable<typeof liq>).depthUsd).toBeCloseTo(expected, 6);
+    // The five rungs beyond the band must NOT be counted.
+    const everything = ladder(100_000, 50, 0.5, 10)
+      .asks.concat(ladder(100_000, 50, 0.5, 10).bids)
+      .reduce((sum, l) => sum + l.price * l.size, 0);
+    expect((liq as NonNullable<typeof liq>).depthUsd).toBeLessThan(everything);
+  });
+
+  test("reports hedge slippage against the touch, and flags a dry book", () => {
+    const deep = bookLiquidity(ladder(100_000, 5, 5, 40));
+    expect((deep as NonNullable<typeof deep>).hedgeFilled).toBe(true);
+    // Walking a deep ladder for $10k barely leaves the touch.
+    expect((deep as NonNullable<typeof deep>).hedgeSlippageBps).toBeGreaterThanOrEqual(0);
+    expect((deep as NonNullable<typeof deep>).hedgeSlippageBps).toBeLessThan(5);
+
+    // A ladder holding well under $10k cannot absorb the clip.
+    const thin: OrderBook = {
+      tokenId: "HL:BTC",
+      asks: [{ price: 100_005, size: 0.01 }],
+      bids: [{ price: 99_995, size: 0.01 }],
+    };
+    expect((bookLiquidity(thin) as NonNullable<typeof deep>).hedgeFilled).toBe(false);
+  });
+
+  test("depth coverage is depth measured against the clip actually needed", () => {
+    const liq = bookLiquidity(ladder(100_000, 5, 5, 40), 50_000);
+    const l = liq as NonNullable<typeof liq>;
+    expect(l.hedgeNotionalUsd).toBe(50_000);
+    expect(l.depthCoverage).toBeCloseTo(l.depthUsd / 50_000, 9);
+  });
+
+  test("an empty or one-sided book yields nothing rather than NaN", () => {
+    expect(bookLiquidity({ tokenId: "HL:BTC", asks: [], bids: [] })).toBeNull();
+    expect(
+      bookLiquidity({
+        tokenId: "HL:BTC",
+        asks: [{ price: 100_005, size: 1 }],
+        bids: [],
+      }),
+    ).toBeNull();
+  });
+});
+
+test.describe("hedgeNotionalFor", () => {
+  test("scales with delta and with how many contracts the position buys", () => {
+    // Same dollars, same delta, cheaper contract ⇒ more contracts ⇒ bigger hedge.
+    const cheap = hedgeNotionalFor(0.5, 100_000, 0.05);
+    const dear = hedgeNotionalFor(0.5, 100_000, 0.5);
+    expect(cheap).toBeGreaterThan(dear);
+    expect(cheap / dear).toBeCloseTo(10, 6);
+    // Zero delta needs no hedge at all.
+    expect(hedgeNotionalFor(0, 100_000, 0.25)).toBe(0);
+    // Sign of delta is irrelevant — a hedge has a size, not a direction.
+    expect(hedgeNotionalFor(-0.3, 100_000, 0.25)).toBeCloseTo(
+      hedgeNotionalFor(0.3, 100_000, 0.25),
+      9,
+    );
+  });
+
+  test("degenerate inputs return zero rather than NaN", () => {
+    expect(hedgeNotionalFor(0.5, 0, 0.25)).toBe(0);
+    expect(hedgeNotionalFor(Number.NaN, 100_000, 0.25)).toBe(0);
+  });
+});
+
 test.describe("priceClaim", () => {
   test("produces a coherent quote from live-shaped inputs", () => {
     const q = quoteWith();
@@ -184,6 +302,8 @@ test.describe("priceClaim", () => {
     expect(quote.band.lo).toBeLessThanOrEqual(quote.band.hi);
     expect(Number.isFinite(quote.z)).toBe(true);
     expect(quote.greeks).not.toBeNull();
+    // No ladder was supplied, so there is no book read — not a fabricated one.
+    expect(quote.book).toBeNull();
     // Venue context comes straight off the perp context.
     expect(quote.basisBps).toBeCloseTo(((PERP.markPx - PERP.oraclePx) / PERP.oraclePx) * 10_000, 9);
     expect(quote.perpChange24h).toBeCloseTo(PERP.markPx / PERP.prevDayPx - 1, 12);
@@ -234,6 +354,14 @@ test.describe("priceClaim", () => {
     expect(claim?.style).toBe("TOUCH");
     expect(claim?.direction).toBe("UP");
     expect(quoteWith({ claim: claim ?? undefined })).toBeNull();
+  });
+
+  test("a strike orders of magnitude from spot is refused", () => {
+    // Defence in depth behind the parser: even if a bad strike gets through,
+    // it must not reach the model, where it would price to a hard 0 or 1.
+    const absurd = parseClaim("Bitcoin above $31 on January 31?");
+    expect(absurd?.strike).toBe(31);
+    expect(quoteWith({ claim: absurd ?? undefined })).toBeNull();
   });
 
   test("a flat tape with no volatility is refused", () => {

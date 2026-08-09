@@ -1,3 +1,4 @@
+import { asksAscending, bidsDescending, buyDollars, type OrderBook } from "./execution";
 import {
   averageFunding,
   type CandleInterval,
@@ -5,6 +6,7 @@ import {
   getCandles,
   getFundingComparison,
   getFundingHistory,
+  getPerpBook,
   getPerpContexts,
   INTERVAL_MINUTES,
   indexPerps,
@@ -16,6 +18,7 @@ import {
   basisBps,
   type Candle,
   carryDrift,
+  clamp,
   type DigitalQuote,
   digitalCall,
   digitalProbabilityExtremum,
@@ -138,26 +141,49 @@ const DOWN_WORDS =
   /\b(below|under|less than|dip|dips|drop|drops|fall|falls|down to|crash|crashes)\b/i;
 
 /**
- * Pull a dollar threshold out of a title. Handles `$120,000`, `$120k`, `$1.2M`
- * and bare `120K`. Returns the FIRST plausible strike — Polymarket phrases the
- * threshold before any secondary numbers (dates, counts).
+ * A number that could be a price threshold.
+ *
+ * Two accepted shapes, and the distinction is load-bearing:
+ *   - properly comma-grouped: `120,000` / `3,000` — groups of exactly three.
+ *   - plain digits carrying a `$` or a k/m/b magnitude: `$250.50`, `150k`.
+ *
+ * A bare integer is NEVER a strike. That is what keeps years and day-of-month
+ * out. The grouping alternative demands `,\d{3}` with no space, which is what
+ * separates a real `3,000` from the `31, 2026` inside a date — the earlier
+ * "contains a comma" test accepted the latter and returned 31 as a Bitcoin
+ * strike, producing a claim that prices to ~100% and a fabricated edge.
+ */
+const STRIKE_RE = /(\$\s?)?(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s?([kmb])?\b/gi;
+
+/** Properly grouped thousands, e.g. `1,234,567`. */
+const GROUPED_RE = /^\d{1,3}(?:,\d{3})+(?:\.\d+)?$/;
+
+/**
+ * Two-sided phrasing. "Between $100k and $120k" is a corridor, not a threshold;
+ * taking its first number would price a one-sided claim the market never made.
+ */
+const RANGE_RE = /\b(between|from)\b[^?]*\b(and|to)\b|\b\d[\d,.]*\s*[-–—]\s*\$?\d/i;
+
+/**
+ * Pull a price threshold out of a title, or null when there isn't exactly one.
+ *
+ * Returns the FIRST qualifying number: Polymarket phrases the threshold before
+ * any secondary figures.
  */
 export function parseStrike(text: string): number | null {
-  const re = /\$?\s?([0-9][0-9,]*(?:\.[0-9]+)?)\s?([kmb])?\b/gi;
-  for (const m of text.matchAll(re)) {
-    const rawDigits = m[1].replace(/,/g, "");
-    let value = Number.parseFloat(rawDigits);
-    if (!Number.isFinite(value)) continue;
-    const suffix = m[2]?.toLowerCase();
+  if (RANGE_RE.test(text)) return null;
+  for (const m of text.matchAll(STRIKE_RE)) {
+    const digits = m[2];
+    const suffix = m[3]?.toLowerCase();
+    const hadDollar = Boolean(m[1]);
+    const grouped = GROUPED_RE.test(digits);
+    if (!hadDollar && !suffix && !grouped) continue;
+
+    let value = Number.parseFloat(digits.replace(/,/g, ""));
+    if (!Number.isFinite(value) || value <= 0) continue;
     if (suffix === "k") value *= 1e3;
     else if (suffix === "m") value *= 1e6;
     else if (suffix === "b") value *= 1e9;
-    // A year ("2025") or a day-of-month is not a strike. Require either an
-    // explicit $ / magnitude suffix, or a comma-grouped number.
-    const hadDollar = m[0].includes("$");
-    const hadGrouping = m[1].includes(",");
-    if (!hadDollar && !suffix && !hadGrouping) continue;
-    if (value <= 0) continue;
     return value;
   }
   return null;
@@ -275,12 +301,123 @@ export interface DerivativeQuote {
   perpDayVolume: number;
   /** Perp 24h return, decimal. The underlying's own momentum. */
   perpChange24h: number;
+  /**
+   * Live Hyperliquid ladder read — what the delta hedge actually costs. Null
+   * when the book could not be fetched; the row still prices without it.
+   */
+  book: BookLiquidity | null;
   /** Terminal digital greeks. Null for touch claims (no closed form). */
   greeks: DigitalQuote | null;
 }
 
+/**
+ * How far from spot a strike may sit before we treat it as a parsing failure.
+ * Generous — genuine long-dated crypto claims do reach several multiples — but
+ * decisive about the orders of magnitude that only a bad parse produces.
+ */
+const STRIKE_SANITY_MULTIPLE = 50;
+
 /** Quarter-Kelly: ~94% of the growth at ~44% of the drawdown. */
 export const KELLY_FRACTION = 0.25;
+
+/**
+ * Reference position the hedge is sized from: $10k of the digital itself.
+ *
+ * The hedge clip is NOT this number — it is derived from it. A $10k position in
+ * a 5-delta contract needs a very different hedge from $10k in a 60-delta one,
+ * so costing every claim at the same flat notional would say nothing about the
+ * claim in front of you. See `hedgeNotionalFor`.
+ */
+export const REFERENCE_POSITION_USD = 10_000;
+
+/** How far from mid still counts as "depth you could actually lift". */
+const DEPTH_BAND_BPS = 25;
+
+export interface BookLiquidity {
+  /** True top-of-book spread, in bps of mid. */
+  spreadBps: number;
+  /** Resting notional within ±25bps of mid, both sides, in USD. */
+  depthUsd: number;
+  /** The delta-derived clip this book was walked for, in USD. */
+  hedgeNotionalUsd: number;
+  /** Slippage vs the touch for that clip, in bps. */
+  hedgeSlippageBps: number;
+  /** False when the ladder could not absorb the clip at all. */
+  hedgeFilled: boolean;
+  /**
+   * `depthUsd / hedgeNotionalUsd`. Under 1 means the near book cannot cover
+   * the hedge — the actionable read, since a raw depth figure means nothing
+   * until you compare it to the size you actually need.
+   */
+  depthCoverage: number;
+}
+
+/**
+ * Hedge clip implied by a claim's delta.
+ *
+ * A digital paying $1 has delta = ∂price/∂S. Holding N contracts leaves you
+ * long N·delta of the underlying, so the offsetting perp position is
+ * |N·delta|·S of notional. N itself is the reference position divided by what
+ * a contract costs. That chain is why a cheap far-out-of-the-money claim can
+ * need a LARGER hedge than an expensive near-the-money one: you own far more
+ * contracts for the same dollars.
+ */
+export function hedgeNotionalFor(
+  delta: number,
+  spot: number,
+  contractPrice: number,
+  positionUsd = REFERENCE_POSITION_USD,
+): number {
+  if (!(spot > 0) || !Number.isFinite(delta)) return 0;
+  const price = clamp(contractPrice, 0.01, 0.99);
+  const contracts = positionUsd / price;
+  return Math.abs(contracts * delta) * spot;
+}
+
+/**
+ * Read Hyperliquid's actual ladder rather than its summary statistics.
+ *
+ * `impactPxs` already gives HL's own $20k impact quote, but it is a single
+ * number with no depth behind it. Walking the real book answers the question a
+ * desk actually has — "if the model says this claim is mispriced, what does it
+ * cost me to put on the delta hedge right now" — and it does so with the SAME
+ * `buyDollars` walker used on the Polymarket leg, so a cross-venue trade is
+ * costed with one slippage model on both sides instead of two.
+ */
+export function bookLiquidity(
+  book: OrderBook,
+  notionalUsd = REFERENCE_POSITION_USD,
+): BookLiquidity | null {
+  const asks = asksAscending(book);
+  const bids = bidsDescending(book);
+  const bestAsk = asks[0]?.price;
+  const bestBid = bids[0]?.price;
+  if (!(bestAsk > 0) || !(bestBid > 0)) return null;
+
+  const mid = (bestAsk + bestBid) / 2;
+  if (!(mid > 0)) return null;
+
+  const band = mid * (DEPTH_BAND_BPS / 10_000);
+  let depthUsd = 0;
+  for (const level of asks) {
+    if (level.price > mid + band) break;
+    depthUsd += level.price * level.size;
+  }
+  for (const level of bids) {
+    if (level.price < mid - band) break;
+    depthUsd += level.price * level.size;
+  }
+
+  const fill = buyDollars(book, notionalUsd);
+  return {
+    spreadBps: ((bestAsk - bestBid) / mid) * 10_000,
+    depthUsd,
+    hedgeNotionalUsd: notionalUsd,
+    hedgeSlippageBps: fill.slippageBps,
+    hedgeFilled: fill.filled,
+    depthCoverage: notionalUsd > 0 ? depthUsd / notionalUsd : 0,
+  };
+}
 
 /**
  * Price one parsed claim against a live Hyperliquid context + candle history.
@@ -300,6 +437,8 @@ export function priceClaim(args: {
   fundingHourly: number;
   /** Cross-venue funding for this coin, when HL publishes peers for it. */
   funding?: FundingComparison | null;
+  /** Live HL ladder for this coin, when it could be fetched. */
+  book?: OrderBook | null;
   endDate: string | undefined;
   now?: number;
 }): DerivativeQuote | null {
@@ -319,6 +458,17 @@ export function priceClaim(args: {
 
   const spot = perp.oraclePx;
   if (!(spot > 0)) return null;
+
+  // Last line of defence against a mis-parsed strike. A real crypto claim sits
+  // within a couple of multiples of spot; a strike 50x away is a parsing
+  // artifact (a year, a day-of-month, a volume figure), and it would price to a
+  // hard 0 or 1 and print an enormous fake edge rather than looking wrong.
+  if (
+    claim.strike > spot * STRIKE_SANITY_MULTIPLE ||
+    claim.strike < spot / STRIKE_SANITY_MULTIPLE
+  ) {
+    return null;
+  }
 
   const expiryMs = endDate ? new Date(endDate).getTime() : Number.NaN;
   if (!Number.isFinite(expiryMs)) return null;
@@ -385,6 +535,16 @@ export function priceClaim(args: {
     return null;
   }
 
+  // Delta for the hedge clip. The terminal digital has a closed form; the
+  // one-touch does not, so it is bumped numerically the same way its vega is.
+  let delta = greeks?.delta ?? 0;
+  if (claim.style === "TOUCH") {
+    const bump = Math.max(spot * 1e-4, 1e-8);
+    delta =
+      (touchProbability(spot + bump, claim.strike, years, sigma, drift) - modelProbability) / bump;
+  }
+  const hedgeNotionalUsd = hedgeNotionalFor(delta, spot, marketProbability);
+
   const band = probabilityBand(modelProbability, vega, vol.spread);
   const edge = modelProbability - marketProbability;
   const z = edgeZ(edge, band.width / 2);
@@ -424,6 +584,7 @@ export function priceClaim(args: {
     openInterest: perp.openInterest,
     perpDayVolume: perp.dayNotionalVolume,
     perpChange24h: perp.prevDayPx > 0 ? perp.markPx / perp.prevDayPx - 1 : 0,
+    book: args.book ? bookLiquidity(args.book, hedgeNotionalUsd) : null,
     greeks,
   };
 }
@@ -563,8 +724,18 @@ export async function buildDesk(
 
   const candlesByKey = new Map<string, Candle[]>();
   const fundingByCoin = new Map<string, number>();
+  const bookByCoin = new Map<string, OrderBook>();
 
   await Promise.all([
+    // One L2 ladder per coin. This is what turns "the model disagrees" into
+    // "and here is what acting on it costs" — see `bookLiquidity`.
+    ...[...coinsNeeded].map(async (coin) => {
+      try {
+        bookByCoin.set(coin, await getPerpBook(coin));
+      } catch {
+        // Depth is supplementary; the claim still prices without it.
+      }
+    }),
     // Realized funding: one week of prints, averaged. Far steadier than the
     // single next-hour rate, which is noisy enough that pricing a month-out
     // forward off it would be indefensible.
@@ -613,6 +784,7 @@ export async function buildDesk(
       barMinutes: INTERVAL_MINUTES[interval],
       fundingHourly: fundingByCoin.get(c.claim.coin) ?? perp.fundingHourly,
       funding: funding.get(c.claim.coin) ?? null,
+      book: bookByCoin.get(c.claim.coin) ?? null,
       endDate: c.endDate,
       now,
     });
