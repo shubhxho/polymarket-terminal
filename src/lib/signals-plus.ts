@@ -64,6 +64,13 @@ export interface ScanEdgeOptions {
    */
   minLiquidity?: number;
   /**
+   * Collapse to the single best signal per event. A deep, wide, fast-moving
+   * market legitimately trips ARB, MOMENTUM, LIQUIDITY and RESOLUTION at once,
+   * and four cards for one market crowds out four different markets. Off by
+   * default so the composition read stays whole.
+   */
+  onePerEvent?: boolean;
+  /**
    * Restrict output to these kinds. Applied BEFORE the limit, which is the
    * whole point: filtering the already-truncated list shows only the signals
    * of that kind which happened to survive a global top-N cut, not the best
@@ -78,7 +85,7 @@ export interface ScanEdgeOptions {
   limit?: number;
 }
 
-const DEFAULTS: Required<Omit<ScanEdgeOptions, "kinds">> = {
+const DEFAULTS: Required<Omit<ScanEdgeOptions, "kinds" | "onePerEvent">> = {
   arbMinBps: 40,
   momentumMinPts: 4,
   liqMinUsd: 25_000,
@@ -288,6 +295,15 @@ export function scanEdges(events: GammaEvent[], opts: ScanEdgeOptions = {}): Edg
     }
   }
 
-  const ranked = signals.toSorted((a, b) => b.score - a.score);
+  let ranked = signals.toSorted((a, b) => b.score - a.score);
+  if (opts.onePerEvent) {
+    // Sorted descending, so the first sighting of a slug is its best signal.
+    const seen = new Set<string>();
+    ranked = ranked.filter((sig) => {
+      if (seen.has(sig.slug)) return false;
+      seen.add(sig.slug);
+      return true;
+    });
+  }
   return Number.isFinite(limit) ? ranked.slice(0, limit) : ranked;
 }

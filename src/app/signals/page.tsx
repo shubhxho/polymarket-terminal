@@ -175,13 +175,13 @@ async function ScanResults({ tag, kind, sort }: { tag: string; kind: string; sor
     // signals of that kind which survived a global cut — so a kind with many
     // moderate signals would look empty.
     signals = scanEdges(events, { limit: SHOW_LIMIT });
-    shown =
-      kind === "all"
-        ? signals
-        : scanEdges(events, {
-            kinds: [kind.toUpperCase() as EdgeKind],
-            limit: SHOW_LIMIT,
-          });
+    // The displayed list is deduped to one card per market; the composition
+    // bar above still describes every signal on the board.
+    shown = scanEdges(events, {
+      ...(kind === "all" ? {} : { kinds: [kind.toUpperCase() as EdgeKind] }),
+      onePerEvent: true,
+      limit: SHOW_LIMIT,
+    });
   } catch {
     return (
       <div className="border border-red/40 bg-panel p-5 panel-lit">

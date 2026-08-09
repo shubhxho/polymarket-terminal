@@ -30,6 +30,26 @@ test.describe("strike parsing", () => {
     expect(parseStrike("SOL above $250.50 on Friday")).toBe(250.5);
   });
 
+  test("a date's comma is not thousands grouping", () => {
+    // REGRESSION: "January 31, 2026" was read as the grouped number "31," and
+    // returned 31 — a $31 Bitcoin strike, which prices to ~100% and prints a
+    // gigantic fabricated edge. Grouping must be `,ddd` with no space.
+    expect(parseStrike("Will Bitcoin close above its high on January 31, 2026?")).toBeNull();
+    expect(parseStrike("Resolves on March 5, 2027")).toBeNull();
+    // A genuinely grouped number still parses.
+    expect(parseStrike("Ethereum above 3,000 on Dec 1, 2025")).toBe(3_000);
+    expect(parseStrike("Bitcoin above $120,000 on January 31, 2026")).toBe(120_000);
+    expect(parseStrike("Above 1,250,000 total")).toBe(1_250_000);
+  });
+
+  test("a two-sided range is refused rather than halved", () => {
+    // A corridor is not a threshold; taking its first number would price a
+    // one-sided claim the market never offered.
+    expect(parseStrike("Will Bitcoin be between $100,000 and $120,000?")).toBeNull();
+    expect(parseStrike("Bitcoin closes between $90k and $110k on Friday")).toBeNull();
+    expect(parseClaim("Bitcoin closes between $90k and $110k on Friday")).toBeNull();
+  });
+
   test("does not mistake a bare year or day for a strike", () => {
     // "2025" has no $, no magnitude suffix and no comma grouping.
     expect(parseStrike("Will Bitcoin go up in 2025?")).toBeNull();
@@ -334,6 +354,14 @@ test.describe("priceClaim", () => {
     expect(claim?.style).toBe("TOUCH");
     expect(claim?.direction).toBe("UP");
     expect(quoteWith({ claim: claim ?? undefined })).toBeNull();
+  });
+
+  test("a strike orders of magnitude from spot is refused", () => {
+    // Defence in depth behind the parser: even if a bad strike gets through,
+    // it must not reach the model, where it would price to a hard 0 or 1.
+    const absurd = parseClaim("Bitcoin above $31 on January 31?");
+    expect(absurd?.strike).toBe(31);
+    expect(quoteWith({ claim: absurd ?? undefined })).toBeNull();
   });
 
   test("a flat tape with no volatility is refused", () => {

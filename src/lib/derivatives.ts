@@ -141,26 +141,49 @@ const DOWN_WORDS =
   /\b(below|under|less than|dip|dips|drop|drops|fall|falls|down to|crash|crashes)\b/i;
 
 /**
- * Pull a dollar threshold out of a title. Handles `$120,000`, `$120k`, `$1.2M`
- * and bare `120K`. Returns the FIRST plausible strike — Polymarket phrases the
- * threshold before any secondary numbers (dates, counts).
+ * A number that could be a price threshold.
+ *
+ * Two accepted shapes, and the distinction is load-bearing:
+ *   - properly comma-grouped: `120,000` / `3,000` — groups of exactly three.
+ *   - plain digits carrying a `$` or a k/m/b magnitude: `$250.50`, `150k`.
+ *
+ * A bare integer is NEVER a strike. That is what keeps years and day-of-month
+ * out. The grouping alternative demands `,\d{3}` with no space, which is what
+ * separates a real `3,000` from the `31, 2026` inside a date — the earlier
+ * "contains a comma" test accepted the latter and returned 31 as a Bitcoin
+ * strike, producing a claim that prices to ~100% and a fabricated edge.
+ */
+const STRIKE_RE = /(\$\s?)?(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s?([kmb])?\b/gi;
+
+/** Properly grouped thousands, e.g. `1,234,567`. */
+const GROUPED_RE = /^\d{1,3}(?:,\d{3})+(?:\.\d+)?$/;
+
+/**
+ * Two-sided phrasing. "Between $100k and $120k" is a corridor, not a threshold;
+ * taking its first number would price a one-sided claim the market never made.
+ */
+const RANGE_RE = /\b(between|from)\b[^?]*\b(and|to)\b|\b\d[\d,.]*\s*[-–—]\s*\$?\d/i;
+
+/**
+ * Pull a price threshold out of a title, or null when there isn't exactly one.
+ *
+ * Returns the FIRST qualifying number: Polymarket phrases the threshold before
+ * any secondary figures.
  */
 export function parseStrike(text: string): number | null {
-  const re = /\$?\s?([0-9][0-9,]*(?:\.[0-9]+)?)\s?([kmb])?\b/gi;
-  for (const m of text.matchAll(re)) {
-    const rawDigits = m[1].replace(/,/g, "");
-    let value = Number.parseFloat(rawDigits);
-    if (!Number.isFinite(value)) continue;
-    const suffix = m[2]?.toLowerCase();
+  if (RANGE_RE.test(text)) return null;
+  for (const m of text.matchAll(STRIKE_RE)) {
+    const digits = m[2];
+    const suffix = m[3]?.toLowerCase();
+    const hadDollar = Boolean(m[1]);
+    const grouped = GROUPED_RE.test(digits);
+    if (!hadDollar && !suffix && !grouped) continue;
+
+    let value = Number.parseFloat(digits.replace(/,/g, ""));
+    if (!Number.isFinite(value) || value <= 0) continue;
     if (suffix === "k") value *= 1e3;
     else if (suffix === "m") value *= 1e6;
     else if (suffix === "b") value *= 1e9;
-    // A year ("2025") or a day-of-month is not a strike. Require either an
-    // explicit $ / magnitude suffix, or a comma-grouped number.
-    const hadDollar = m[0].includes("$");
-    const hadGrouping = m[1].includes(",");
-    if (!hadDollar && !suffix && !hadGrouping) continue;
-    if (value <= 0) continue;
     return value;
   }
   return null;
@@ -286,6 +309,13 @@ export interface DerivativeQuote {
   /** Terminal digital greeks. Null for touch claims (no closed form). */
   greeks: DigitalQuote | null;
 }
+
+/**
+ * How far from spot a strike may sit before we treat it as a parsing failure.
+ * Generous — genuine long-dated crypto claims do reach several multiples — but
+ * decisive about the orders of magnitude that only a bad parse produces.
+ */
+const STRIKE_SANITY_MULTIPLE = 50;
 
 /** Quarter-Kelly: ~94% of the growth at ~44% of the drawdown. */
 export const KELLY_FRACTION = 0.25;
@@ -428,6 +458,17 @@ export function priceClaim(args: {
 
   const spot = perp.oraclePx;
   if (!(spot > 0)) return null;
+
+  // Last line of defence against a mis-parsed strike. A real crypto claim sits
+  // within a couple of multiples of spot; a strike 50x away is a parsing
+  // artifact (a year, a day-of-month, a volume figure), and it would price to a
+  // hard 0 or 1 and print an enormous fake edge rather than looking wrong.
+  if (
+    claim.strike > spot * STRIKE_SANITY_MULTIPLE ||
+    claim.strike < spot / STRIKE_SANITY_MULTIPLE
+  ) {
+    return null;
+  }
 
   const expiryMs = endDate ? new Date(endDate).getTime() : Number.NaN;
   if (!Number.isFinite(expiryMs)) return null;
