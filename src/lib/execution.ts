@@ -28,12 +28,12 @@ export interface OrderBook {
 
 /** Return asks sorted best-first (lowest price) — the order a buyer walks. */
 export function asksAscending(book: OrderBook): BookLevel[] {
-  return [...book.asks].sort((a, b) => a.price - b.price);
+  return book.asks.toSorted((a, b) => a.price - b.price);
 }
 
 /** Return bids sorted best-first (highest price) — the order a seller walks. */
 export function bidsDescending(book: OrderBook): BookLevel[] {
-  return [...book.bids].sort((a, b) => b.price - a.price);
+  return book.bids.toSorted((a, b) => b.price - a.price);
 }
 
 export interface Fill {
@@ -58,12 +58,7 @@ const EMPTY_FILL: Fill = {
   filled: false,
 };
 
-function finalize(
-  shares: number,
-  spent: number,
-  touch: number,
-  filled: boolean,
-): Fill {
+function finalize(shares: number, spent: number, touch: number, filled: boolean): Fill {
   if (shares <= 0) return { ...EMPTY_FILL, touch };
   const avgPrice = spent / shares;
   const slippageBps = touch > 0 ? ((avgPrice - touch) / touch) * 10000 : 0;
@@ -141,10 +136,7 @@ export interface DirectionalResult {
   upsidePct: number; // return if it resolves YES
 }
 
-export function simulateDirectional(
-  book: OrderBook,
-  budget: number,
-): DirectionalResult {
+export function simulateDirectional(book: OrderBook, budget: number): DirectionalResult {
   const fill = buyDollars(book, budget);
   const upsidePct = fill.avgPrice > 0 ? (1 / fill.avgPrice - 1) * 100 : 0;
   return { kind: "DIRECTIONAL", fill, budget, upsidePct };
@@ -175,24 +167,38 @@ export interface ArbResult {
 /**
  * Buy-all-outcomes basket. Targets `budget / topOfBookBasketCost` baskets, then
  * walks each leg for real to expose slippage and depth walls.
+ *
+ * THE SIZING SUBTLETY: legs run dry at different depths, so a first pass fills
+ * unequal share counts. Only `min(shares)` of those are actually a basket — the
+ * excess on the deeper legs is a NAKED DIRECTIONAL position, not arbitrage.
+ * Costing the guarantee against all of it (including the naked overhang) prices
+ * a trade nobody would place. So we discover the achievable basket count, then
+ * re-walk every leg for exactly that many shares. `net` and `realizedPct` then
+ * describe a real, executable, fully-hedged basket.
  */
 export function simulateArbBasket(
   legs: { label: string; book: OrderBook }[],
   budget: number,
 ): ArbResult | null {
+  if (legs.length === 0) return null;
   const touches = legs.map((l) => asksAscending(l.book)[0]?.price ?? 0);
   const basketCost = touches.reduce((s, p) => s + p, 0);
-  if (basketCost <= 0 || legs.length === 0) return null;
+  if (basketCost <= 0) return null;
 
   const targetBaskets = Math.max(budget / basketCost, 0);
-  const fills = legs.map((l) => buyShares(l.book, targetBaskets));
+  const probe = legs.map((l) => buyShares(l.book, targetBaskets));
 
-  const baskets = Math.min(...fills.map((f) => f.shares));
+  // The guarantee is set by the thinnest leg.
+  const baskets = Math.min(...probe.map((f) => f.shares));
+  // Re-walk at the achievable size so cost covers only hedged shares.
+  const fills = baskets > 0 ? legs.map((l) => buyShares(l.book, baskets)) : probe;
+
   const cost = fills.reduce((s, f) => s + f.spent, 0);
   const payout = baskets * 1;
   const net = payout - cost;
   const realizedPct = cost > 0 ? (net / cost) * 100 : 0;
-  const missingLegs = fills.filter((f) => !f.filled).length;
+  // A leg is "missing" if it couldn't reach the size the budget asked for.
+  const missingLegs = probe.filter((f) => !f.filled).length;
 
   return {
     kind: "ARB",
@@ -237,14 +243,20 @@ export function simulateSellBasket(
 ): SellArbResult | null {
   if (legs.length === 0) return null;
   const targetSets = Math.max(budget, 0);
-  const fills = legs.map((l) => sellShares(l.book, targetSets));
+  const probe = legs.map((l) => sellShares(l.book, targetSets));
 
-  const sets = Math.min(...fills.map((f) => f.shares));
+  // Same truncation as the buy side, and here it matters MORE: counting
+  // proceeds from shares beyond `sets` while charging liability only on `sets`
+  // books revenue from an unhedged naked short as if it were arbitrage, which
+  // overstates net. Re-walk every leg at the achievable set count.
+  const sets = Math.min(...probe.map((f) => f.shares));
+  const fills = sets > 0 ? legs.map((l) => sellShares(l.book, sets)) : probe;
+
   const proceeds = fills.reduce((s, f) => s + f.spent, 0);
   const liability = sets * 1;
   const net = proceeds - liability;
   const realizedPct = liability > 0 ? (net / liability) * 100 : 0;
-  const missingLegs = fills.filter((f) => !f.filled).length;
+  const missingLegs = probe.filter((f) => !f.filled).length;
 
   return {
     kind: "SELL_ARB",

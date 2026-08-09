@@ -1,0 +1,634 @@
+import {
+  averageFunding,
+  type CandleInterval,
+  type FundingComparison,
+  getCandles,
+  getFundingComparison,
+  getFundingHistory,
+  getPerpContexts,
+  INTERVAL_MINUTES,
+  indexPerps,
+  intervalForHorizon,
+  type PerpContext,
+} from "./hyperliquid";
+import { eventOutcomes, type GammaEvent, type Outcome } from "./polymarket";
+import {
+  basisBps,
+  type Candle,
+  carryDrift,
+  type DigitalQuote,
+  digitalCall,
+  digitalProbabilityExtremum,
+  digitalPut,
+  edgeZ,
+  expectedValue,
+  forwardFromFunding,
+  fundingApr,
+  impliedVolFromDigitalCall,
+  impliedVolFromTouch,
+  kellyBinary,
+  msToYears,
+  pickImpliedVol,
+  priceDispersionBps,
+  probabilityBand,
+  touchProbability,
+  type VolSuite,
+  varianceRatio,
+  volSuite,
+} from "./quant";
+
+/**
+ * The bridge: Polymarket claim ⇄ Hyperliquid continuous market.
+ *
+ * `quant.ts` knows how to price a digital and `hyperliquid.ts` knows how to
+ * fetch a forward and a vol — but neither knows what a Polymarket market MEANS.
+ * That translation is this file's whole job, and it is the part that is easy to
+ * get quietly wrong:
+ *
+ *   1. WHICH UNDERLYING. "Bitcoin" / "BTC" / "₿" all mean the HL coin `BTC`.
+ *   2. WHICH STRIKE. "$120,000", "$120k", "120K" are the same number.
+ *   3. WHICH PAYOFF. This is the one that matters. "BTC ABOVE $120k ON Dec 31"
+ *      is a TERMINAL digital — only the settlement price counts. "BTC HITS
+ *      $120k BY Dec 31" is a ONE-TOUCH — any path that crosses pays. Pricing a
+ *      touch market with a terminal digital under-prices it by roughly half
+ *      near the barrier. We parse the phrasing and pick the right model.
+ *   4. WHICH DIRECTION. above/hits ⇒ call/up-touch; below/dips ⇒ put/down-touch.
+ *
+ * A market we cannot confidently classify returns `null` rather than a guess —
+ * a wrong model is worse than no model, and the desk prints "UNPARSED" instead.
+ *
+ * Not financial advice. Descriptive models of public market data.
+ */
+
+/* ────────────────────────────── parsing ────────────────────────────── */
+
+/**
+ * Aliases → Hyperliquid coin symbol. Longest-match-first when scanning a title,
+ * so "Bitcoin Cash" can never be swallowed by "Bitcoin" (see `matchCoin`).
+ */
+const COIN_ALIASES: Record<string, string> = {
+  bitcoin: "BTC",
+  btc: "BTC",
+  ethereum: "ETH",
+  ether: "ETH",
+  eth: "ETH",
+  solana: "SOL",
+  sol: "SOL",
+  ripple: "XRP",
+  xrp: "XRP",
+  dogecoin: "DOGE",
+  doge: "DOGE",
+  cardano: "ADA",
+  ada: "ADA",
+  avalanche: "AVAX",
+  avax: "AVAX",
+  chainlink: "LINK",
+  link: "LINK",
+  litecoin: "LTC",
+  ltc: "LTC",
+  polkadot: "DOT",
+  dot: "DOT",
+  sui: "SUI",
+  aptos: "APT",
+  apt: "APT",
+  arbitrum: "ARB",
+  arb: "ARB",
+  optimism: "OP",
+  hyperliquid: "HYPE",
+  hype: "HYPE",
+  toncoin: "TON",
+  ton: "TON",
+  tron: "TRX",
+  trx: "TRX",
+  shiba: "kSHIB",
+  pepe: "kPEPE",
+  bonk: "kBONK",
+};
+
+/** Aliases we must never match as a substring of a longer, different coin. */
+const COIN_BLOCKERS = ["bitcoin cash", "bch", "ethereum classic", "etc"];
+
+/** Whether the claim settles on the terminal price or on ever touching. */
+export type PayoffStyle = "TERMINAL" | "TOUCH";
+export type Direction = "UP" | "DOWN";
+
+export interface ParsedClaim {
+  coin: string;
+  strike: number;
+  style: PayoffStyle;
+  direction: Direction;
+  /** The phrase that produced the classification — shown so it can be audited. */
+  evidence: string;
+}
+
+/**
+ * Words that make a claim path-dependent. "Hits", "reaches", "touches" and
+ * "by <date>" all pay on ANY crossing; "above ... on <date>" does not.
+ *
+ * The downside forms matter as much as the upside ones: "will BTC DIP TO $80k"
+ * is every bit as path-dependent as "will BTC HIT $150k", and leaving them out
+ * meant those markets fell through to the terminal model — or, because they
+ * carry no terminal keyword either, were dropped entirely.
+ */
+const TOUCH_WORDS =
+  /\b(hit|hits|reach|reaches|reached|touch|touches|trade at|trades at|cross|crosses|get to|gets to|dips? to|drops? to|falls? to|sinks? to|crash(?:es)? to|return to|returns to)\b/i;
+const TERMINAL_WORDS =
+  /\b(above|below|over|under|greater than|less than|at or above|at or below|close|closes|end|ends)\b/i;
+const DOWN_WORDS =
+  /\b(below|under|less than|dip|dips|drop|drops|fall|falls|down to|crash|crashes)\b/i;
+
+/**
+ * Pull a dollar threshold out of a title. Handles `$120,000`, `$120k`, `$1.2M`
+ * and bare `120K`. Returns the FIRST plausible strike — Polymarket phrases the
+ * threshold before any secondary numbers (dates, counts).
+ */
+export function parseStrike(text: string): number | null {
+  const re = /\$?\s?([0-9][0-9,]*(?:\.[0-9]+)?)\s?([kmb])?\b/gi;
+  for (const m of text.matchAll(re)) {
+    const rawDigits = m[1].replace(/,/g, "");
+    let value = Number.parseFloat(rawDigits);
+    if (!Number.isFinite(value)) continue;
+    const suffix = m[2]?.toLowerCase();
+    if (suffix === "k") value *= 1e3;
+    else if (suffix === "m") value *= 1e6;
+    else if (suffix === "b") value *= 1e9;
+    // A year ("2025") or a day-of-month is not a strike. Require either an
+    // explicit $ / magnitude suffix, or a comma-grouped number.
+    const hadDollar = m[0].includes("$");
+    const hadGrouping = m[1].includes(",");
+    if (!hadDollar && !suffix && !hadGrouping) continue;
+    if (value <= 0) continue;
+    return value;
+  }
+  return null;
+}
+
+/**
+ * Aliases pre-sorted longest-first with their word-boundary matchers already
+ * compiled. `matchCoin` runs once per event on every desk build, so sorting the
+ * key list and constructing ~30 `RegExp` objects inside it meant thousands of
+ * throwaway allocations per request. Both are constant — hoist them.
+ */
+const COIN_MATCHERS: { pattern: RegExp; coin: string }[] = Object.keys(COIN_ALIASES)
+  .toSorted((a, b) => b.length - a.length)
+  .map((alias) => ({
+    // Word-boundary match so "dot" doesn't fire inside "dotted".
+    pattern: new RegExp(`\\b${alias}\\b`, "i"),
+    coin: COIN_ALIASES[alias],
+  }));
+
+/** Find the coin mentioned in a title, longest alias first. */
+export function matchCoin(text: string): string | null {
+  const lower = text.toLowerCase();
+  for (const blocked of COIN_BLOCKERS) {
+    if (lower.includes(blocked)) return null;
+  }
+  for (const { pattern, coin } of COIN_MATCHERS) {
+    if (pattern.test(lower)) {
+      return coin;
+    }
+  }
+  return null;
+}
+
+/**
+ * Classify a Polymarket title into a priceable claim, or null when the phrasing
+ * is ambiguous. Deliberately conservative: a market we half-understand is
+ * excluded from the desk rather than priced with the wrong payoff.
+ */
+export function parseClaim(title: string): ParsedClaim | null {
+  const coin = matchCoin(title);
+  if (!coin) return null;
+  const strike = parseStrike(title);
+  if (strike == null) return null;
+
+  const touchMatch = title.match(TOUCH_WORDS);
+  const terminalMatch = title.match(TERMINAL_WORDS);
+  // "Hits" wins over "above" — "will BTC hit $120k" is path-dependent even
+  // though a stray "above" may appear elsewhere in the sentence.
+  const style: PayoffStyle = touchMatch ? "TOUCH" : terminalMatch ? "TERMINAL" : "TERMINAL";
+  if (!touchMatch && !terminalMatch) return null; // no comparison word at all
+
+  const downMatch = title.match(DOWN_WORDS);
+  const direction: Direction = downMatch ? "DOWN" : "UP";
+
+  return {
+    coin,
+    strike,
+    style,
+    direction,
+    evidence: (touchMatch?.[0] ?? terminalMatch?.[0] ?? "").toUpperCase(),
+  };
+}
+
+/* ──────────────────────────── pricing ──────────────────────────── */
+
+export interface DerivativeQuote {
+  claim: ParsedClaim;
+  /** Polymarket slug + title this quote belongs to. */
+  slug: string;
+  title: string;
+  /** The Polymarket outcome we priced against (the YES side of the claim). */
+  outcomeLabel: string;
+  /** Market's implied probability, 0..1. */
+  marketProbability: number;
+  /** Model's probability under GBM with HL's forward and vol. */
+  modelProbability: number;
+  /** model − market, in probability points (0.06 = 6pp of edge). */
+  edge: number;
+  /** Edge as a multiple of the model's own uncertainty. |z| < 1 is noise. */
+  z: number;
+  /** Model uncertainty band from the vol-estimator spread. */
+  band: { lo: number; hi: number; width: number };
+  /** Vol the market price implies, inverted through the same model. */
+  impliedVol: number | null;
+  /** True when no σ reproduces the market price — GBM can't express it. */
+  unattainable: boolean;
+  /** Realized-vol suite from HL candles. */
+  vol: VolSuite;
+  /** Signed Kelly fraction at the desk's quarter-Kelly default. */
+  kelly: number;
+  /** EV per $1 staked buying the YES side at the market price. */
+  ev: number;
+  /** HL validator-median oracle price — the settlement reference. */
+  spot: number;
+  forward: number;
+  /** Continuously-compounded carry implied by the forward. */
+  drift: number;
+  /** Time-averaged realized hourly funding over the last week. */
+  fundingHourly: number;
+  fundingAprPct: number;
+  /** HL funding vs the mean of Binance/Bybit, in bps/hour. Null if unlisted. */
+  crossVenueBpsPerHour: number | null;
+  hoursToExpiry: number;
+  years: number;
+  /** Lo–MacKinlay VR(4). ≈1 random walk, >1 trending, <1 mean-reverting. */
+  varianceRatio: number;
+  /** Cross-venue price dispersion (oracle vs mark vs mid), in bps. */
+  dispersionBps: number;
+  /** Perp mark vs oracle, in bps. Positive = perp rich to index. */
+  basisBps: number;
+  /** Cost of crossing HL's own book at $20k notional, in bps. */
+  impactSpreadBps: number | null;
+  /** HL open interest in base units, and 24h notional turnover in USD. */
+  openInterest: number;
+  perpDayVolume: number;
+  /** Perp 24h return, decimal. The underlying's own momentum. */
+  perpChange24h: number;
+  /** Terminal digital greeks. Null for touch claims (no closed form). */
+  greeks: DigitalQuote | null;
+}
+
+/** Quarter-Kelly: ~94% of the growth at ~44% of the drawdown. */
+export const KELLY_FRACTION = 0.25;
+
+/**
+ * Price one parsed claim against a live Hyperliquid context + candle history.
+ *
+ * Pure given its inputs — all I/O happens in `buildDesk` — so this is the
+ * function to unit-test and the one to read when auditing a printed number.
+ */
+export function priceClaim(args: {
+  claim: ParsedClaim;
+  slug: string;
+  title: string;
+  outcomeLabel: string;
+  marketProbability: number;
+  perp: PerpContext;
+  candles: Candle[];
+  barMinutes: number;
+  fundingHourly: number;
+  /** Cross-venue funding for this coin, when HL publishes peers for it. */
+  funding?: FundingComparison | null;
+  endDate: string | undefined;
+  now?: number;
+}): DerivativeQuote | null {
+  const {
+    claim,
+    slug,
+    title,
+    outcomeLabel,
+    marketProbability,
+    perp,
+    candles,
+    barMinutes,
+    fundingHourly,
+    endDate,
+  } = args;
+  const now = args.now ?? Date.now();
+
+  const spot = perp.oraclePx;
+  if (!(spot > 0)) return null;
+
+  const expiryMs = endDate ? new Date(endDate).getTime() : Number.NaN;
+  if (!Number.isFinite(expiryMs)) return null;
+  const hoursToExpiry = (expiryMs - now) / 3_600_000;
+  if (!(hoursToExpiry > 0)) return null;
+  const years = msToYears(expiryMs - now);
+
+  const vol = volSuite(candles, barMinutes);
+  const sigma = vol.blended;
+  if (!(sigma > 0)) return null;
+
+  const forward = forwardFromFunding(spot, fundingHourly, hoursToExpiry);
+  const drift = carryDrift(spot, forward, years);
+
+  let modelProbability: number;
+  let greeks: DigitalQuote | null = null;
+  let impliedVol: number | null = null;
+  let unattainable = false;
+  let vega = 0;
+
+  if (claim.style === "TOUCH") {
+    modelProbability = touchProbability(spot, claim.strike, years, sigma, drift);
+    impliedVol = impliedVolFromTouch(marketProbability, spot, claim.strike, years, drift);
+    unattainable = impliedVol == null;
+    // No closed-form vega for a one-touch: bump σ by 1% and difference it.
+    const bump = Math.max(sigma * 0.01, 1e-4);
+    vega =
+      (touchProbability(spot, claim.strike, years, sigma + bump, drift) - modelProbability) / bump;
+  } else {
+    const inputs = {
+      spot,
+      strike: claim.strike,
+      years,
+      sigma,
+      forward,
+    };
+    const quote = claim.direction === "UP" ? digitalCall(inputs) : digitalPut(inputs);
+    greeks = quote;
+    modelProbability = quote.probability;
+    vega = quote.vega;
+
+    // Invert the market price through the SAME payoff we priced with. The put
+    // is the call's complement, so invert 1 − p for a down claim.
+    const callProbability = claim.direction === "UP" ? marketProbability : 1 - marketProbability;
+    const roots = impliedVolFromDigitalCall(callProbability, forward, claim.strike, years);
+    impliedVol = pickImpliedVol(roots, sigma);
+    if (roots == null) {
+      // The extremum is a CEILING: out of the money the price rises to
+      // Φ(−√(−2m)) at σ* and falls away again, so a quote is unreachable when
+      // it sits ABOVE that cap, never below. Comparing the wrong way round
+      // labels ordinary cheap quotes "unattainable" and silently hides the
+      // genuinely inexpressible ones.
+      const cap = digitalProbabilityExtremum(forward, claim.strike, years);
+      unattainable = cap == null || callProbability > cap.probability;
+    }
+  }
+
+  if (claim.style === "TOUCH" && claim.direction === "DOWN") {
+    // `touchProbability` reads the barrier's side off spot, so a down-touch is
+    // already correct — but a barrier ABOVE spot on a DOWN claim is nonsense.
+    if (claim.strike > spot) return null;
+  }
+  if (claim.style === "TOUCH" && claim.direction === "UP" && claim.strike < spot) {
+    return null;
+  }
+
+  const band = probabilityBand(modelProbability, vega, vol.spread);
+  const edge = modelProbability - marketProbability;
+  const z = edgeZ(edge, band.width / 2);
+  const kelly = kellyBinary(modelProbability, marketProbability, KELLY_FRACTION);
+  const ev = expectedValue(modelProbability, marketProbability);
+
+  return {
+    claim,
+    slug,
+    title,
+    outcomeLabel,
+    marketProbability,
+    modelProbability,
+    edge,
+    z,
+    band,
+    impliedVol,
+    unattainable,
+    vol,
+    kelly,
+    ev,
+    spot,
+    forward,
+    drift,
+    fundingHourly,
+    fundingAprPct: fundingApr(fundingHourly) * 100,
+    crossVenueBpsPerHour: args.funding?.dislocationBpsPerHour ?? null,
+    hoursToExpiry,
+    years,
+    varianceRatio: varianceRatio(candles, 4),
+    dispersionBps: priceDispersionBps([perp.oraclePx, perp.markPx, perp.midPx]),
+    basisBps: basisBps(perp.markPx, perp.oraclePx),
+    impactSpreadBps:
+      perp.impactBid > 0 && perp.impactAsk > 0
+        ? ((perp.impactAsk - perp.impactBid) / ((perp.impactAsk + perp.impactBid) / 2)) * 10_000
+        : null,
+    openInterest: perp.openInterest,
+    perpDayVolume: perp.dayNotionalVolume,
+    perpChange24h: perp.prevDayPx > 0 ? perp.markPx / perp.prevDayPx - 1 : 0,
+    greeks,
+  };
+}
+
+/* ──────────────────────────── the desk ──────────────────────────── */
+
+/** How many bars of history each horizon gets. More bars, steadier σ. */
+const LOOKBACK_BARS = 240;
+
+export interface Desk {
+  rows: DerivativeQuote[];
+  /** Markets that mentioned a coin but could not be classified. */
+  unparsed: { slug: string; title: string; reason: string }[];
+  /** Perp contexts for the coins we actually priced — the venue strip. */
+  perps: PerpContext[];
+  /** Cross-venue funding for those coins. */
+  funding: Map<string, FundingComparison>;
+}
+
+/**
+ * Find the YES outcome of a claim within an event.
+ *
+ * A binary crypto market expands to Yes/No; a multi-market event ("What price
+ * will BTC hit in July?") expands to one row per strike bucket, and each row's
+ * own title carries its own strike. We handle both by preferring an outcome
+ * literally labelled "Yes" and falling back to the leading outcome.
+ */
+function yesOutcome(outcomes: Outcome[]): Outcome | null {
+  const yes = outcomes.find((o) => /^yes$/i.test(o.label.trim()));
+  return yes ?? outcomes[0] ?? null;
+}
+
+/**
+ * Build the whole derivatives desk for a set of Polymarket events.
+ *
+ * Fetches are deduped by coin — a board with twelve BTC markets pulls BTC's
+ * candles and funding once, not twelve times. Any single coin failing to load
+ * drops only its own rows.
+ */
+export async function buildDesk(
+  events: GammaEvent[],
+  opts: { now?: number; maxRows?: number } = {},
+): Promise<Desk> {
+  const now = opts.now ?? Date.now();
+  const maxRows = opts.maxRows ?? 40;
+
+  const unparsed: Desk["unparsed"] = [];
+  const candidates: {
+    claim: ParsedClaim;
+    slug: string;
+    title: string;
+    outcome: Outcome;
+    endDate: string | undefined;
+  }[] = [];
+
+  for (const event of events) {
+    if (!event.markets || event.markets.length === 0) continue;
+    if (!matchCoin(event.title)) continue; // not a crypto market at all
+
+    const outcomes = eventOutcomes(event);
+    if (outcomes.length === 0) continue;
+
+    // Multi-market events carry one strike per market row; single binary
+    // markets carry it in the event title.
+    const openMarkets = event.markets.filter((m) => m.active && !m.closed);
+    if (openMarkets.length > 1) {
+      for (const m of openMarkets) {
+        const rowTitle = `${event.title} — ${m.groupItemTitle || m.question}`;
+        const claim =
+          parseClaim(m.question) ?? parseClaim(`${event.title} ${m.groupItemTitle ?? ""}`);
+        const outcome = outcomes.find((o) => o.marketId === m.id);
+        if (!claim || !outcome) {
+          unparsed.push({
+            slug: event.slug,
+            title: rowTitle,
+            reason: claim ? "NO OUTCOME" : "UNCLASSIFIED PHRASING",
+          });
+          continue;
+        }
+        candidates.push({
+          claim,
+          slug: event.slug,
+          title: rowTitle,
+          outcome,
+          endDate: m.endDate ?? event.endDate,
+        });
+      }
+    } else {
+      const claim = parseClaim(event.title);
+      const outcome = yesOutcome(outcomes);
+      if (!claim || !outcome) {
+        unparsed.push({
+          slug: event.slug,
+          title: event.title,
+          reason: claim ? "NO OUTCOME" : "UNCLASSIFIED PHRASING",
+        });
+        continue;
+      }
+      candidates.push({
+        claim,
+        slug: event.slug,
+        title: event.title,
+        outcome,
+        endDate: openMarkets[0]?.endDate ?? event.endDate,
+      });
+    }
+  }
+
+  const empty: Desk = { rows: [], unparsed, perps: [], funding: new Map() };
+  if (candidates.length === 0) return empty;
+
+  // The perp universe and the cross-venue funding table are board-wide, so they
+  // are pulled once regardless of how many claims we are pricing.
+  const [perps, funding] = await Promise.all([
+    getPerpContexts().catch(() => null),
+    getFundingComparison().catch(() => new Map<string, FundingComparison>()),
+  ]);
+  if (!perps) return empty;
+  const byCoin = indexPerps(perps);
+
+  /** Horizon in hours, or NaN when the market has no usable end date. */
+  const horizonOf = (endDate: string | undefined): number =>
+    endDate ? (new Date(endDate).getTime() - now) / 3_600_000 : Number.NaN;
+
+  // Candles are keyed by (coin, bar length): a board with twelve BTC markets
+  // that all sit in the same horizon bucket pulls BTC's history exactly once.
+  const wanted = new Map<string, { coin: string; interval: CandleInterval }>();
+  const coinsNeeded = new Set<string>();
+  for (const c of candidates) {
+    if (!byCoin.has(c.claim.coin)) continue;
+    const hours = horizonOf(c.endDate);
+    if (!(hours > 0)) continue;
+    const interval = intervalForHorizon(hours);
+    wanted.set(`${c.claim.coin}|${interval}`, { coin: c.claim.coin, interval });
+    coinsNeeded.add(c.claim.coin);
+  }
+
+  const candlesByKey = new Map<string, Candle[]>();
+  const fundingByCoin = new Map<string, number>();
+
+  await Promise.all([
+    // Realized funding: one week of prints, averaged. Far steadier than the
+    // single next-hour rate, which is noisy enough that pricing a month-out
+    // forward off it would be indefensible.
+    ...[...coinsNeeded].map(async (coin) => {
+      try {
+        fundingByCoin.set(coin, averageFunding(await getFundingHistory(coin, 168, now)));
+      } catch {
+        fundingByCoin.set(coin, byCoin.get(coin)?.fundingHourly ?? 0);
+      }
+    }),
+    ...[...wanted.entries()].map(async ([key, { coin, interval }]) => {
+      try {
+        candlesByKey.set(key, await getCandles(coin, interval, LOOKBACK_BARS, now));
+      } catch {
+        // One coin/interval failing loses only its own rows.
+      }
+    }),
+  ]);
+
+  const rows: DerivativeQuote[] = [];
+  for (const c of candidates) {
+    const perp = byCoin.get(c.claim.coin);
+    if (!perp) {
+      unparsed.push({
+        slug: c.slug,
+        title: c.title,
+        reason: `NO HL PERP FOR ${c.claim.coin}`,
+      });
+      continue;
+    }
+    const hours = horizonOf(c.endDate);
+    if (!(hours > 0)) continue;
+    const interval = intervalForHorizon(hours);
+    const candles = candlesByKey.get(`${c.claim.coin}|${interval}`);
+    // Under ~10 bars every vol estimator is noise, not an estimate.
+    if (!candles || candles.length < 10) continue;
+
+    const quote = priceClaim({
+      claim: c.claim,
+      slug: c.slug,
+      title: c.title,
+      outcomeLabel: c.outcome.label,
+      marketProbability: c.outcome.price,
+      perp,
+      candles,
+      barMinutes: INTERVAL_MINUTES[interval],
+      fundingHourly: fundingByCoin.get(c.claim.coin) ?? perp.fundingHourly,
+      funding: funding.get(c.claim.coin) ?? null,
+      endDate: c.endDate,
+      now,
+    });
+    if (quote) rows.push(quote);
+  }
+
+  // Rank by conviction, not raw edge: |z| is the edge measured in units of the
+  // model's OWN uncertainty, so a 4pp edge the model is sure about outranks a
+  // 9pp edge sitting inside a ±12pp band.
+  const priced = rows.toSorted((a, b) => Math.abs(b.z) - Math.abs(a.z)).slice(0, maxRows);
+  const coins = new Set(priced.map((r) => r.claim.coin));
+
+  return {
+    rows: priced,
+    unparsed: unparsed.slice(0, 12),
+    perps: perps.filter((p) => coins.has(p.coin)),
+    funding,
+  };
+}

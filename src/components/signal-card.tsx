@@ -71,13 +71,7 @@ function styleFor(s: EdgeSignal): KindStyle {
  * One edge-scanner result. Shared by the on-board EDGE RADAR strip and the
  * full-board /signals scanner so their look stays in lockstep.
  */
-export function SignalCard({
-  signal: s,
-  rank,
-}: {
-  signal: EdgeSignal;
-  rank?: number;
-}) {
+export function SignalCard({ signal: s, rank }: { signal: EdgeSignal; rank?: number }) {
   const st = styleFor(s);
 
   // Spread as a rough execution-quality read: tight books are cheaper to trade.
@@ -101,41 +95,26 @@ export function SignalCard({
       <div className="flex items-center justify-between gap-2 text-[10px] tracking-widest">
         <span className="flex items-center gap-1.5">
           {rank != null && (
-            <span className="tabular-nums text-muted/40">
-              {String(rank).padStart(2, "0")}
-            </span>
+            <span className="tabular-nums text-muted/40">{String(rank).padStart(2, "0")}</span>
           )}
-          <span
-            className={`rounded-sm border border-current/30 px-1 py-0.5 ${st.kindColor}`}
-          >
+          <span className={`rounded-sm border border-current/30 px-1 py-0.5 ${st.kindColor}`}>
             {s.kind}
           </span>
           {st.chip && (
-            <span
-              className={`rounded-sm px-1 py-0.5 text-[9px] ${st.chipClass}`}
-            >
-              {st.chip}
-            </span>
+            <span className={`rounded-sm px-1 py-0.5 text-[9px] ${st.chipClass}`}>{st.chip}</span>
           )}
         </span>
         <span className="flex items-center gap-1.5 text-muted/60">
           SCORE
-          <span className="font-bold tabular-nums text-foreground">
-            {Math.round(s.score)}
-          </span>
+          <span className="font-bold tabular-nums text-foreground">{Math.round(s.score)}</span>
         </span>
       </div>
 
-      <p className="truncate text-xs text-foreground group-hover:text-accent">
-        {s.title}
-      </p>
+      <p className="truncate text-xs text-foreground group-hover:text-accent">{s.title}</p>
 
       {/* Score bar */}
       <div className="h-1 w-full overflow-hidden rounded-sm bg-panel-raised ring-1 ring-inset ring-edge">
-        <div
-          className={`h-full ${st.barColor}`}
-          style={{ width: `${Math.min(s.score, 100)}%` }}
-        />
+        <div className={`h-full ${st.barColor}`} style={{ width: `${Math.min(s.score, 100)}%` }} />
       </div>
 
       <div className="flex items-center justify-between gap-2 text-[10px] tabular-nums">
@@ -145,10 +124,7 @@ export function SignalCard({
           </span>
           {/* Inline edge-magnitude bar */}
           <span className="hidden h-1 w-10 overflow-hidden rounded-sm bg-panel-raised sm:inline-block">
-            <span
-              className={`block h-full ${st.barColor}`}
-              style={{ width: `${edgeMag}%` }}
-            />
+            <span className={`block h-full ${st.barColor}`} style={{ width: `${edgeMag}%` }} />
           </span>
         </span>
         <span className={spreadTone}>

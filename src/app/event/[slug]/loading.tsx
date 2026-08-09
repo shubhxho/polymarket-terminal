@@ -33,10 +33,7 @@ export default function Loading() {
         <div className="h-3 w-32 rounded-sm bg-panel-raised" />
         <div className="flex gap-px border border-edge bg-edge">
           {["1D", "1W", "1M", "3M", "MAX"].map((r) => (
-            <span
-              key={r}
-              className="bg-panel px-3 py-1 text-[11px] text-muted/30"
-            >
+            <span key={r} className="bg-panel px-3 py-1 text-[11px] text-muted/30">
               {r}
             </span>
           ))}
@@ -50,9 +47,9 @@ export default function Loading() {
       {/* Order book skeleton */}
       <div className="text-xs tracking-widest text-muted">ORDER BOOK</div>
       <div className="border border-edge bg-panel panel-lit">
-        {Array.from({ length: 4 }).map((_, i) => (
+        {Array.from({ length: 4 }, (_, i) => `book-row-${i}`).map((id) => (
           <div
-            key={i}
+            key={id}
             className="flex items-center justify-between border-b border-edge px-3 py-2.5 last:border-b-0"
           >
             <div className="shimmer h-3 w-36 rounded-sm bg-panel-raised" />

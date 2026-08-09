@@ -54,13 +54,10 @@ export interface Signal {
   legs: SignalLeg[];
 }
 
-function legsOf(
-  outcomes: { tokenId?: string; label: string; price: number }[],
-): SignalLeg[] {
+function legsOf(outcomes: { tokenId?: string; label: string; price: number }[]): SignalLeg[] {
   const legs: SignalLeg[] = [];
   for (const o of outcomes) {
-    if (o.tokenId)
-      legs.push({ tokenId: o.tokenId, label: o.label, price: o.price });
+    if (o.tokenId) legs.push({ tokenId: o.tokenId, label: o.label, price: o.price });
   }
   return legs;
 }
@@ -97,8 +94,7 @@ const DEFAULTS = {
   limit: 12,
 };
 
-const clamp = (x: number, lo: number, hi: number) =>
-  Math.max(lo, Math.min(hi, x));
+const clamp = (x: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, x));
 
 /** Depth-of-book weight: ~$1 → 0, ~$1M → 1. */
 function liquidityWeight(liquidity: number): number {
@@ -142,11 +138,7 @@ function hoursUntil(iso: string | undefined, now: number): number {
   return (t - now) / 3_600_000;
 }
 
-function spreadBpsOf(o: {
-  spread?: number;
-  bestBid?: number;
-  bestAsk?: number;
-}): number | null {
+function spreadBpsOf(o: { spread?: number; bestBid?: number; bestAsk?: number }): number | null {
   if (typeof o.spread === "number" && o.spread > 0) return o.spread * 10000;
   if (typeof o.bestBid === "number" && typeof o.bestAsk === "number") {
     const s = o.bestAsk - o.bestBid;
@@ -155,10 +147,7 @@ function spreadBpsOf(o: {
   return null;
 }
 
-export function scanSignals(
-  events: GammaEvent[],
-  opts: ScanOptions = {},
-): Signal[] {
+export function scanSignals(events: GammaEvent[], opts: ScanOptions = {}): Signal[] {
   const arbMinBps = opts.arbMinBps ?? DEFAULTS.arbMinBps;
   const momentumMinPts = opts.momentumMinPts ?? DEFAULTS.momentumMinPts;
   const minLiquidity = opts.minLiquidity ?? DEFAULTS.minLiquidity;
@@ -191,11 +180,7 @@ export function scanSignals(
       const edgeBps = (1 - sum) * 10000; // >0 underround (buyable), <0 overround
       if (Math.abs(edgeBps) >= arbMinBps) {
         // Depth matters more than turnover for capturing a book edge.
-        const score = clamp(
-          100 * magnitude(edgeBps, 250) * (0.5 + 0.5 * liqW),
-          0,
-          100,
-        );
+        const score = clamp(100 * magnitude(edgeBps, 250) * (0.5 + 0.5 * liqW), 0, 100);
         // Underround: buying every YES for $sum returns $1 → (1/sum − 1) profit.
         // Overround: the book's built-in vig you pay is (sum − 1).
         const ret = edgeBps > 0 ? (1 / sum - 1) * 100 : (sum - 1) * 100;
@@ -220,9 +205,7 @@ export function scanSignals(
 
     // ── MOMENTUM: strongest 24h mover that is still a live, tradeable book ──
     if (wantMom) {
-      const mover = outs.reduce((a, b) =>
-        Math.abs(b.change24h) > Math.abs(a.change24h) ? b : a,
-      );
+      const mover = outs.reduce((a, b) => (Math.abs(b.change24h) > Math.abs(a.change24h) ? b : a));
       const movePts = mover.change24h * 100;
       const moverSpread = spreadBpsOf(mover);
       const inBand = mover.price >= bandLo && mover.price <= bandHi;
@@ -246,18 +229,12 @@ export function scanSignals(
               : Math.abs(movePts) >= wkAbs
                 ? "ACCEL"
                 : "EXTEND";
-        const wkTag =
-          wkAbs < 2 ? "" : ` 1W ${wkPts > 0 ? "+" : ""}${wkPts.toFixed(1)}`;
+        const wkTag = wkAbs < 2 ? "" : ` 1W ${wkPts > 0 ? "+" : ""}${wkPts.toFixed(1)}`;
         const arrow = movePts > 0 ? "▲" : "▼";
         // Wider book ⇒ more of the move is unrealizable slippage.
-        const spreadQuality =
-          moverSpread == null ? 0.75 : clamp(1 - moverSpread / 2000, 0.1, 1);
+        const spreadQuality = moverSpread == null ? 0.75 : clamp(1 - moverSpread / 2000, 0.1, 1);
         const score = clamp(
-          100 *
-            magnitude(movePts, 12) *
-            quality *
-            timeWeight(hours) *
-            spreadQuality,
+          100 * magnitude(movePts, 12) * quality * timeWeight(hours) * spreadQuality,
           0,
           100,
         );
@@ -277,5 +254,5 @@ export function scanSignals(
     }
   }
 
-  return signals.sort((a, b) => b.score - a.score).slice(0, limit);
+  return signals.toSorted((a, b) => b.score - a.score).slice(0, limit);
 }

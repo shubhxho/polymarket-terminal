@@ -1,13 +1,11 @@
 import Link from "next/link";
-import {
-  fmtChange,
-  fmtPct,
-  getTopEvents,
-  leadingOutcome,
-} from "@/lib/polymarket";
+import { fmtChange, fmtPct, type GammaEvent, getTopEvents, leadingOutcome } from "@/lib/polymarket";
+
+/** How many copies of the belt are laid end-to-end for a seamless loop. */
+const BELT_COPIES = 3;
 
 export async function Ticker() {
-  let events;
+  let events: GammaEvent[];
   try {
     events = await getTopEvents(undefined, 20, 0);
   } catch {
@@ -32,8 +30,12 @@ export async function Ticker() {
 
   if (items.length === 0) return null;
 
-  // Duplicate 3× for a seamless infinite scroll
-  const tripled = [...items, ...items, ...items];
+  // Lay the belt end-to-end so the -33.333% keyframe wraps seamlessly. Pairing
+  // each item with its pass index keeps keys unique across the copies without
+  // cloning the item objects.
+  const belt = Array.from({ length: BELT_COPIES }, (_, pass) => pass).flatMap(
+    (pass) => items.map((item) => [`${pass}-${item.slug}`, item] as const),
+  );
 
   return (
     <div className="relative flex items-stretch border-b border-edge bg-panel-raised">
@@ -47,31 +49,26 @@ export async function Ticker() {
       <div
         className="relative flex-1 overflow-hidden"
         style={{
-          maskImage:
-            "linear-gradient(90deg, transparent, #000 3%, #000 97%, transparent)",
-          WebkitMaskImage:
-            "linear-gradient(90deg, transparent, #000 3%, #000 97%, transparent)",
+          maskImage: "linear-gradient(90deg, transparent, #000 3%, #000 97%, transparent)",
+          WebkitMaskImage: "linear-gradient(90deg, transparent, #000 3%, #000 97%, transparent)",
         }}
       >
         <div className="animate-ticker flex min-w-full gap-0 py-1.5">
-          {tripled.map((item, i) => {
+          {belt.map(([key, item]) => {
             const changeColor =
               item.change > 0.001
                 ? "text-accent"
                 : item.change < -0.001
                   ? "text-red"
                   : "text-muted/60";
-            const arrow =
-              item.change > 0.001 ? "▲" : item.change < -0.001 ? "▼" : "·";
+            const arrow = item.change > 0.001 ? "▲" : item.change < -0.001 ? "▼" : "·";
             return (
               <Link
-                key={i}
+                key={key}
                 href={`/event/${item.slug}`}
                 className="group flex shrink-0 items-center gap-2 px-4 text-[11px] hover:bg-panel"
               >
-                <span className="text-muted/30 group-hover:text-accent/60">
-                  ·
-                </span>
+                <span className="text-muted/30 group-hover:text-accent/60">·</span>
                 <span className="max-w-[160px] truncate text-muted/70 group-hover:text-foreground">
                   {item.title}
                 </span>

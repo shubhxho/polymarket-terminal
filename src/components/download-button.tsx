@@ -55,13 +55,7 @@ const EGGS: EggEntry[] = [
 
 type Status = "idle" | "loading" | "done" | "warn" | "error";
 
-export function DownloadButton({
-  tag,
-  query,
-}: {
-  tag?: string;
-  query?: string;
-}) {
+export function DownloadButton({ tag, query }: { tag?: string; query?: string }) {
   const [status, setStatus] = useState<Status>("idle");
   const [label, setLabel] = useState("");
   const [stepAmber, setStepAmber] = useState(false);
@@ -115,8 +109,7 @@ export function DownloadButton({
 
       setStatus(egg.variant);
       setLabel(egg.msg);
-      const dur =
-        egg.variant === "error" ? 2800 : egg.variant === "warn" ? 2400 : 2200;
+      const dur = egg.variant === "error" ? 2800 : egg.variant === "warn" ? 2400 : 2200;
       setTimeout(() => {
         setStatus("idle");
         setLabel("");
@@ -212,11 +205,7 @@ export function DownloadButton({
 
   const icon =
     status === "loading" ? (
-      <span
-        className={`cursor-blink ${stepAmber ? "text-amber" : "text-accent"}`}
-      >
-        ▊
-      </span>
+      <span className={`cursor-blink ${stepAmber ? "text-amber" : "text-accent"}`}>▊</span>
     ) : status === "done" ? (
       <span>✓</span>
     ) : status === "warn" ? (

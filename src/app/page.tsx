@@ -41,18 +41,8 @@ interface SearchParams {
   page?: string;
 }
 
-export default async function Home({
-  searchParams,
-}: {
-  searchParams: Promise<SearchParams>;
-}) {
-  const {
-    tag = "",
-    q = "",
-    sort = "vol",
-    dir = "desc",
-    page = "1",
-  } = await searchParams;
+export default async function Home({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const { tag = "", q = "", sort = "vol", dir = "desc", page = "1" } = await searchParams;
 
   return (
     <main className="flex flex-1 flex-col gap-3">
@@ -90,9 +80,7 @@ export default async function Home({
               data-search
               className="w-48 bg-transparent px-2 py-1.5 text-xs uppercase tracking-wider text-foreground placeholder:text-muted focus:outline-none sm:w-64"
             />
-            <span className="hidden px-2 text-[10px] text-muted/40 sm:block">
-              /
-            </span>
+            <span className="hidden px-2 text-[10px] text-muted/40 sm:block">/</span>
             <button
               type="submit"
               className="border-l border-edge px-3 py-1.5 text-xs text-muted hover:bg-panel-raised hover:text-accent"
@@ -104,17 +92,8 @@ export default async function Home({
         </div>
       </div>
 
-      <Suspense
-        key={`${tag}|${q}|${sort}|${dir}|${page}`}
-        fallback={<BoardSkeleton />}
-      >
-        <Board
-          tag={tag}
-          query={q}
-          sort={sort}
-          dir={dir}
-          page={Number(page) || 1}
-        />
+      <Suspense key={`${tag}|${q}|${sort}|${dir}|${page}`} fallback={<BoardSkeleton />}>
+        <Board tag={tag} query={q} sort={sort} dir={dir} page={Number(page) || 1} />
       </Suspense>
     </main>
   );
@@ -131,20 +110,11 @@ function sortHref(
   if (tag) p.set("tag", tag);
   if (query) p.set("q", query);
   p.set("sort", sortKey);
-  p.set(
-    "dir",
-    sortKey === currentSort && currentDir === "desc" ? "asc" : "desc",
-  );
+  p.set("dir", sortKey === currentSort && currentDir === "desc" ? "asc" : "desc");
   return `/?${p}`;
 }
 
-function pageHref(
-  tag: string,
-  query: string,
-  sort: string,
-  dir: string,
-  page: number,
-): string {
+function pageHref(tag: string, query: string, sort: string, dir: string, page: number): string {
   const p = new URLSearchParams();
   if (tag) p.set("tag", tag);
   if (query) p.set("q", query);
@@ -154,14 +124,10 @@ function pageHref(
   return `/?${p}`;
 }
 
-function applySortRows(
-  rows: GammaEvent[],
-  sort: string,
-  dir: string,
-): GammaEvent[] {
+function applySortRows(rows: GammaEvent[], sort: string, dir: string): GammaEvent[] {
   if (!sort || sort === "vol") return rows;
   const asc = dir === "asc";
-  return [...rows].sort((a, b) => {
+  return rows.toSorted((a, b) => {
     let va = 0;
     let vb = 0;
     if (sort === "liq") {
@@ -207,22 +173,13 @@ async function Board({
     if (query) {
       const all = await searchEvents(query);
       const filtered = all.filter((e) => e.markets.length > 0);
-      events = applySortRows(filtered, sort, dir).slice(
-        offset,
-        offset + PAGE_SIZE,
-      );
+      events = applySortRows(filtered, sort, dir).slice(offset, offset + PAGE_SIZE);
       isLastPage = offset + PAGE_SIZE >= filtered.length;
     } else {
       // Fetch PAGE_SIZE + 1 to detect if there's a next page
-      const fetched = await getTopEvents(
-        tag || undefined,
-        PAGE_SIZE + 1,
-        offset,
-      );
+      const fetched = await getTopEvents(tag || undefined, PAGE_SIZE + 1, offset);
       isLastPage = fetched.length <= PAGE_SIZE;
-      const trimmed = fetched
-        .slice(0, PAGE_SIZE)
-        .filter((e) => e.markets.length > 0);
+      const trimmed = fetched.slice(0, PAGE_SIZE).filter((e) => e.markets.length > 0);
       events = applySortRows(trimmed, sort, dir);
     }
   } catch {
@@ -235,12 +192,9 @@ async function Board({
           <p className="text-muted">
             <span className="text-red">$</span> connect gamma-api.polymarket.com
           </p>
-          <p className="text-red/80">
-            → CONNECTION REFUSED — upstream unreachable
-          </p>
+          <p className="text-red/80">→ CONNECTION REFUSED — upstream unreachable</p>
           <p className="text-muted/70">
-            → retry: reload the page · the feed auto-recovers when the API
-            responds
+            → retry: reload the page · the feed auto-recovers when the API responds
             <span className="cursor-blink ml-1 text-red">▊</span>
           </p>
         </div>
@@ -256,13 +210,11 @@ async function Board({
         </div>
         <div className="mt-3 space-y-1 text-xs leading-5">
           <p className="text-muted">
-            <span className="text-accent">$</span> query{" "}
-            {query ? `"${query}"` : "market feed"}
+            <span className="text-accent">$</span> query {query ? `"${query}"` : "market feed"}
           </p>
           <p className="text-muted/70">
             → 0 MARKETS MATCHED
-            {query ? ` "${query.toUpperCase()}"` : ""} — try a different term or
-            tag
+            {query ? ` "${query.toUpperCase()}"` : ""} — try a different term or tag
             <span className="cursor-blink ml-1 text-accent">▊</span>
           </p>
         </div>
@@ -308,9 +260,7 @@ async function Board({
         return signals.length > 0 ? <EdgeRadar signals={signals} /> : null;
       })()}
 
-      {!query && page === 1 && events.length >= 6 && (
-        <MoversBar rows={events} />
-      )}
+      {!query && page === 1 && events.length >= 6 && <MoversBar rows={events} />}
 
       <div className="overflow-x-auto border border-edge panel-lit">
         <table className="w-full min-w-full border-collapse text-left lg:min-w-[880px]">
@@ -318,9 +268,7 @@ async function Board({
             <tr className="border-b border-edge bg-panel-raised text-[11px] tracking-widest text-muted [&>th]:whitespace-nowrap">
               <th className="w-8 px-2 py-2 font-normal">#</th>
               <th className="px-2 py-2 font-normal">MARKET</th>
-              <th className="hidden px-2 py-2 text-right font-normal md:table-cell">
-                LEADER
-              </th>
+              <th className="hidden px-2 py-2 text-right font-normal md:table-cell">LEADER</th>
               <SortTh
                 sortKey="odds"
                 label="ODDS"
@@ -337,9 +285,7 @@ async function Board({
                 tag={tag}
                 query={query}
               />
-              <th className="hidden px-2 py-2 text-right font-normal lg:table-cell">
-                7D TREND
-              </th>
+              <th className="hidden px-2 py-2 text-right font-normal lg:table-cell">7D TREND</th>
               <SortTh
                 sortKey="vol"
                 label="24H VOL"
@@ -380,10 +326,7 @@ async function Board({
           </thead>
           <tbody>
             {(() => {
-              const maxVol = events.reduce(
-                (m, e) => Math.max(m, e.volume24hr ?? 0),
-                1,
-              );
+              const maxVol = events.reduce((m, e) => Math.max(m, e.volume24hr ?? 0), 1);
               return events.map((event, i) => (
                 <Row
                   key={event.id}
@@ -403,11 +346,7 @@ async function Board({
         <span className="flex items-center gap-1.5 text-muted">
           <span className="text-accent/60">▪</span>
           ROWS {offset + 1}–{offset + events.length} · PAGE {page}
-          {isLastPage ? (
-            <span className="text-accent/70">· END OF FEED</span>
-          ) : (
-            ""
-          )}
+          {isLastPage ? <span className="text-accent/70">· END OF FEED</span> : ""}
         </span>
         <div className="flex items-center gap-px border border-edge bg-edge">
           {page > 1 ? (
@@ -418,13 +357,9 @@ async function Board({
               ← PREV
             </Link>
           ) : (
-            <span className="cursor-not-allowed bg-panel px-3 py-1.5 text-muted/30">
-              ← PREV
-            </span>
+            <span className="cursor-not-allowed bg-panel px-3 py-1.5 text-muted/30">← PREV</span>
           )}
-          <span className="bg-accent px-3 py-1.5 font-bold text-black">
-            {page}
-          </span>
+          <span className="bg-accent px-3 py-1.5 font-bold text-black">{page}</span>
           {!isLastPage ? (
             <Link
               href={pageHref(tag, query, sort, dir, page + 1)}
@@ -433,9 +368,7 @@ async function Board({
               NEXT →
             </Link>
           ) : (
-            <span className="cursor-not-allowed bg-panel px-3 py-1.5 text-muted/30">
-              NEXT →
-            </span>
+            <span className="cursor-not-allowed bg-panel px-3 py-1.5 text-muted/30">NEXT →</span>
           )}
         </div>
       </div>
@@ -490,27 +423,18 @@ function Row({
 }) {
   const lead = leadingOutcome(event);
   const change = lead?.change24h ?? 0;
-  const changeColor =
-    change > 0.001
-      ? "text-accent"
-      : change < -0.001
-        ? "text-red"
-        : "text-muted";
+  const changeColor = change > 0.001 ? "text-accent" : change < -0.001 ? "text-red" : "text-muted";
   const arrow = change > 0.001 ? "▲" : change < -0.001 ? "▼" : "·";
 
   const days = daysUntil(event.endDate);
-  const endsColor =
-    days < 1 ? "text-red" : days < 7 ? "text-amber" : "text-muted";
-  const endsBadge =
-    days < 1 ? "EXPIRING" : days < 7 ? `${Math.ceil(days)}D` : null;
+  const endsColor = days < 1 ? "text-red" : days < 7 ? "text-amber" : "text-muted";
+  const endsBadge = days < 1 ? "EXPIRING" : days < 7 ? `${Math.ceil(days)}D` : null;
 
   const volPct = maxVol > 0 ? ((event.volume24hr ?? 0) / maxVol) * 100 : 0;
   const odds = lead?.price ?? 0;
 
-  const oddsColor =
-    odds > 0.66 ? "text-accent" : odds < 0.34 ? "text-red" : "text-amber";
-  const oddsBar =
-    odds > 0.66 ? "bg-accent/40" : odds < 0.34 ? "bg-red/40" : "bg-amber/40";
+  const oddsColor = odds > 0.66 ? "text-accent" : odds < 0.34 ? "text-red" : "text-amber";
+  const oddsBar = odds > 0.66 ? "bg-accent/40" : odds < 0.34 ? "bg-red/40" : "bg-amber/40";
 
   return (
     <tr
@@ -525,16 +449,20 @@ function Row({
         {String(index).padStart(2, "0")}
       </td>
       <td className="max-w-[46vw] px-2 py-2.5 sm:max-w-sm">
-        <Link
-          href={`/event/${event.slug}`}
-          className="flex items-center gap-2.5"
-        >
+        <Link href={`/event/${event.slug}`} className="flex items-center gap-2.5">
           {event.icon ? (
+            // Icon hosts come from the Gamma feed at runtime. next/image
+            // hard-errors on any host not in `images.remotePatterns`, so one
+            // new CDN upstream would blank the whole board; a plain lazy <img>
+            // degrades to a missing icon instead.
+            // oxlint-disable-next-line no-img-element
             <img
               src={event.icon}
               alt=""
               width={20}
               height={20}
+              loading="lazy"
+              decoding="async"
               className="h-5 w-5 shrink-0 rounded-sm object-cover opacity-90"
             />
           ) : (
@@ -575,9 +503,7 @@ function Row({
           />
         )}
       </td>
-      <td
-        className={`whitespace-nowrap px-2 py-2.5 text-right tabular-nums ${changeColor}`}
-      >
+      <td className={`whitespace-nowrap px-2 py-2.5 text-right tabular-nums ${changeColor}`}>
         {arrow} {fmtChange(change)}
       </td>
       <td className="hidden px-2 py-2 text-right lg:table-cell">
@@ -656,11 +582,7 @@ function SignalCard({ signal: s }: { signal: Signal }) {
     : buyable
       ? "text-accent"
       : "text-red";
-  const barColor = isArb
-    ? "bg-cyan/60"
-    : buyable
-      ? "bg-accent/60"
-      : "bg-red/60";
+  const barColor = isArb ? "bg-cyan/60" : buyable ? "bg-accent/60" : "bg-red/60";
 
   return (
     <Link
@@ -668,36 +590,23 @@ function SignalCard({ signal: s }: { signal: Signal }) {
       className="group flex flex-col gap-1.5 bg-panel px-3 py-2.5 transition-colors hover:bg-panel-raised"
     >
       <div className="flex items-center justify-between gap-2 text-[10px] tracking-widest">
-        <span
-          className={`rounded-sm border border-current/30 px-1 py-0.5 ${kindColor}`}
-        >
+        <span className={`rounded-sm border border-current/30 px-1 py-0.5 ${kindColor}`}>
           {s.kind}
         </span>
         <span className="flex items-center gap-1.5 text-muted/60">
           SCORE
-          <span className="font-bold tabular-nums text-foreground">
-            {Math.round(s.score)}
-          </span>
+          <span className="font-bold tabular-nums text-foreground">{Math.round(s.score)}</span>
         </span>
       </div>
-      <p className="truncate text-xs text-foreground group-hover:text-accent">
-        {s.title}
-      </p>
+      <p className="truncate text-xs text-foreground group-hover:text-accent">{s.title}</p>
       {/* Score bar */}
       <div className="h-1 w-full overflow-hidden rounded-sm bg-panel-raised ring-1 ring-inset ring-edge">
-        <div
-          className={`h-full ${barColor}`}
-          style={{ width: `${Math.min(s.score, 100)}%` }}
-        />
+        <div className={`h-full ${barColor}`} style={{ width: `${Math.min(s.score, 100)}%` }} />
       </div>
       <div className="flex items-center justify-between gap-2 text-[10px] tabular-nums">
-        <span className={`font-bold ${edgeColor}`}>
-          EDGE {fmtEdge(s.edgeBps)}
-        </span>
+        <span className={`font-bold ${edgeColor}`}>EDGE {fmtEdge(s.edgeBps)}</span>
         <span className="text-muted/60">
-          {s.spreadBps != null
-            ? `${(s.spreadBps / 100).toFixed(1)}% SPR`
-            : "NO BOOK"}
+          {s.spreadBps != null ? `${(s.spreadBps / 100).toFixed(1)}% SPR` : "NO BOOK"}
         </span>
       </div>
       <p className="truncate text-[10px] text-muted/70">{s.detail}</p>
@@ -723,8 +632,7 @@ function BreadthBar({ rows }: { rows: GammaEvent[] }) {
   const downPct = (down / total) * 100;
   const net = (sumChange / total) * 100; // avg 24h change in points
   const bullish = net >= 0;
-  const netColor =
-    net > 0.05 ? "text-accent" : net < -0.05 ? "text-red" : "text-muted";
+  const netColor = net > 0.05 ? "text-accent" : net < -0.05 ? "text-red" : "text-muted";
   const label =
     upPct >= 60
       ? "RISK-ON"
@@ -740,9 +648,7 @@ function BreadthBar({ rows }: { rows: GammaEvent[] }) {
     <div className="border border-edge bg-panel px-2 py-2.5 panel-lit">
       <div className="mb-2 flex items-center justify-between text-[10px] tracking-widest">
         <span className="flex items-center gap-1.5 text-muted">
-          <span className={bullish ? "text-accent/60" : "text-red/60"}>
-            {bullish ? "▲" : "▼"}
-          </span>
+          <span className={bullish ? "text-accent/60" : "text-red/60"}>{bullish ? "▲" : "▼"}</span>
           MARKET BREADTH
           <span className={`glow-soft ${netColor}`}>· {label}</span>
         </span>
@@ -757,14 +663,8 @@ function BreadthBar({ rows }: { rows: GammaEvent[] }) {
           className="h-full bg-accent/70 shadow-[0_0_8px_-1px_var(--accent)] transition-all"
           style={{ width: `${upPct}%` }}
         />
-        <div
-          className="h-full bg-muted/25 transition-all"
-          style={{ width: `${flatPct}%` }}
-        />
-        <div
-          className="h-full bg-red/70 transition-all"
-          style={{ width: `${downPct}%` }}
-        />
+        <div className="h-full bg-muted/25 transition-all" style={{ width: `${flatPct}%` }} />
+        <div className="h-full bg-red/70 transition-all" style={{ width: `${downPct}%` }} />
       </div>
       <div className="mt-1.5 flex items-center gap-4 text-[10px] tabular-nums text-muted">
         <span className="flex items-center gap-1 text-accent">
@@ -779,21 +679,18 @@ function BreadthBar({ rows }: { rows: GammaEvent[] }) {
           <span className="inline-block h-1.5 w-1.5 rounded-sm bg-red/70" />
           {down} DOWN
         </span>
-        <span className="ml-auto text-muted/50">
-          {upPct.toFixed(0)}% ADVANCING
-        </span>
+        <span className="ml-auto text-muted/50">{upPct.toFixed(0)}% ADVANCING</span>
       </div>
     </div>
   );
 }
 
 function MoversBar({ rows }: { rows: GammaEvent[] }) {
-  const byChange = [...rows].sort(
-    (a, b) =>
-      (leadingOutcome(b)?.change24h ?? 0) - (leadingOutcome(a)?.change24h ?? 0),
+  const byChange = rows.toSorted(
+    (a, b) => (leadingOutcome(b)?.change24h ?? 0) - (leadingOutcome(a)?.change24h ?? 0),
   );
   const gainers = byChange.slice(0, 5);
-  const losers = [...byChange].reverse().slice(0, 5);
+  const losers = byChange.toReversed().slice(0, 5);
 
   return (
     <div className="grid grid-cols-1 gap-px border border-edge bg-edge text-[11px] sm:grid-cols-2">
@@ -822,9 +719,7 @@ function MoversColumn({
   );
   return (
     <div className="bg-panel px-2 py-2.5 panel-lit">
-      <div
-        className={`mb-2 flex items-center gap-1.5 text-[10px] tracking-widest ${tone}`}
-      >
+      <div className={`mb-2 flex items-center gap-1.5 text-[10px] tracking-widest ${tone}`}>
         <span className="glow-soft">{arrow}</span>
         {title}
       </div>
@@ -848,22 +743,22 @@ function MoversColumn({
                   {i + 1}
                 </span>
                 {e.icon && (
+                  // Feed-supplied host — see Row.
+                  // oxlint-disable-next-line no-img-element
                   <img
                     src={e.icon}
                     alt=""
                     width={14}
                     height={14}
+                    loading="lazy"
+                    decoding="async"
                     className="h-3.5 w-3.5 shrink-0 rounded-sm object-cover opacity-75 group-hover:opacity-100"
                   />
                 )}
-                <span className="truncate text-muted group-hover:text-foreground">
-                  {e.title}
-                </span>
+                <span className="truncate text-muted group-hover:text-foreground">{e.title}</span>
               </div>
               <div className="relative flex shrink-0 items-center gap-2">
-                <span className="text-[10px] text-muted/60">
-                  {fmtPct(lead?.price ?? 0)}
-                </span>
+                <span className="text-[10px] text-muted/60">{fmtPct(lead?.price ?? 0)}</span>
                 <span className={`tabular-nums ${tone}`}>
                   {arrow} {fmtChange(change)}
                 </span>
@@ -891,9 +786,7 @@ function Stat({
         <span className="absolute inset-x-0 top-0 h-px bg-accent/50 shadow-[0_0_8px_var(--accent-dim)]" />
       )}
       <div className="flex items-center gap-1.5 text-[10px] tracking-widest text-muted">
-        <span className={accent ? "text-accent/60" : "text-muted/50"}>
-          {accent ? "◆" : "◇"}
-        </span>
+        <span className={accent ? "text-accent/60" : "text-muted/50"}>{accent ? "◆" : "◇"}</span>
         {label}
       </div>
       <div
@@ -904,6 +797,17 @@ function Stat({
     </div>
   );
 }
+
+/**
+ * Skeleton geometry, declared once. The ragged widths are what make a loading
+ * state read as "text arriving" rather than "grey boxes", and hoisting them out
+ * gives every placeholder a stable identity instead of a list index.
+ */
+const SKELETON_MOVER_WIDTHS = [72, 65, 58, 51, 44];
+const SKELETON_FEED_ROWS = Array.from({ length: 8 }, (_, i) => ({
+  id: `feed-${i}`,
+  width: 40 - (i % 3) * 6,
+}));
 
 function BoardSkeleton() {
   return (
@@ -930,14 +834,12 @@ function BoardSkeleton() {
       <div className="grid grid-cols-2 gap-px border border-edge bg-edge">
         {["▲ TOP GAINERS", "▼ TOP LOSERS"].map((l) => (
           <div key={l} className="bg-panel px-2 py-2.5 panel-lit">
-            <div className="mb-2 text-[10px] tracking-widest text-muted/40">
-              {l}
-            </div>
-            {[...Array(5)].map((_, i) => (
+            <div className="mb-2 text-[10px] tracking-widest text-muted/40">{l}</div>
+            {SKELETON_MOVER_WIDTHS.map((w) => (
               <div
-                key={i}
+                key={w}
                 className="shimmer my-1 h-3 rounded-sm bg-panel-raised"
-                style={{ width: `${72 - i * 7}%` }}
+                style={{ width: `${w}%` }}
               />
             ))}
           </div>
@@ -948,15 +850,15 @@ function BoardSkeleton() {
           <span className="text-accent">&gt;</span> STREAMING MARKET FEED
           <span className="cursor-blink text-accent">▊</span>
         </div>
-        {[...Array(8)].map((_, i) => (
+        {SKELETON_FEED_ROWS.map((row) => (
           <div
-            key={i}
+            key={row.id}
             className="flex items-center gap-3 border-b border-edge/60 px-2 py-2.5 last:border-b-0"
           >
             <div className="h-5 w-5 shrink-0 rounded-sm bg-panel-raised" />
             <div
               className="shimmer h-3 rounded-sm bg-panel-raised"
-              style={{ width: `${40 - (i % 3) * 6}%` }}
+              style={{ width: `${row.width}%` }}
             />
             <div className="shimmer ml-auto h-3 w-16 rounded-sm bg-panel-raised" />
             <div className="shimmer h-3 w-12 rounded-sm bg-panel-raised" />

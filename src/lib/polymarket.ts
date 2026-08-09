@@ -68,6 +68,111 @@ async function gamma<T>(path: string, revalidate: number): Promise<T> {
   return res.json();
 }
 
+/**
+ * Same call, but explicitly opted OUT of Next's data cache.
+ *
+ * Used only for the oversized list endpoints. Asking Next to cache a 3MB
+ * response is not a no-op that quietly degrades: it serializes the body,
+ * discovers it exceeds the 2MB ceiling, throws it away and logs an error —
+ * every request, for a cache entry that can never exist. Declaring `no-store`
+ * says the true thing, skips that work, and leaves `cachedList` as the single
+ * caching layer for these paths.
+ */
+async function gammaUncached<T>(path: string): Promise<T> {
+  const res = await fetch(`${GAMMA}${path}`, { cache: "no-store" });
+  if (!res.ok) {
+    throw new Error(`Gamma API ${res.status} for ${path}`);
+  }
+  return res.json();
+}
+
+/* ─────────────────────── the list-payload problem ─────────────────────── */
+
+/**
+ * Gamma's `/events` list endpoint returns 2.5–4MB for a single page.
+ *
+ * Next's data cache refuses to store any entry over 2MB, so `next: { revalidate }`
+ * on these calls did not merely underperform — it failed outright on every
+ * request ("items over 2MB can not be cached"), meaning the board refetched
+ * multiple megabytes on every single render and logged an error each time.
+ *
+ * Almost all of that weight is prose we never render on a list: per-market
+ * `description` (the full resolution rules), images, and dozens of unused
+ * fields. So instead of trying to cache the raw response, we cache the TRIMMED
+ * projection — the ~30 fields the board, the scanners and the desk actually
+ * read. That is two orders of magnitude smaller, fits the cache comfortably,
+ * and is also less to hand to the Web Worker.
+ */
+const LIST_TTL_MS = 60_000;
+/** Bounded so a long-lived server can't accumulate pages indefinitely. */
+const LIST_CACHE_MAX = 64;
+
+const listCache = new Map<string, { at: number; events: GammaEvent[] }>();
+
+/** Keep only what a list view reads. Drops the multi-KB prose fields. */
+function trimForList(event: GammaEvent): GammaEvent {
+  return {
+    id: event.id,
+    slug: event.slug,
+    title: event.title,
+    icon: event.icon,
+    endDate: event.endDate,
+    liquidity: event.liquidity,
+    volume: event.volume,
+    volume24hr: event.volume24hr,
+    openInterest: event.openInterest,
+    negRisk: event.negRisk,
+    tags: event.tags,
+    markets: (event.markets ?? []).map((m) => ({
+      id: m.id,
+      question: m.question,
+      slug: m.slug,
+      groupItemTitle: m.groupItemTitle,
+      outcomes: m.outcomes,
+      outcomePrices: m.outcomePrices,
+      clobTokenIds: m.clobTokenIds,
+      lastTradePrice: m.lastTradePrice,
+      bestBid: m.bestBid,
+      bestAsk: m.bestAsk,
+      spread: m.spread,
+      oneDayPriceChange: m.oneDayPriceChange,
+      oneWeekPriceChange: m.oneWeekPriceChange,
+      volume24hr: m.volume24hr,
+      endDate: m.endDate,
+      active: m.active,
+      closed: m.closed,
+    })),
+  };
+}
+
+/**
+ * Fetch a list endpoint, trim it, and memoize the trimmed result in-process.
+ *
+ * This REPLACES Next's data cache for these paths rather than layering on it,
+ * because that cache provably cannot hold them. The TTL matches the 60s
+ * revalidate the fetches used to ask for, so refresh behaviour is unchanged;
+ * what changes is that the cache now actually holds something.
+ */
+async function cachedList(
+  path: string,
+  extract: (raw: unknown) => GammaEvent[],
+): Promise<GammaEvent[]> {
+  const hit = listCache.get(path);
+  const now = Date.now();
+  if (hit && now - hit.at < LIST_TTL_MS) return hit.events;
+
+  const raw = await gammaUncached<unknown>(path);
+  const events = extract(raw).map(trimForList);
+
+  if (listCache.size >= LIST_CACHE_MAX) {
+    // Map preserves insertion order, so the first key is the oldest entry.
+    const oldest = listCache.keys().next().value;
+    if (oldest !== undefined) listCache.delete(oldest);
+  }
+  listCache.set(path, { at: now, events });
+  return events;
+}
+
 export async function getTopEvents(
   tagSlug?: string,
   limit = 25,
@@ -82,7 +187,9 @@ export async function getTopEvents(
     ascending: "false",
   });
   if (tagSlug) params.set("tag_slug", tagSlug);
-  return gamma<GammaEvent[]>(`/events?${params}`, 60);
+  return cachedList(`/events?${params}`, (raw) =>
+    Array.isArray(raw) ? (raw as GammaEvent[]) : [],
+  );
 }
 
 export async function getRelatedEvents(
@@ -102,26 +209,20 @@ export async function searchEvents(query: string): Promise<GammaEvent[]> {
     limit_per_type: "40",
     events_status: "active",
   });
-  const data = await gamma<{ events?: GammaEvent[] }>(
-    `/public-search?${params}`,
-    60,
-  );
-  // Search results omit nested markets sometimes; keep shape consistent.
-  return (data.events ?? []).map((e) => ({ ...e, markets: e.markets ?? [] }));
+  // `trimForList` already normalizes `markets` to an array, which matters here:
+  // search results sometimes omit the nested markets entirely.
+  return cachedList(`/public-search?${params}`, (raw) => {
+    const data = raw as { events?: GammaEvent[] };
+    return data.events ?? [];
+  });
 }
 
 export async function getEventBySlug(slug: string): Promise<GammaEvent | null> {
-  const events = await gamma<GammaEvent[]>(
-    `/events?slug=${encodeURIComponent(slug)}`,
-    30,
-  );
+  const events = await gamma<GammaEvent[]>(`/events?slug=${encodeURIComponent(slug)}`, 30);
   return events[0] ?? null;
 }
 
-export async function getPriceHistory(
-  tokenId: string,
-  interval: string,
-): Promise<PricePoint[]> {
+export async function getPriceHistory(tokenId: string, interval: string): Promise<PricePoint[]> {
   const fidelity =
     interval === "1d"
       ? "5"
@@ -156,11 +257,32 @@ function parseJsonArray(value: string | undefined): string[] {
 }
 
 /**
+ * Memoized per event object.
+ *
+ * `eventOutcomes` is called five or six times for the same event in a single
+ * board render — the sort comparator, the row, the breadth bar, the movers
+ * strip, the ticker — and each call `JSON.parse`s three encoded arrays per
+ * market. On a 25-row board of multi-outcome events that is thousands of
+ * redundant parses per request. A WeakMap keyed on the event object collapses
+ * them to one, and because every request deserializes fresh objects there is no
+ * staleness risk: a new fetch is a new key.
+ */
+const outcomeCache = new WeakMap<GammaEvent, Outcome[]>();
+
+/**
  * Flatten an event's markets into displayable outcomes. Multi-market events
  * (e.g. "World Cup Winner") use each market's Yes side labeled by
  * groupItemTitle; single binary markets expand to their Yes/No outcomes.
  */
 export function eventOutcomes(event: GammaEvent): Outcome[] {
+  const cached = outcomeCache.get(event);
+  if (cached) return cached;
+  const computed = computeOutcomes(event);
+  outcomeCache.set(event, computed);
+  return computed;
+}
+
+function computeOutcomes(event: GammaEvent): Outcome[] {
   const open = event.markets.filter((m) => m.active && !m.closed);
   if (open.length === 0) return [];
 
@@ -173,8 +295,7 @@ export function eventOutcomes(event: GammaEvent): Outcome[] {
       marketId: m.id,
       label,
       price: prices[i] ?? 0,
-      change24h:
-        i === 0 ? (m.oneDayPriceChange ?? 0) : -(m.oneDayPriceChange ?? 0),
+      change24h: i === 0 ? (m.oneDayPriceChange ?? 0) : -(m.oneDayPriceChange ?? 0),
       volume24h: m.volume24hr ?? 0,
       bestBid: m.bestBid,
       bestAsk: m.bestAsk,
@@ -199,7 +320,7 @@ export function eventOutcomes(event: GammaEvent): Outcome[] {
         tokenId: tokens[0],
       };
     })
-    .sort((a, b) => b.price - a.price);
+    .toSorted((a, b) => b.price - a.price);
 }
 
 /** Top outcome of an event, for the dashboard table. */

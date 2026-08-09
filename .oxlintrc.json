@@ -1,0 +1,50 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [
+    "react",
+    "jsx-a11y",
+    "nextjs",
+    "import",
+    "typescript",
+    "unicorn",
+    "promise",
+    "oxc"
+  ],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "warn",
+    "pedantic": "off",
+    "style": "off"
+  },
+  "env": {
+    "browser": true,
+    "node": true,
+    "es2024": true
+  },
+  "ignorePatterns": ["node_modules", ".next", "dist", "build", "coverage"],
+  "rules": {
+    "react/react-in-jsx-scope": "off",
+    "unicorn/require-post-message-target-origin": "off",
+    "import/no-unassigned-import": "off",
+    "eslint/no-unused-vars": [
+      "error",
+      { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }
+    ],
+    "react/no-array-index-key": "error",
+    "react/jsx-key": "error",
+    "import/no-duplicates": "error",
+    "unicorn/prefer-number-properties": "error",
+    "typescript/no-explicit-any": "error"
+  },
+  "overrides": [
+    {
+      "files": ["src/workers/**/*.ts"],
+      "env": { "worker": true }
+    },
+    {
+      "files": ["tests/**/*.ts"],
+      "rules": { "typescript/no-explicit-any": "off" }
+    }
+  ]
+}

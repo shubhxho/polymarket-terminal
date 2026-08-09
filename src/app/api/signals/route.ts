@@ -13,14 +13,9 @@ export async function GET(request: NextRequest) {
 
   let events: GammaEvent[];
   try {
-    events = q
-      ? await searchEvents(q)
-      : await getTopEvents(tag || undefined, 200, 0);
+    events = q ? await searchEvents(q) : await getTopEvents(tag || undefined, 200, 0);
   } catch {
-    return Response.json(
-      { error: "Failed to fetch market data" },
-      { status: 502 },
-    );
+    return Response.json({ error: "Failed to fetch market data" }, { status: 502 });
   }
 
   const trimmed = events

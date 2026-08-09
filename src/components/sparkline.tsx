@@ -11,11 +11,7 @@ const PAD = 2;
  */
 export function Sparkline({ points }: { points: PricePoint[] }) {
   if (points.length < 2) {
-    return (
-      <span className="inline-block w-[58px] text-center text-[10px] text-muted/30">
-        —
-      </span>
-    );
+    return <span className="inline-block w-[58px] text-center text-[10px] text-muted/30">—</span>;
   }
 
   const first = points[0].p;
@@ -37,10 +33,7 @@ export function Sparkline({ points }: { points: PricePoint[] }) {
   const y = (p: number) => PAD + (1 - (p - pMin) / pSpan) * (H - PAD * 2);
 
   const line = points
-    .map(
-      (pt, i) =>
-        `${i === 0 ? "M" : "L"}${x(pt.t).toFixed(1)},${y(pt.p).toFixed(1)}`,
-    )
+    .map((pt, i) => `${i === 0 ? "M" : "L"}${x(pt.t).toFixed(1)},${y(pt.p).toFixed(1)}`)
     .join("");
   const area = `${line}L${x(points[points.length - 1].t).toFixed(1)},${H}L${x(points[0].t).toFixed(1)},${H}Z`;
   const gradId = `spark-${up ? "u" : "d"}`;
@@ -70,12 +63,7 @@ export function Sparkline({ points }: { points: PricePoint[] }) {
         strokeLinecap="round"
         vectorEffect="non-scaling-stroke"
       />
-      <circle
-        cx={x(points[points.length - 1].t)}
-        cy={y(last)}
-        r="1.6"
-        fill={color}
-      />
+      <circle cx={x(points[points.length - 1].t)} cy={y(last)} r="1.6" fill={color} />
     </svg>
   );
 }

@@ -10,7 +10,6 @@ import {
   fmtDate,
   fmtPct,
   fmtUsd,
-  type GammaEvent,
   getEventBySlug,
   getPriceHistory,
   getRelatedEvents,
@@ -30,11 +29,7 @@ interface Params {
   slug: string;
 }
 
-export async function generateMetadata({
-  params,
-}: {
-  params: Promise<Params>;
-}): Promise<Metadata> {
+export async function generateMetadata({ params }: { params: Promise<Params> }): Promise<Metadata> {
   const { slug } = await params;
   const event = await getEventBySlug(slug);
   if (!event) return { title: "MARKET NOT FOUND" };
@@ -61,14 +56,11 @@ export default async function EventPage({
   if (!event) notFound();
 
   const outcomes = eventOutcomes(event);
-  const multiMarket =
-    event.markets.filter((m) => m.active && !m.closed).length > 1;
+  const multiMarket = event.markets.filter((m) => m.active && !m.closed).length > 1;
 
   const days = daysUntil(event.endDate);
-  const endsColor =
-    days < 1 ? "text-red" : days < 7 ? "text-amber" : "text-muted";
-  const urgencyLabel =
-    days < 1 ? "EXPIRING TODAY" : days < 7 ? `${Math.ceil(days)}D LEFT` : null;
+  const endsColor = days < 1 ? "text-red" : days < 7 ? "text-amber" : "text-muted";
+  const urgencyLabel = days < 1 ? "EXPIRING TODAY" : days < 7 ? `${Math.ceil(days)}D LEFT` : null;
 
   return (
     <main className="flex flex-1 flex-col gap-3">
@@ -85,18 +77,21 @@ export default async function EventPage({
       <div className="flex flex-wrap items-start justify-between gap-4 border border-edge bg-panel p-4 panel-lit">
         <div className="flex items-start gap-3">
           {event.icon && (
+            // Icon host comes from the Gamma feed at runtime and is not in
+            // `images.remotePatterns`; next/image would throw rather than
+            // degrade. Loaded eagerly because this one is above the fold.
+            // oxlint-disable-next-line no-img-element
             <img
               src={event.icon}
               alt=""
               width={44}
               height={44}
+              decoding="async"
               className="h-11 w-11 shrink-0 rounded-sm object-cover"
             />
           )}
           <div className="min-w-0">
-            <h1 className="text-base font-bold leading-snug text-foreground">
-              {event.title}
-            </h1>
+            <h1 className="text-base font-bold leading-snug text-foreground">{event.title}</h1>
             <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px]">
               <span className={endsColor}>
                 ENDS {fmtDate(event.endDate)}
@@ -185,10 +180,7 @@ export default async function EventPage({
               return (
                 <tfoot>
                   <tr className="border-t border-edge/60 bg-panel-raised">
-                    <td
-                      className="px-3 py-1.5 text-[10px] tracking-wider text-muted"
-                      colSpan={4}
-                    >
+                    <td className="px-3 py-1.5 text-[10px] tracking-wider text-muted" colSpan={4}>
                       TOTAL IMPLIED PROBABILITY
                     </td>
                     <td
@@ -196,8 +188,7 @@ export default async function EventPage({
                       colSpan={5}
                     >
                       {(total * 100).toFixed(1)}%
-                      {overround > 0.02 &&
-                        ` · +${(overround * 100).toFixed(1)}% HOUSE EDGE`}
+                      {overround > 0.02 && ` · +${(overround * 100).toFixed(1)}% HOUSE EDGE`}
                     </td>
                   </tr>
                 </tfoot>
@@ -266,11 +257,7 @@ async function RelatedSection({
           const lead = leadingOutcome(e);
           const change = lead?.change24h ?? 0;
           const changeColor =
-            change > 0.001
-              ? "text-accent"
-              : change < -0.001
-                ? "text-red"
-                : "text-muted";
+            change > 0.001 ? "text-accent" : change < -0.001 ? "text-red" : "text-muted";
           return (
             <Link
               key={e.id}
@@ -278,11 +265,15 @@ async function RelatedSection({
               className="group flex items-start gap-3 bg-panel p-3 hover:bg-panel-raised"
             >
               {e.icon ? (
+                // Feed-supplied host, see header icon.
+                // oxlint-disable-next-line no-img-element
                 <img
                   src={e.icon}
                   alt=""
                   width={32}
                   height={32}
+                  loading="lazy"
+                  decoding="async"
                   className="h-8 w-8 shrink-0 rounded-sm object-cover opacity-80"
                 />
               ) : (
@@ -301,14 +292,11 @@ async function RelatedSection({
                         {fmtPct(lead.price)}
                       </span>
                       <span className={`tabular-nums ${changeColor}`}>
-                        {change > 0.001 ? "▲" : change < -0.001 ? "▼" : "·"}{" "}
-                        {fmtChange(change)}
+                        {change > 0.001 ? "▲" : change < -0.001 ? "▼" : "·"} {fmtChange(change)}
                       </span>
                     </>
                   )}
-                  <span className="ml-auto text-muted">
-                    {fmtUsd(e.volume24hr)}
-                  </span>
+                  <span className="ml-auto text-muted">{fmtUsd(e.volume24hr)}</span>
                 </div>
               </div>
             </Link>
@@ -345,13 +333,8 @@ async function Chart({
 
 function OutcomeRow({ outcome: o }: { outcome: Outcome }) {
   const changeColor =
-    o.change24h > 0.001
-      ? "text-accent"
-      : o.change24h < -0.001
-        ? "text-red"
-        : "text-muted";
-  const changeArrow =
-    o.change24h > 0.001 ? "▲" : o.change24h < -0.001 ? "▼" : "·";
+    o.change24h > 0.001 ? "text-accent" : o.change24h < -0.001 ? "text-red" : "text-muted";
+  const changeArrow = o.change24h > 0.001 ? "▲" : o.change24h < -0.001 ? "▼" : "·";
   const barColor =
     o.price > 0.7
       ? "bg-accent shadow-[0_0_8px_-1px_var(--accent)]"
@@ -379,12 +362,16 @@ function OutcomeRow({ outcome: o }: { outcome: Outcome }) {
       <td className="px-3 py-2.5 text-right tabular-nums text-muted">
         {o.spread != null ? (o.spread * 100).toFixed(1) : "—"}
       </td>
-      <td className="px-3 py-2.5 text-right tabular-nums text-foreground">
-        {fmtUsd(o.volume24h)}
-      </td>
+      <td className="px-3 py-2.5 text-right tabular-nums text-foreground">{fmtUsd(o.volume24h)}</td>
       <td className="px-3 py-2.5">
         <div className="flex items-center gap-2">
-          <div className="h-2.5 min-w-[60px] flex-1 overflow-hidden bg-panel-raised ring-1 ring-inset ring-edge">
+          {/* The bar restates the number beside it, so it is decorative: hiding
+              it stops a screen reader announcing an empty graphic before the
+              value it duplicates. */}
+          <div
+            aria-hidden="true"
+            className="h-2.5 min-w-[60px] flex-1 overflow-hidden bg-panel-raised ring-1 ring-inset ring-edge"
+          >
             <div
               className={`h-full transition-all ${barColor}`}
               style={{ width: `${Math.min(o.price * 100, 100)}%` }}

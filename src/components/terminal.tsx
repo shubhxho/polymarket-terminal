@@ -62,6 +62,29 @@ function L(kind: Kind, text: string): Line {
   return { id: ++lineId, kind, text };
 }
 
+/** Signed basis-point slippage, terminal-styled. */
+const slip = (bps: number) => `${bps >= 0 ? "+" : ""}${bps.toFixed(0)}BPS`;
+
+/**
+ * Persist and apply a phosphor theme. Module scope, not a closure: it captures
+ * nothing from the component and re-creating it per render is pure waste.
+ * `localStorage` can throw (private mode, blocked storage), so a failure still
+ * leaves the theme applied for the current page.
+ */
+function applyTheme(name: string) {
+  try {
+    if (name === "green") {
+      delete document.documentElement.dataset.theme;
+      localStorage.removeItem("pm-theme");
+    } else {
+      document.documentElement.dataset.theme = name;
+      localStorage.setItem("pm-theme", name);
+    }
+  } catch {
+    // localStorage unavailable — theme still applies for this page
+  }
+}
+
 const KIND_COLOR: Record<Kind, string> = {
   cmd: "text-foreground",
   out: "text-muted",
@@ -108,10 +131,7 @@ export function Terminal() {
   const [open, setOpen] = useState(false);
   const [lines, setLines] = useState<Line[]>(() => [
     L("ok", "POLYMARKET TERMINAL — COMMAND INTERFACE READY"),
-    L(
-      "dim",
-      'TYPE "HELP" FOR COMMANDS · TAB COMPLETES · ↑↓ HISTORY · ESC CLOSES',
-    ),
+    L("dim", 'TYPE "HELP" FOR COMMANDS · TAB COMPLETES · ↑↓ HISTORY · ESC CLOSES'),
   ]);
   const [value, setValue] = useState("");
   const [history, setHistory] = useState<string[]>([]);
@@ -122,9 +142,7 @@ export function Terminal() {
   const scanId = useRef(0);
   const lastSignals = useRef<Signal[]>([]);
   const watchTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-  const watchSeen = useRef<Map<string, { score: number; title: string }>>(
-    new Map(),
-  );
+  const watchSeen = useRef<Map<string, { score: number; title: string }>>(new Map());
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -151,7 +169,8 @@ export function Terminal() {
     };
   }, []);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll when the log grows
+  // Intentionally keyed on `lines`/`open` rather than the ref: the effect's job
+  // is to scroll when the log grows, not when the ref identity changes.
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
   }, [lines, open]);
@@ -162,9 +181,7 @@ export function Terminal() {
 
   /** Board params to mutate: current ones on the board, fresh elsewhere. */
   function boardParams(): URLSearchParams {
-    return pathname === "/"
-      ? new URLSearchParams(searchParams.toString())
-      : new URLSearchParams();
+    return pathname === "/" ? new URLSearchParams(searchParams.toString()) : new URLSearchParams();
   }
 
   function go(p: URLSearchParams, note: string) {
@@ -172,20 +189,6 @@ export function Terminal() {
     const href = qs ? `/?${qs}` : "/";
     router.push(href);
     print(L("ok", note), L("dim", `→ ${href}`));
-  }
-
-  function applyTheme(name: string) {
-    try {
-      if (name === "green") {
-        delete document.documentElement.dataset.theme;
-        localStorage.removeItem("pm-theme");
-      } else {
-        document.documentElement.dataset.theme = name;
-        localStorage.setItem("pm-theme", name);
-      }
-    } catch {
-      // localStorage unavailable — theme still applies for this page
-    }
   }
 
   async function doExport() {
@@ -215,9 +218,7 @@ export function Terminal() {
   /** Lazily spin up the compute worker; correlate replies by request id. */
   function scan(events: unknown[], opts: ScanOptions): Promise<ScanResponse> {
     if (!workerRef.current) {
-      workerRef.current = new Worker(
-        new URL("../workers/signals.worker.ts", import.meta.url),
-      );
+      workerRef.current = new Worker(new URL("../workers/signals.worker.ts", import.meta.url));
     }
     const worker = workerRef.current;
     const id = ++scanId.current;
@@ -249,9 +250,7 @@ export function Terminal() {
     }
     const arbN = signals.filter((s) => s.kind === "ARB").length;
     const momN = signals.length - arbN;
-    const avg = Math.round(
-      signals.reduce((a, s) => a + s.score, 0) / signals.length,
-    );
+    const avg = Math.round(signals.reduce((a, s) => a + s.score, 0) / signals.length);
     const best = signals[0];
     print(
       L(
@@ -266,26 +265,18 @@ export function Terminal() {
         s.kind === "ARB"
           ? `${s.edgeBps > 0 ? "+" : ""}${(s.edgeBps / 100).toFixed(2)}%`
           : `${s.edgeBps > 0 ? "+" : ""}${(s.edgeBps / 100).toFixed(1)}%`;
-      const spr =
-        s.spreadBps != null ? `${(s.spreadBps / 100).toFixed(1)}% SPR` : "—";
+      const spr = s.spreadBps != null ? `${(s.spreadBps / 100).toFixed(1)}% SPR` : "—";
       print(
         L(
           s.score >= 60 ? "ok" : "out",
-          `${handle} ${s.kind.padEnd(8)} ${bar.padEnd(10)} ${String(
-            Math.round(s.score),
-          ).padStart(
+          `${handle} ${s.kind.padEnd(8)} ${bar.padEnd(10)} ${String(Math.round(s.score)).padStart(
             3,
           )} · EDGE ${edge.padStart(7)} · ${spr.padStart(9)} · ${fmtUsd(s.liquidity).padStart(6)} LIQ`,
         ),
       );
       print(L("dim", `   ${s.title.toUpperCase()} — ${s.detail}`));
     }
-    print(
-      L(
-        "dim",
-        "OPEN E<#> TO INSPECT A MARKET · SCORE 0–100 = EDGE × BOOK QUALITY",
-      ),
-    );
+    print(L("dim", "OPEN E<#> TO INSPECT A MARKET · SCORE 0–100 = EDGE × BOOK QUALITY"));
     print(
       L(
         "dim",
@@ -295,10 +286,7 @@ export function Terminal() {
   }
 
   /** Fetch the current board and run the kernel over it. Throws on failure. */
-  async function runScan(
-    limit: number,
-    kinds?: SignalKind[],
-  ): Promise<ScanResponse> {
+  async function runScan(limit: number, kinds?: SignalKind[]): Promise<ScanResponse> {
     const p = boardParams();
     const params = new URLSearchParams();
     const tag = p.get("tag") ?? "";
@@ -313,9 +301,7 @@ export function Terminal() {
 
   async function doScan(limit: number, kinds?: SignalKind[]) {
     const label = kinds ? kinds.join("+") : "ALL";
-    print(
-      L("dim", `SCANNING BOARD [${label}] — DISPATCHING KERNEL TO WEB WORKER_`),
-    );
+    print(L("dim", `SCANNING BOARD [${label}] — DISPATCHING KERNEL TO WEB WORKER_`));
     try {
       const out = await runScan(limit, kinds);
       print(
@@ -335,9 +321,7 @@ export function Terminal() {
     stopWatch();
     watchSeen.current = new Map();
     const label = kinds ? kinds.join("+") : "ALL";
-    print(
-      L("ok", `WATCH ON [${label}] · EVERY ${seconds}S · "WATCH OFF" TO STOP`),
-    );
+    print(L("ok", `WATCH ON [${label}] · EVERY ${seconds}S · "WATCH OFF" TO STOP`));
     const tick = async () => {
       try {
         const out = await runScan(12, kinds);
@@ -354,13 +338,9 @@ export function Terminal() {
           if (before === undefined) {
             rising.push(L("ok", `WATCH · NEW  ${s.kind} ${now} — ${title}`));
           } else if (now - before >= 5) {
-            rising.push(
-              L("ok", `WATCH · ▲${now - before} ${s.kind} ${now} — ${title}`),
-            );
+            rising.push(L("ok", `WATCH · ▲${now - before} ${s.kind} ${now} — ${title}`));
           } else if (before - now >= 5) {
-            falling.push(
-              L("out", `WATCH · ▼${before - now} ${s.kind} ${now} — ${title}`),
-            );
+            falling.push(L("out", `WATCH · ▼${before - now} ${s.kind} ${now} — ${title}`));
           }
         }
         for (const [slug, was] of prev) {
@@ -397,8 +377,6 @@ export function Terminal() {
       print(L("out", "WATCH IS NOT RUNNING"));
     }
   }
-
-  const slip = (bps: number) => `${bps >= 0 ? "+" : ""}${bps.toFixed(0)}BPS`;
 
   /** Pull live CLOB depth for a signal and simulate walking the book. */
   async function doSim(handle: string, budget: number) {
@@ -465,8 +443,7 @@ export function Terminal() {
           print(L("err", "BASKET COST IS ZERO — CANNOT SIMULATE"));
           return;
         }
-        const avgSlip =
-          r.legs.reduce((a, l) => a + l.fill.slippageBps, 0) / r.legs.length;
+        const avgSlip = r.legs.reduce((a, l) => a + l.fill.slippageBps, 0) / r.legs.length;
         const fillNote = r.complete
           ? "ALL LEGS FILLED"
           : `INCOMPLETE — ${r.missingLegs} LEG(S) SHORT, ARB NOT GUARANTEED`;
@@ -494,17 +471,13 @@ export function Terminal() {
           if (!sell) {
             print(L("err", "NO LIVE BIDS — CANNOT MODEL SELL-SIDE CAPTURE"));
           } else {
-            const avgSlip =
-              sell.legs.reduce((a, l) => a + l.fill.slippageBps, 0) /
-              sell.legs.length;
-            const fillNote = sell.complete
+            const sellSlip =
+              sell.legs.reduce((a, l) => a + l.fill.slippageBps, 0) / sell.legs.length;
+            const sellNote = sell.complete
               ? "ALL LEGS FILLED"
               : `INCOMPLETE — ${sell.missingLegs} LEG(S) SHORT, NOT FULLY HEDGED`;
             print(
-              L(
-                "out",
-                `   OVERROUND · CAPTURE = SELL-ALL INTO THE BIDS (${legs.length} LEGS)`,
-              ),
+              L("out", `   OVERROUND · CAPTURE = SELL-ALL INTO THE BIDS (${legs.length} LEGS)`),
               L(
                 "out",
                 `   ${sell.sets.toFixed(1)} SETS · COLLECT $${sell.proceeds.toFixed(2)} · OWE $${sell.liability.toFixed(2)}`,
@@ -515,15 +488,13 @@ export function Terminal() {
               ),
               L(
                 "dim",
-                `   AVG SLIP ${slip(avgSlip)} · ${fillNote} · NEEDS MINTED SET / NEG-RISK CONVERT, NOT A NAKED SHORT`,
+                `   AVG SLIP ${slip(sellSlip)} · ${sellNote} · NEEDS MINTED SET / NEG-RISK CONVERT, NOT A NAKED SHORT`,
               ),
             );
           }
         }
       }
-      print(
-        L("dim", "SIMULATION ONLY · NO ORDER PLACED · NOT FINANCIAL ADVICE"),
-      );
+      print(L("dim", "SIMULATION ONLY · NO ORDER PLACED · NOT FINANCIAL ADVICE"));
     } catch {
       print(L("err", "SIM FAILED — BOOK FEED UNAVAILABLE"));
     }
@@ -556,10 +527,7 @@ export function Terminal() {
       case "go": {
         if (!TAGS.includes(argLower)) {
           print(
-            L(
-              "err",
-              `UNKNOWN TAG "${arg.toUpperCase()}" — TRY: ${TAGS.join(", ").toUpperCase()}`,
-            ),
+            L("err", `UNKNOWN TAG "${arg.toUpperCase()}" — TRY: ${TAGS.join(", ").toUpperCase()}`),
           );
           break;
         }
@@ -588,12 +556,7 @@ export function Terminal() {
       case "sort": {
         const [key, dir = "desc"] = argLower.split(/\s+/);
         if (!SORT_KEYS.includes(key) || !["asc", "desc"].includes(dir)) {
-          print(
-            L(
-              "err",
-              `USAGE: SORT <${SORT_KEYS.join("|").toUpperCase()}> [ASC|DESC]`,
-            ),
-          );
+          print(L("err", `USAGE: SORT <${SORT_KEYS.join("|").toUpperCase()}> [ASC|DESC]`));
           break;
         }
         const p = boardParams();
@@ -608,16 +571,9 @@ export function Terminal() {
       case "next":
       case "prev": {
         const current = Number(boardParams().get("page")) || 1;
-        const target =
-          cmd === "next"
-            ? current + 1
-            : cmd === "prev"
-              ? current - 1
-              : Number(arg);
+        const target = cmd === "next" ? current + 1 : cmd === "prev" ? current - 1 : Number(arg);
         if (!Number.isInteger(target) || target < 1) {
-          print(
-            L("err", cmd === "prev" ? "ALREADY ON PAGE 1" : "USAGE: PAGE <N>"),
-          );
+          print(L("err", cmd === "prev" ? "ALREADY ON PAGE 1" : "USAGE: PAGE <N>"));
           break;
         }
         const p = boardParams();
@@ -628,9 +584,7 @@ export function Terminal() {
 
       case "open": {
         if (!arg) {
-          print(
-            L("err", "USAGE: OPEN <ROW #> · OPEN E<#> (SIGNAL) · OPEN <SLUG>"),
-          );
+          print(L("err", "USAGE: OPEN <ROW #> · OPEN E<#> (SIGNAL) · OPEN <SLUG>"));
           break;
         }
         const sig = argLower.match(/^e(\d+)$/);
@@ -771,12 +725,9 @@ export function Terminal() {
   function complete() {
     const parts = value.split(/\s+/);
     if (parts.length === 1) {
-      const matches = COMMANDS.filter((c) =>
-        c.startsWith(parts[0].toLowerCase()),
-      );
+      const matches = COMMANDS.filter((c) => c.startsWith(parts[0].toLowerCase()));
       if (matches.length === 1) setValue(`${matches[0]} `);
-      else if (matches.length > 1)
-        print(L("dim", matches.join(" · ").toUpperCase()));
+      else if (matches.length > 1) print(L("dim", matches.join(" · ").toUpperCase()));
       return;
     }
     const pool =
@@ -792,10 +743,8 @@ export function Terminal() {
       }[parts[0].toLowerCase()] ?? [];
     const last = parts[parts.length - 1].toLowerCase();
     const matches = pool.filter((c) => c.startsWith(last));
-    if (matches.length === 1)
-      setValue([...parts.slice(0, -1), matches[0]].join(" "));
-    else if (matches.length > 1)
-      print(L("dim", matches.join(" · ").toUpperCase()));
+    if (matches.length === 1) setValue([...parts.slice(0, -1), matches[0]].join(" "));
+    else if (matches.length > 1) print(L("dim", matches.join(" · ").toUpperCase()));
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -810,10 +759,7 @@ export function Terminal() {
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       if (history.length === 0) return;
-      const next =
-        histIdx.current === -1
-          ? history.length - 1
-          : Math.max(0, histIdx.current - 1);
+      const next = histIdx.current === -1 ? history.length - 1 : Math.max(0, histIdx.current - 1);
       histIdx.current = next;
       setValue(history[next]);
     } else if (e.key === "ArrowDown") {
@@ -845,9 +791,7 @@ export function Terminal() {
         className="sheen fixed bottom-3 right-3 z-50 flex items-center gap-1.5 overflow-hidden border border-edge bg-panel px-2.5 py-1.5 text-[10px] tracking-widest text-muted shadow-[0_4px_20px_-4px_rgba(0,0,0,0.7)] hover:border-accent/50 hover:text-accent"
       >
         <span className="text-accent">&gt;_</span> TERMINAL
-        <kbd className="border border-edge bg-panel-raised px-1 text-muted/70">
-          `
-        </kbd>
+        <kbd className="border border-edge bg-panel-raised px-1 text-muted/70">`</kbd>
       </button>
     );
   }
@@ -860,9 +804,7 @@ export function Terminal() {
             <span className="live-dot inline-block h-1.5 w-1.5 rounded-full bg-accent" />
             PM/TERM — COMMAND INTERFACE
           </span>
-          <span className="hidden sm:block">
-            TAB COMPLETES · ↑↓ HISTORY · ESC CLOSES
-          </span>
+          <span className="hidden sm:block">TAB COMPLETES · ↑↓ HISTORY · ESC CLOSES</span>
         </div>
         <div className="flex items-center gap-1.5 overflow-x-auto border-b border-edge py-1.5">
           <span className="shrink-0 select-none text-[10px] tracking-widest text-muted/50">

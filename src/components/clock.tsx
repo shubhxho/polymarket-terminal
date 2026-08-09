@@ -16,9 +16,5 @@ export function Clock() {
   }, []);
 
   // Render a fixed-width placeholder until mounted to avoid hydration mismatch
-  return (
-    <span className="tabular-nums text-foreground">
-      {now ?? "···· ·· ·· ··:··:·· UTC"}
-    </span>
-  );
+  return <span className="tabular-nums text-foreground">{now ?? "···· ·· ·· ··:··:·· UTC"}</span>;
 }

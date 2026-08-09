@@ -20,8 +20,16 @@ function ramp(base: number, drift: number, n = 24): { t: number; p: number }[] {
 
 // Two series intentionally share the same label but have distinct ids.
 const FIXTURE: ChartSeries[] = [
-  { id: "tok-1001", label: "Los Cabos Open, Qualifier", points: ramp(0.42, 0.25) },
-  { id: "tok-1002", label: "Los Cabos Open, Qualifier", points: ramp(0.31, -0.12) },
+  {
+    id: "tok-1001",
+    label: "Los Cabos Open, Qualifier",
+    points: ramp(0.42, 0.25),
+  },
+  {
+    id: "tok-1002",
+    label: "Los Cabos Open, Qualifier",
+    points: ramp(0.31, -0.12),
+  },
   { id: "tok-1003", label: "Miami Masters, Final", points: ramp(0.6, 0.1) },
 ];
 

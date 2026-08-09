@@ -22,9 +22,7 @@ function captureConsole(page: import("@playwright/test").Page) {
 }
 
 test.describe("PriceChart", () => {
-  test("renders duplicate-label series without a React key warning", async ({
-    page,
-  }) => {
+  test("renders duplicate-label series without a React key warning", async ({ page }) => {
     const { messages, errors } = captureConsole(page);
 
     await page.goto(FIXTURE_PATH);

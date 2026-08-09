@@ -13,13 +13,22 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const NAV = [
+  { href: "/", label: "BOARD", title: "The market board" },
+  { href: "/signals", label: "EDGE", title: "Board-wide edge scanner" },
+  {
+    href: "/derivatives",
+    label: "DESK",
+    title: "Derivatives desk — claims priced against Hyperliquid",
+  },
+];
+
 export const metadata: Metadata = {
   title: {
     default: "POLYMARKET TERMINAL",
     template: "%s · POLYMARKET TERMINAL",
   },
-  description:
-    "Real-time prediction market terminal. Prices, volume and odds from Polymarket.",
+  description: "Real-time prediction market terminal. Prices, volume and odds from Polymarket.",
 };
 
 export default function RootLayout({
@@ -32,7 +41,8 @@ export default function RootLayout({
       <body className="flex min-h-full flex-col">
         <script
           // Restore the saved phosphor theme before first paint to avoid a color flash
-          // biome-ignore lint/security/noDangerouslySetInnerHtml: static inline snippet, no user input
+          // Static inline snippet with no user input — it only reads a value
+          // this app wrote and stamps it on <html> before first paint.
           dangerouslySetInnerHTML={{
             __html: `try{var t=localStorage.getItem("pm-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}`,
           }}
@@ -49,10 +59,20 @@ export default function RootLayout({
               <span className="cursor-blink text-accent">▊</span>
             </Link>
             <div className="flex items-center gap-3 text-xs text-muted sm:gap-4">
-              <span className="hidden items-center gap-1.5 text-[11px] text-muted/70 lg:flex">
-                <span className="text-accent/70">SYS</span>
-                <span className="text-accent">NOMINAL</span>
-              </span>
+              {/* Primary sections. Both existed as routes with nothing linking
+                  to them — reachable only by typing the URL. */}
+              <nav className="flex items-center gap-px border border-edge bg-edge">
+                {NAV.map((n) => (
+                  <Link
+                    key={n.href}
+                    href={n.href}
+                    title={n.title}
+                    className="bg-panel px-2 py-1 text-[10px] tracking-widest text-muted transition-colors hover:bg-panel-raised hover:text-accent"
+                  >
+                    {n.label}
+                  </Link>
+                ))}
+              </nav>
               <span className="hidden h-3 w-px bg-edge lg:block" />
               <span className="hidden items-center gap-2 sm:flex">
                 <span className="relative inline-flex h-1.5 w-1.5">
@@ -69,16 +89,10 @@ export default function RootLayout({
           <div className="rule-glow h-px" />
         </header>
         <SearchFocuser />
-        <Suspense
-          fallback={
-            <div className="h-[30px] border-b border-edge bg-panel-raised" />
-          }
-        >
+        <Suspense fallback={<div className="h-[30px] border-b border-edge bg-panel-raised" />}>
           <Ticker />
         </Suspense>
-        <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 py-4">
-          {children}
-        </div>
+        <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 py-4">{children}</div>
         <footer className="border-t border-edge bg-panel panel-lit">
           <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2 px-4 py-2 text-[11px] text-muted">
             <span className="flex items-center gap-1.5">
@@ -86,10 +100,8 @@ export default function RootLayout({
               DATA: GAMMA-API.POLYMARKET.COM · CLOB.POLYMARKET.COM
             </span>
             <span className="hidden md:block">
-              <kbd className="border border-edge bg-panel-raised px-1">`</kbd>{" "}
-              TERMINAL ·{" "}
-              <kbd className="border border-edge bg-panel-raised px-1">/</kbd>{" "}
-              SEARCH
+              <kbd className="border border-edge bg-panel-raised px-1">`</kbd> TERMINAL ·{" "}
+              <kbd className="border border-edge bg-panel-raised px-1">/</kbd> SEARCH
             </span>
             <span>NOT FINANCIAL ADVICE · PRICES = IMPLIED PROBABILITY</span>
           </div>

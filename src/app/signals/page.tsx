@@ -69,14 +69,11 @@ export default async function SignalsPage({
         </h1>
         <p className="mt-1 max-w-3xl text-xs leading-relaxed text-muted">
           Scans up to {SCAN_DEPTH} markets for four honestly-defined signals:{" "}
-          <span className="text-cyan">ARB</span> — mutually-exclusive YES prices
-          that don&apos;t sum to 100% —{" "}
-          <span className="text-accent">MOMENTUM</span> — strong 24h moves read
-          against the weekly trend —{" "}
-          <span className="text-amber">LIQUIDITY</span> — deep books carrying a
-          spread a maker could capture — and{" "}
-          <span className="text-foreground">RESOLUTION</span> — markets settling
-          within days while the outcome is still live. Every score rewards edge
+          <span className="text-cyan">ARB</span> — mutually-exclusive YES prices that don&apos;t sum
+          to 100% — <span className="text-accent">MOMENTUM</span> — strong 24h moves read against
+          the weekly trend — <span className="text-amber">LIQUIDITY</span> — deep books carrying a
+          spread a maker could capture — and <span className="text-foreground">RESOLUTION</span> —
+          markets settling within days while the outcome is still live. Every score rewards edge
           magnitude and discounts it by how liquid the book actually is.{" "}
           <span className="text-muted/60">Not financial advice.</span>
         </p>
@@ -151,9 +148,8 @@ export default async function SignalsPage({
       </Suspense>
 
       <p className="text-[11px] text-muted/50">
-        <span className="text-accent/60">▪</span> SCORE = EDGE MAGNITUDE × BOOK
-        QUALITY · SIGNALS ARE DESCRIPTIVE, NOT RECOMMENDATIONS · PRICES = IMPLIED
-        PROBABILITY
+        <span className="text-accent/60">▪</span> SCORE = EDGE MAGNITUDE × BOOK QUALITY · SIGNALS
+        ARE DESCRIPTIVE, NOT RECOMMENDATIONS · PRICES = IMPLIED PROBABILITY
       </p>
     </main>
   );
@@ -168,15 +164,7 @@ function buildHref(p: { tag: string; kind: string; sort: string }): string {
   return s ? `/signals?${s}` : "/signals";
 }
 
-async function ScanResults({
-  tag,
-  kind,
-  sort,
-}: {
-  tag: string;
-  kind: string;
-  sort: string;
-}) {
+async function ScanResults({ tag, kind, sort }: { tag: string; kind: string; sort: string }) {
   let signals: EdgeSignal[];
   try {
     const events = await getTopEvents(tag || undefined, SCAN_DEPTH, 0);
@@ -202,8 +190,7 @@ async function ScanResults({
           <span className="text-amber">∅</span> NO SIGNALS
         </div>
         <p className="mt-3 text-xs text-muted/70">
-          → no market on this board cleared any signal threshold — try another
-          tag
+          → no market on this board cleared any signal threshold — try another tag
           <span className="cursor-blink ml-1 text-accent">▊</span>
         </p>
       </div>
@@ -214,17 +201,10 @@ async function ScanResults({
   const momCount = signals.filter((s) => s.kind === "MOMENTUM").length;
   const liqCount = signals.filter((s) => s.kind === "LIQUIDITY").length;
   const resCount = signals.filter((s) => s.kind === "RESOLUTION").length;
-  const buyableArb = signals.filter(
-    (s) => s.kind === "ARB" && s.edgeBps > 0,
-  ).length;
-  const highConviction = signals.filter(
-    (s) => s.score >= HIGH_CONVICTION,
-  ).length;
+  const buyableArb = signals.filter((s) => s.kind === "ARB" && s.edgeBps > 0).length;
+  const highConviction = signals.filter((s) => s.score >= HIGH_CONVICTION).length;
   const topScore = signals.reduce((m, s) => Math.max(m, s.score), 0);
-  const bestEdge = signals.reduce(
-    (m, s) => (Math.abs(s.edgeBps) > Math.abs(m) ? s.edgeBps : m),
-    0,
-  );
+  const bestEdge = signals.reduce((m, s) => (Math.abs(s.edgeBps) > Math.abs(m) ? s.edgeBps : m), 0);
   const total = signals.length;
   const pct = (n: number) => (n / total) * 100;
   const arbPct = pct(arbCount);
@@ -233,15 +213,13 @@ async function ScanResults({
   const resPct = pct(resCount);
 
   const filtered =
-    kind === "all"
-      ? signals
-      : signals.filter((s) => s.kind === (kind.toUpperCase() as EdgeKind));
+    kind === "all" ? signals : signals.filter((s) => s.kind === (kind.toUpperCase() as EdgeKind));
 
   const sorted =
     sort === "edge"
-      ? [...filtered].sort((a, b) => Math.abs(b.edgeBps) - Math.abs(a.edgeBps))
+      ? filtered.toSorted((a, b) => Math.abs(b.edgeBps) - Math.abs(a.edgeBps))
       : sort === "liq"
-        ? [...filtered].sort((a, b) => b.liquidity - a.liquidity)
+        ? filtered.toSorted((a, b) => b.liquidity - a.liquidity)
         : filtered; // scanEdges already returns score-descending
 
   return (
@@ -262,8 +240,7 @@ async function ScanResults({
             <span>{highConviction} HIGH-CONVICTION</span>
             <span className="text-cyan">{buyableArb} BUYABLE</span>
             <span>
-              TOP {Math.round(topScore)} · BEST{" "}
-              {bestEdge > 0 ? "+" : ""}
+              TOP {Math.round(topScore)} · BEST {bestEdge > 0 ? "+" : ""}
               {(bestEdge / 100).toFixed(1)}%
             </span>
           </span>
@@ -273,18 +250,9 @@ async function ScanResults({
             className="h-full bg-cyan/60 shadow-[0_0_8px_-1px_var(--cyan)] transition-all"
             style={{ width: `${arbPct}%` }}
           />
-          <div
-            className="h-full bg-accent/60 transition-all"
-            style={{ width: `${momPct}%` }}
-          />
-          <div
-            className="h-full bg-amber/60 transition-all"
-            style={{ width: `${liqPct}%` }}
-          />
-          <div
-            className="h-full bg-foreground/40 transition-all"
-            style={{ width: `${resPct}%` }}
-          />
+          <div className="h-full bg-accent/60 transition-all" style={{ width: `${momPct}%` }} />
+          <div className="h-full bg-amber/60 transition-all" style={{ width: `${liqPct}%` }} />
+          <div className="h-full bg-foreground/40 transition-all" style={{ width: `${resPct}%` }} />
         </div>
         <div className="mt-1.5 flex flex-wrap items-center gap-4 text-[10px] tabular-nums text-muted">
           <span className="flex items-center gap-1 text-cyan">
@@ -308,8 +276,7 @@ async function ScanResults({
 
       {sorted.length === 0 ? (
         <div className="border border-edge bg-panel p-5 text-xs text-muted/70 panel-lit">
-          → no {kind.toUpperCase()} signals on this board — switch the filter
-          above
+          → no {kind.toUpperCase()} signals on this board — switch the filter above
         </div>
       ) : (
         <div className="grid gap-px border border-edge bg-edge sm:grid-cols-2 lg:grid-cols-3">
@@ -360,14 +327,12 @@ function ScanSkeleton() {
         ))}
       </div>
       <div className="border border-edge bg-panel px-3 py-2.5 panel-lit">
-        <div className="mb-2 text-[10px] tracking-widest text-muted/50">
-          COMPOSITION · SCANNING
-        </div>
+        <div className="mb-2 text-[10px] tracking-widest text-muted/50">COMPOSITION · SCANNING</div>
         <div className="shimmer h-2 w-full rounded-sm bg-panel-raised" />
       </div>
       <div className="scan-sweep grid gap-px border border-edge bg-edge sm:grid-cols-2 lg:grid-cols-3">
-        {[...Array(6)].map((_, i) => (
-          <div key={i} className="flex flex-col gap-2 bg-panel px-3 py-2.5 pl-4">
+        {Array.from({ length: 6 }, (_, i) => `signal-card-${i}`).map((id) => (
+          <div key={id} className="flex flex-col gap-2 bg-panel px-3 py-2.5 pl-4">
             <div className="shimmer h-3 w-24 rounded-sm bg-panel-raised" />
             <div className="shimmer h-3 w-3/4 rounded-sm bg-panel-raised" />
             <div className="shimmer h-1 w-full rounded-sm bg-panel-raised" />
