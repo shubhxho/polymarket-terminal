@@ -156,6 +156,22 @@ export function DerivativesRow({ quote: q }: { quote: DerivativeQuote }) {
           title="Week-averaged HL funding, annualized. This is the carry the forward is built from."
         />
         <Field
+          label="NET EXP"
+          value={
+            q.netExpectedUsd == null
+              ? "—"
+              : `${q.netExpectedUsd >= 0 ? "+" : "−"}${fmtUsd(Math.abs(q.netExpectedUsd))}`
+          }
+          tone={
+            q.netExpectedUsd == null
+              ? undefined
+              : q.netExpectedUsd >= 0
+                ? "text-accent"
+                : "text-red"
+          }
+          title={`Expected profit on a $${REFERENCE_POSITION_USD.toLocaleString("en-US")} stake, after paying to cross Hyperliquid's ladder for the delta hedge. This is the edge net of what it costs to carry, not the edge on paper.`}
+        />
+        <Field
           label="KELLY"
           value={`${q.kelly >= 0 ? "+" : ""}${(q.kelly * 100).toFixed(1)}%`}
           tone={q.kelly >= 0 ? "text-accent" : "text-red"}

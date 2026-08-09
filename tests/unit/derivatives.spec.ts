@@ -356,6 +356,23 @@ test.describe("priceClaim", () => {
     expect(quoteWith({ claim: claim ?? undefined })).toBeNull();
   });
 
+  test("net expected profit is EV on the stake minus the hedge cost", () => {
+    const withBook = quoteWith({ book: ladder(100_000, 5, 5, 40) });
+    const q = withBook as NonNullable<typeof withBook>;
+    expect(q.book).not.toBeNull();
+    expect(q.netExpectedUsd).not.toBeNull();
+
+    const book = q.book as NonNullable<typeof q.book>;
+    const hedgeCost = (book.hedgeNotionalUsd * book.hedgeSlippageBps) / 10_000;
+    expect(q.netExpectedUsd as number).toBeCloseTo(10_000 * q.ev - hedgeCost, 6);
+    // Carrying the hedge can only reduce the expected result.
+    expect(q.netExpectedUsd as number).toBeLessThanOrEqual(10_000 * q.ev + 1e-9);
+  });
+
+  test("no ladder means no profit claim, rather than a hedge-free one", () => {
+    expect((quoteWith() as NonNullable<ReturnType<typeof quoteWith>>).netExpectedUsd).toBeNull();
+  });
+
   test("a strike orders of magnitude from spot is refused", () => {
     // Defence in depth behind the parser: even if a bad strike gets through,
     // it must not reach the model, where it would price to a hard 0 or 1.

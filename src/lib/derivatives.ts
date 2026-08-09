@@ -276,6 +276,14 @@ export interface DerivativeQuote {
   kelly: number;
   /** EV per $1 staked buying the YES side at the market price. */
   ev: number;
+  /**
+   * Expected profit on a REFERENCE_POSITION_USD stake, in dollars, AFTER the
+   * cost of crossing Hyperliquid's ladder to put the delta hedge on. EV alone
+   * flatters every position: a 6% edge that costs 80bps of hedge slippage on a
+   * hedge twice the size of the position is not a 6% trade. Null when no ladder
+   * was available to cost the hedge against.
+   */
+  netExpectedUsd: number | null;
   /** HL validator-median oracle price — the settlement reference. */
   spot: number;
   forward: number;
@@ -545,6 +553,8 @@ export function priceClaim(args: {
   }
   const hedgeNotionalUsd = hedgeNotionalFor(delta, spot, marketProbability);
 
+  const book = args.book ? bookLiquidity(args.book, hedgeNotionalUsd) : null;
+
   const band = probabilityBand(modelProbability, vega, vol.spread);
   const edge = modelProbability - marketProbability;
   const z = edgeZ(edge, band.width / 2);
@@ -584,7 +594,11 @@ export function priceClaim(args: {
     openInterest: perp.openInterest,
     perpDayVolume: perp.dayNotionalVolume,
     perpChange24h: perp.prevDayPx > 0 ? perp.markPx / perp.prevDayPx - 1 : 0,
-    book: args.book ? bookLiquidity(args.book, hedgeNotionalUsd) : null,
+    book,
+    netExpectedUsd:
+      book == null
+        ? null
+        : REFERENCE_POSITION_USD * ev - (book.hedgeNotionalUsd * book.hedgeSlippageBps) / 10_000,
     greeks,
   };
 }
