@@ -1,3 +1,4 @@
+import { asksAscending, bidsDescending, buyDollars, type OrderBook } from "./execution";
 import {
   averageFunding,
   type CandleInterval,
@@ -5,6 +6,7 @@ import {
   getCandles,
   getFundingComparison,
   getFundingHistory,
+  getPerpBook,
   getPerpContexts,
   INTERVAL_MINUTES,
   indexPerps,
@@ -275,12 +277,81 @@ export interface DerivativeQuote {
   perpDayVolume: number;
   /** Perp 24h return, decimal. The underlying's own momentum. */
   perpChange24h: number;
+  /**
+   * Live Hyperliquid ladder read — what the delta hedge actually costs. Null
+   * when the book could not be fetched; the row still prices without it.
+   */
+  book: BookLiquidity | null;
   /** Terminal digital greeks. Null for touch claims (no closed form). */
   greeks: DigitalQuote | null;
 }
 
 /** Quarter-Kelly: ~94% of the growth at ~44% of the drawdown. */
 export const KELLY_FRACTION = 0.25;
+
+/**
+ * Notional a hedge is costed at when walking Hyperliquid's ladder. Big enough
+ * to leave the top level on a liquid perp (so the number reflects real depth,
+ * not a one-lot quote), small enough to be a realistic desk clip.
+ */
+export const HEDGE_NOTIONAL_USD = 10_000;
+
+/** How far from mid still counts as "depth you could actually lift". */
+const DEPTH_BAND_BPS = 25;
+
+export interface BookLiquidity {
+  /** True top-of-book spread, in bps of mid. */
+  spreadBps: number;
+  /** Resting notional within ±25bps of mid, both sides, in USD. */
+  depthUsd: number;
+  /** Slippage vs the touch for a HEDGE_NOTIONAL_USD market buy, in bps. */
+  hedgeSlippageBps: number;
+  /** False when the ladder could not absorb the hedge clip at all. */
+  hedgeFilled: boolean;
+}
+
+/**
+ * Read Hyperliquid's actual ladder rather than its summary statistics.
+ *
+ * `impactPxs` already gives HL's own $20k impact quote, but it is a single
+ * number with no depth behind it. Walking the real book answers the question a
+ * desk actually has — "if the model says this claim is mispriced, what does it
+ * cost me to put on the delta hedge right now" — and it does so with the SAME
+ * `buyDollars` walker used on the Polymarket leg, so a cross-venue trade is
+ * costed with one slippage model on both sides instead of two.
+ */
+export function bookLiquidity(
+  book: OrderBook,
+  notionalUsd = HEDGE_NOTIONAL_USD,
+): BookLiquidity | null {
+  const asks = asksAscending(book);
+  const bids = bidsDescending(book);
+  const bestAsk = asks[0]?.price;
+  const bestBid = bids[0]?.price;
+  if (!(bestAsk > 0) || !(bestBid > 0)) return null;
+
+  const mid = (bestAsk + bestBid) / 2;
+  if (!(mid > 0)) return null;
+
+  const band = mid * (DEPTH_BAND_BPS / 10_000);
+  let depthUsd = 0;
+  for (const level of asks) {
+    if (level.price > mid + band) break;
+    depthUsd += level.price * level.size;
+  }
+  for (const level of bids) {
+    if (level.price < mid - band) break;
+    depthUsd += level.price * level.size;
+  }
+
+  const fill = buyDollars(book, notionalUsd);
+  return {
+    spreadBps: ((bestAsk - bestBid) / mid) * 10_000,
+    depthUsd,
+    hedgeSlippageBps: fill.slippageBps,
+    hedgeFilled: fill.filled,
+  };
+}
 
 /**
  * Price one parsed claim against a live Hyperliquid context + candle history.
@@ -300,6 +371,8 @@ export function priceClaim(args: {
   fundingHourly: number;
   /** Cross-venue funding for this coin, when HL publishes peers for it. */
   funding?: FundingComparison | null;
+  /** Live HL ladder for this coin, when it could be fetched. */
+  book?: OrderBook | null;
   endDate: string | undefined;
   now?: number;
 }): DerivativeQuote | null {
@@ -424,6 +497,7 @@ export function priceClaim(args: {
     openInterest: perp.openInterest,
     perpDayVolume: perp.dayNotionalVolume,
     perpChange24h: perp.prevDayPx > 0 ? perp.markPx / perp.prevDayPx - 1 : 0,
+    book: args.book ? bookLiquidity(args.book) : null,
     greeks,
   };
 }
@@ -563,8 +637,18 @@ export async function buildDesk(
 
   const candlesByKey = new Map<string, Candle[]>();
   const fundingByCoin = new Map<string, number>();
+  const bookByCoin = new Map<string, OrderBook>();
 
   await Promise.all([
+    // One L2 ladder per coin. This is what turns "the model disagrees" into
+    // "and here is what acting on it costs" — see `bookLiquidity`.
+    ...[...coinsNeeded].map(async (coin) => {
+      try {
+        bookByCoin.set(coin, await getPerpBook(coin));
+      } catch {
+        // Depth is supplementary; the claim still prices without it.
+      }
+    }),
     // Realized funding: one week of prints, averaged. Far steadier than the
     // single next-hour rate, which is noisy enough that pricing a month-out
     // forward off it would be indefensible.
@@ -613,6 +697,7 @@ export async function buildDesk(
       barMinutes: INTERVAL_MINUTES[interval],
       fundingHourly: fundingByCoin.get(c.claim.coin) ?? perp.fundingHourly,
       funding: funding.get(c.claim.coin) ?? null,
+      book: bookByCoin.get(c.claim.coin) ?? null,
       endDate: c.endDate,
       now,
     });

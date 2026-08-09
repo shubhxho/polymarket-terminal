@@ -1,5 +1,12 @@
 import { expect, test } from "@playwright/test";
-import { matchCoin, parseClaim, parseStrike, priceClaim } from "../../src/lib/derivatives";
+import {
+  bookLiquidity,
+  matchCoin,
+  parseClaim,
+  parseStrike,
+  priceClaim,
+} from "../../src/lib/derivatives";
+import type { OrderBook } from "../../src/lib/execution";
 import type { PerpContext } from "../../src/lib/hyperliquid";
 import { intervalForHorizon } from "../../src/lib/hyperliquid";
 import type { Candle } from "../../src/lib/quant";
@@ -167,6 +174,67 @@ function quoteWith(overrides: Partial<Parameters<typeof priceClaim>[0]> = {}) {
     ...overrides,
   });
 }
+
+/** A symmetric ladder: `levels` rungs each side, `step` apart, `size` each. */
+function ladder(mid = 100_000, step = 5, size = 0.5, levels = 40): OrderBook {
+  return {
+    tokenId: "HL:BTC",
+    asks: Array.from({ length: levels }, (_, i) => ({ price: mid + step * (i + 1), size })),
+    bids: Array.from({ length: levels }, (_, i) => ({ price: mid - step * (i + 1), size })),
+  };
+}
+
+test.describe("bookLiquidity", () => {
+  test("measures the true top-of-book spread", () => {
+    const liq = bookLiquidity(ladder(100_000, 5));
+    expect(liq).not.toBeNull();
+    // Best ask 100_005, best bid 99_995 ⇒ 10 wide on a 100k mid = 1bp.
+    expect((liq as NonNullable<typeof liq>).spreadBps).toBeCloseTo(1, 6);
+  });
+
+  test("counts only depth inside the ±25bps band", () => {
+    // 25bps of $100k is $250. With $50 rungs, offsets 50..250 are inside the
+    // band and 300+ are outside — so the ladder deliberately straddles it.
+    const liq = bookLiquidity(ladder(100_000, 50, 0.5, 10));
+    const expected = [50, 100, 150, 200, 250].reduce(
+      (sum, d) => sum + (100_000 + d) * 0.5 + (100_000 - d) * 0.5,
+      0,
+    );
+    expect((liq as NonNullable<typeof liq>).depthUsd).toBeCloseTo(expected, 6);
+    // The five rungs beyond the band must NOT be counted.
+    const everything = ladder(100_000, 50, 0.5, 10)
+      .asks.concat(ladder(100_000, 50, 0.5, 10).bids)
+      .reduce((sum, l) => sum + l.price * l.size, 0);
+    expect((liq as NonNullable<typeof liq>).depthUsd).toBeLessThan(everything);
+  });
+
+  test("reports hedge slippage against the touch, and flags a dry book", () => {
+    const deep = bookLiquidity(ladder(100_000, 5, 5, 40));
+    expect((deep as NonNullable<typeof deep>).hedgeFilled).toBe(true);
+    // Walking a deep ladder for $10k barely leaves the touch.
+    expect((deep as NonNullable<typeof deep>).hedgeSlippageBps).toBeGreaterThanOrEqual(0);
+    expect((deep as NonNullable<typeof deep>).hedgeSlippageBps).toBeLessThan(5);
+
+    // A ladder holding well under $10k cannot absorb the clip.
+    const thin: OrderBook = {
+      tokenId: "HL:BTC",
+      asks: [{ price: 100_005, size: 0.01 }],
+      bids: [{ price: 99_995, size: 0.01 }],
+    };
+    expect((bookLiquidity(thin) as NonNullable<typeof deep>).hedgeFilled).toBe(false);
+  });
+
+  test("an empty or one-sided book yields nothing rather than NaN", () => {
+    expect(bookLiquidity({ tokenId: "HL:BTC", asks: [], bids: [] })).toBeNull();
+    expect(
+      bookLiquidity({
+        tokenId: "HL:BTC",
+        asks: [{ price: 100_005, size: 1 }],
+        bids: [],
+      }),
+    ).toBeNull();
+  });
+});
 
 test.describe("priceClaim", () => {
   test("produces a coherent quote from live-shaped inputs", () => {

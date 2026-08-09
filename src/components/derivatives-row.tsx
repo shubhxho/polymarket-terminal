@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { DerivativeQuote } from "@/lib/derivatives";
+import { type DerivativeQuote, HEDGE_NOTIONAL_USD } from "@/lib/derivatives";
 import { fmtUsd } from "@/lib/polymarket";
 
 /**
@@ -178,10 +178,28 @@ export function DerivativesRow({ quote: q }: { quote: DerivativeQuote }) {
             {q.crossVenueBpsPerHour.toFixed(2)}BPS/H
           </span>
         )}
-        {q.impactSpreadBps != null && (
-          <span title="Cost of crossing HL's own book at $20k notional.">
-            IMPACT {q.impactSpreadBps.toFixed(1)}BPS
-          </span>
+        {q.book ? (
+          <>
+            <span title="True top-of-book spread on Hyperliquid's live ladder.">
+              SPR {q.book.spreadBps.toFixed(1)}BPS
+            </span>
+            <span title="Resting notional within ±25bps of mid, both sides.">
+              DEPTH ±25BPS {fmtUsd(q.book.depthUsd)}
+            </span>
+            <span
+              className={q.book.hedgeFilled ? undefined : "text-amber/70"}
+              title={`Slippage walking the real ladder for a $${HEDGE_NOTIONAL_USD.toLocaleString("en-US")} delta hedge — the same fill simulator used on the Polymarket leg.`}
+            >
+              HEDGE {q.book.hedgeSlippageBps.toFixed(1)}BPS
+              {q.book.hedgeFilled ? "" : " · DEPTH DRY"}
+            </span>
+          </>
+        ) : (
+          q.impactSpreadBps != null && (
+            <span title="HL's own $20k impact quote — the live ladder was unavailable.">
+              IMPACT {q.impactSpreadBps.toFixed(1)}BPS
+            </span>
+          )
         )}
         <span className="ml-auto">HL 24H {fmtUsd(q.perpDayVolume)}</span>
       </div>
