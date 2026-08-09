@@ -3,8 +3,9 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { DerivativesRow } from "@/components/derivatives-row";
 import { buildDesk } from "@/lib/derivatives";
-import { fmtUsd, getTopEvents } from "@/lib/polymarket";
-import { fundingApr } from "@/lib/quant";
+import { usd as fmtUsd } from "@/lib/format";
+import { fetchMarkets } from "@/lib/polymarket";
+import { fundingApr } from "@/lib/options";
 
 export const metadata: Metadata = {
   title: "DERIVATIVES DESK",
@@ -91,8 +92,8 @@ export default async function DerivativesPage({
 async function Desk({ tag }: { tag: string }) {
   let desk: Awaited<ReturnType<typeof buildDesk>>;
   try {
-    const events = await getTopEvents(tag || undefined, SCAN_DEPTH, 0);
-    desk = await buildDesk(events, { maxRows: MAX_ROWS });
+    const markets = await fetchMarkets({ limit: SCAN_DEPTH, tagId: tag || undefined });
+    desk = await buildDesk(markets, { maxRows: MAX_ROWS });
   } catch {
     return (
       <div className="border border-red/40 bg-panel p-5 panel-lit">
@@ -215,7 +216,7 @@ function VenueStrip({ desk }: { desk: Awaited<ReturnType<typeof buildDesk>> }) {
                   FUND {apr >= 0 ? "+" : ""}
                   {apr.toFixed(1)}%
                 </span>
-                {peers != null && (
+                {peers !== null && (
                   <span title="HL funding minus the Binance/Bybit mean, per hour.">
                     VS PEERS {peers >= 0 ? "+" : ""}
                     {peers.toFixed(2)}BPS/H

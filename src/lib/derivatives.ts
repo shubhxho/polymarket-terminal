@@ -1,4 +1,4 @@
-import { asksAscending, bidsDescending, buyDollars, type OrderBook } from "./execution";
+import { asksAscending, bidsDescending, buyDollars } from "./fills";
 import {
   averageFunding,
   type CandleInterval,
@@ -13,7 +13,7 @@ import {
   intervalForHorizon,
   type PerpContext,
 } from "./hyperliquid";
-import { eventOutcomes, type GammaEvent, type Outcome } from "./polymarket";
+import type { Market, OrderBook, Outcome } from "./types";
 import {
   basisBps,
   type Candle,
@@ -38,7 +38,7 @@ import {
   type VolSuite,
   varianceRatio,
   volSuite,
-} from "./quant";
+} from "./options";
 
 /**
  * The bridge: Polymarket claim ⇄ Hyperliquid continuous market.
@@ -226,7 +226,7 @@ export function parseClaim(title: string): ParsedClaim | null {
   const coin = matchCoin(title);
   if (!coin) return null;
   const strike = parseStrike(title);
-  if (strike == null) return null;
+  if (strike === null) return null;
 
   const touchMatch = title.match(TOUCH_WORDS);
   const terminalMatch = title.match(TERMINAL_WORDS);
@@ -374,7 +374,7 @@ export function hedgeNotionalFor(
   delta: number,
   spot: number,
   contractPrice: number,
-  positionUsd = REFERENCE_POSITION_USD,
+  positionUsd = REFERENCE_POSITION_USD
 ): number {
   if (!(spot > 0) || !Number.isFinite(delta)) return 0;
   const price = clamp(contractPrice, 0.01, 0.99);
@@ -394,7 +394,7 @@ export function hedgeNotionalFor(
  */
 export function bookLiquidity(
   book: OrderBook,
-  notionalUsd = REFERENCE_POSITION_USD,
+  notionalUsd = REFERENCE_POSITION_USD
 ): BookLiquidity | null {
   const asks = asksAscending(book);
   const bids = bidsDescending(book);
@@ -500,7 +500,7 @@ export function priceClaim(args: {
   if (claim.style === "TOUCH") {
     modelProbability = touchProbability(spot, claim.strike, years, sigma, drift);
     impliedVol = impliedVolFromTouch(marketProbability, spot, claim.strike, years, drift);
-    unattainable = impliedVol == null;
+    unattainable = impliedVol === null;
     // No closed-form vega for a one-touch: bump σ by 1% and difference it.
     const bump = Math.max(sigma * 0.01, 1e-4);
     vega =
@@ -523,14 +523,14 @@ export function priceClaim(args: {
     const callProbability = claim.direction === "UP" ? marketProbability : 1 - marketProbability;
     const roots = impliedVolFromDigitalCall(callProbability, forward, claim.strike, years);
     impliedVol = pickImpliedVol(roots, sigma);
-    if (roots == null) {
+    if (roots === null) {
       // The extremum is a CEILING: out of the money the price rises to
       // Φ(−√(−2m)) at σ* and falls away again, so a quote is unreachable when
       // it sits ABOVE that cap, never below. Comparing the wrong way round
       // labels ordinary cheap quotes "unattainable" and silently hides the
       // genuinely inexpressible ones.
       const cap = digitalProbabilityExtremum(forward, claim.strike, years);
-      unattainable = cap == null || callProbability > cap.probability;
+      unattainable = cap === null || callProbability > cap.probability;
     }
   }
 
@@ -596,7 +596,7 @@ export function priceClaim(args: {
     perpChange24h: perp.prevDayPx > 0 ? perp.markPx / perp.prevDayPx - 1 : 0,
     book,
     netExpectedUsd:
-      book == null
+      book === null
         ? null
         : REFERENCE_POSITION_USD * ev - (book.hedgeNotionalUsd * book.hedgeSlippageBps) / 10_000,
     greeks,
@@ -639,8 +639,8 @@ function yesOutcome(outcomes: Outcome[]): Outcome | null {
  * drops only its own rows.
  */
 export async function buildDesk(
-  events: GammaEvent[],
-  opts: { now?: number; maxRows?: number } = {},
+  markets: Market[],
+  opts: { now?: number; maxRows?: number } = {}
 ): Promise<Desk> {
   const now = opts.now ?? Date.now();
   const maxRows = opts.maxRows ?? 40;
@@ -654,57 +654,37 @@ export async function buildDesk(
     endDate: string | undefined;
   }[] = [];
 
-  for (const event of events) {
-    if (!event.markets || event.markets.length === 0) continue;
-    if (!matchCoin(event.title)) continue; // not a crypto market at all
+  for (const m of markets) {
+    if (!m.active || m.closed) continue;
+    // A market in a multi-outcome event carries its strike in its own question;
+    // a standalone binary carries it in the event title. Try the most specific
+    // text first and fall back, so "Bitcoin price on July 31 — $120,000" and
+    // "Bitcoin above $120,000 on July 31" both resolve.
+    const specific = m.groupItemTitle ? `${m.eventTitle ?? ""} ${m.groupItemTitle}` : m.question;
+    const claim = parseClaim(specific) ?? parseClaim(m.question) ?? parseClaim(m.eventTitle ?? "");
+    const title = m.groupItemTitle
+      ? `${m.eventTitle ?? m.question} — ${m.groupItemTitle}`
+      : m.question;
 
-    const outcomes = eventOutcomes(event);
-    if (outcomes.length === 0) continue;
-
-    // Multi-market events carry one strike per market row; single binary
-    // markets carry it in the event title.
-    const openMarkets = event.markets.filter((m) => m.active && !m.closed);
-    if (openMarkets.length > 1) {
-      for (const m of openMarkets) {
-        const rowTitle = `${event.title} — ${m.groupItemTitle || m.question}`;
-        const claim =
-          parseClaim(m.question) ?? parseClaim(`${event.title} ${m.groupItemTitle ?? ""}`);
-        const outcome = outcomes.find((o) => o.marketId === m.id);
-        if (!claim || !outcome) {
-          unparsed.push({
-            slug: event.slug,
-            title: rowTitle,
-            reason: claim ? "NO OUTCOME" : "UNCLASSIFIED PHRASING",
-          });
-          continue;
-        }
-        candidates.push({
-          claim,
-          slug: event.slug,
-          title: rowTitle,
-          outcome,
-          endDate: m.endDate ?? event.endDate,
-        });
-      }
-    } else {
-      const claim = parseClaim(event.title);
-      const outcome = yesOutcome(outcomes);
-      if (!claim || !outcome) {
-        unparsed.push({
-          slug: event.slug,
-          title: event.title,
-          reason: claim ? "NO OUTCOME" : "UNCLASSIFIED PHRASING",
-        });
-        continue;
-      }
-      candidates.push({
-        claim,
-        slug: event.slug,
-        title: event.title,
-        outcome,
-        endDate: openMarkets[0]?.endDate ?? event.endDate,
-      });
+    if (!matchCoin(specific) && !matchCoin(m.question) && !matchCoin(m.eventTitle ?? "")) {
+      continue; // not a crypto market at all — silent, not "unparsed"
     }
+    const outcome = yesOutcome(m.outcomes);
+    if (!claim || !outcome) {
+      unparsed.push({
+        slug: m.eventSlug ?? m.slug,
+        title,
+        reason: claim ? "NO OUTCOME" : "UNCLASSIFIED PHRASING",
+      });
+      continue;
+    }
+    candidates.push({
+      claim,
+      slug: m.eventSlug ?? m.slug,
+      title,
+      outcome,
+      endDate: m.endDate,
+    });
   }
 
   const empty: Desk = { rows: [], unparsed, perps: [], funding: new Map() };

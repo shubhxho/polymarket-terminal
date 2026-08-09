@@ -1,5 +1,5 @@
-import type { OrderBook } from "./execution";
-import type { Candle } from "./quant";
+import type { OrderBook } from "./types";
+import type { Candle } from "./options";
 
 /**
  * Hyperliquid read-only client (HyperCore `info` API).
@@ -108,7 +108,7 @@ export interface PerpContext {
 export async function getPerpContexts(revalidate = 15): Promise<PerpContext[]> {
   const [meta, ctxs] = await info<[RawPerpMeta, RawPerpCtx[]]>(
     { type: "metaAndAssetCtxs" },
-    revalidate,
+    revalidate
   );
   const out: PerpContext[] = [];
   for (let i = 0; i < meta.universe.length; i++) {
@@ -203,7 +203,7 @@ export interface FundingComparison {
  * idiosyncratic or corroborated by the wider market.
  */
 export async function getFundingComparison(
-  revalidate = 60,
+  revalidate = 60
 ): Promise<Map<string, FundingComparison>> {
   const raw = await info<RawPredictedFundings>({ type: "predictedFundings" }, revalidate);
   const out = new Map<string, FundingComparison>();
@@ -235,7 +235,7 @@ export async function getFundingComparison(
       venues,
       hlHourly: hl?.hourly ?? null,
       peerHourly,
-      dislocationBpsPerHour: hl && peerHourly != null ? (hl.hourly - peerHourly) * 10_000 : null,
+      dislocationBpsPerHour: hl && peerHourly !== null ? (hl.hourly - peerHourly) * 10_000 : null,
     });
   }
   return out;
@@ -297,7 +297,7 @@ export async function getCandles(
   interval: CandleInterval,
   lookbackBars: number,
   now = Date.now(),
-  revalidate = 60,
+  revalidate = 60
 ): Promise<Candle[]> {
   const minutes = INTERVAL_MINUTES[interval];
   const startTime = now - lookbackBars * minutes * 60_000;
@@ -306,7 +306,7 @@ export async function getCandles(
       type: "candleSnapshot",
       req: { coin, interval, startTime, endTime: now },
     },
-    revalidate,
+    revalidate
   );
   return raw
     .map((k) => ({
@@ -347,6 +347,7 @@ export async function getPerpBook(coin: string, revalidate = 5): Promise<OrderBo
     tokenId: `HL:${coin}`,
     bids: parse(raw.levels?.[0]),
     asks: parse(raw.levels?.[1]),
+    timestamp: raw.time ?? Date.now(),
   };
 }
 
@@ -368,11 +369,11 @@ export async function getFundingHistory(
   coin: string,
   hours = 168,
   now = Date.now(),
-  revalidate = 300,
+  revalidate = 300
 ): Promise<FundingPoint[]> {
   const raw = await info<{ coin: string; fundingRate: string; premium: string; time: number }[]>(
     { type: "fundingHistory", coin, startTime: now - hours * 3_600_000 },
-    revalidate,
+    revalidate
   );
   return raw
     .map((f) => ({

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { describe, expect, test } from "vitest";
 import {
   bookLiquidity,
   hedgeNotionalFor,
@@ -7,10 +7,10 @@ import {
   parseStrike,
   priceClaim,
 } from "../../src/lib/derivatives";
-import type { OrderBook } from "../../src/lib/execution";
+import type { OrderBook } from "../../src/lib/types";
 import type { PerpContext } from "../../src/lib/hyperliquid";
 import { intervalForHorizon } from "../../src/lib/hyperliquid";
-import type { Candle } from "../../src/lib/quant";
+import type { Candle } from "../../src/lib/options";
 
 /**
  * Tests for the Polymarket ⇄ Hyperliquid bridge.
@@ -21,7 +21,7 @@ import type { Candle } from "../../src/lib/quant";
  * rather than a guess, and that is asserted as hard as the happy paths.
  */
 
-test.describe("strike parsing", () => {
+describe("strike parsing", () => {
   test("reads the common dollar formats", () => {
     expect(parseStrike("Bitcoin above $120,000 on Dec 31")).toBe(120_000);
     expect(parseStrike("Will BTC hit $150k in 2025?")).toBe(150_000);
@@ -62,7 +62,7 @@ test.describe("strike parsing", () => {
   });
 });
 
-test.describe("coin matching", () => {
+describe("coin matching", () => {
   test("maps names and tickers to the Hyperliquid symbol", () => {
     expect(matchCoin("Will Bitcoin hit 150k")).toBe("BTC");
     expect(matchCoin("BTC above 120k")).toBe("BTC");
@@ -83,7 +83,7 @@ test.describe("coin matching", () => {
   });
 });
 
-test.describe("claim classification", () => {
+describe("claim classification", () => {
   test("'above ... on DATE' is a terminal digital call", () => {
     const claim = parseClaim("Bitcoin above $120,000 on December 31?");
     expect(claim).not.toBeNull();
@@ -121,7 +121,7 @@ test.describe("claim classification", () => {
   });
 });
 
-test.describe("horizon to bar length", () => {
+describe("horizon to bar length", () => {
   test("scales the bar with the life of the claim", () => {
     expect(intervalForHorizon(2)).toBe("1m");
     expect(intervalForHorizon(12)).toBe("5m");
@@ -200,12 +200,13 @@ function quoteWith(overrides: Partial<Parameters<typeof priceClaim>[0]> = {}) {
 function ladder(mid = 100_000, step = 5, size = 0.5, levels = 40): OrderBook {
   return {
     tokenId: "HL:BTC",
+    timestamp: 0,
     asks: Array.from({ length: levels }, (_, i) => ({ price: mid + step * (i + 1), size })),
     bids: Array.from({ length: levels }, (_, i) => ({ price: mid - step * (i + 1), size })),
   };
 }
 
-test.describe("bookLiquidity", () => {
+describe("bookLiquidity", () => {
   test("measures the true top-of-book spread", () => {
     const liq = bookLiquidity(ladder(100_000, 5));
     expect(liq).not.toBeNull();
@@ -219,7 +220,7 @@ test.describe("bookLiquidity", () => {
     const liq = bookLiquidity(ladder(100_000, 50, 0.5, 10));
     const expected = [50, 100, 150, 200, 250].reduce(
       (sum, d) => sum + (100_000 + d) * 0.5 + (100_000 - d) * 0.5,
-      0,
+      0
     );
     expect((liq as NonNullable<typeof liq>).depthUsd).toBeCloseTo(expected, 6);
     // The five rungs beyond the band must NOT be counted.
@@ -239,6 +240,7 @@ test.describe("bookLiquidity", () => {
     // A ladder holding well under $10k cannot absorb the clip.
     const thin: OrderBook = {
       tokenId: "HL:BTC",
+      timestamp: 0,
       asks: [{ price: 100_005, size: 0.01 }],
       bids: [{ price: 99_995, size: 0.01 }],
     };
@@ -253,18 +255,19 @@ test.describe("bookLiquidity", () => {
   });
 
   test("an empty or one-sided book yields nothing rather than NaN", () => {
-    expect(bookLiquidity({ tokenId: "HL:BTC", asks: [], bids: [] })).toBeNull();
+    expect(bookLiquidity({ tokenId: "HL:BTC", timestamp: 0, asks: [], bids: [] })).toBeNull();
     expect(
       bookLiquidity({
         tokenId: "HL:BTC",
+        timestamp: 0,
         asks: [{ price: 100_005, size: 1 }],
         bids: [],
-      }),
+      })
     ).toBeNull();
   });
 });
 
-test.describe("hedgeNotionalFor", () => {
+describe("hedgeNotionalFor", () => {
   test("scales with delta and with how many contracts the position buys", () => {
     // Same dollars, same delta, cheaper contract ⇒ more contracts ⇒ bigger hedge.
     const cheap = hedgeNotionalFor(0.5, 100_000, 0.05);
@@ -276,7 +279,7 @@ test.describe("hedgeNotionalFor", () => {
     // Sign of delta is irrelevant — a hedge has a size, not a direction.
     expect(hedgeNotionalFor(-0.3, 100_000, 0.25)).toBeCloseTo(
       hedgeNotionalFor(0.3, 100_000, 0.25),
-      9,
+      9
     );
   });
 
@@ -286,7 +289,7 @@ test.describe("hedgeNotionalFor", () => {
   });
 });
 
-test.describe("priceClaim", () => {
+describe("priceClaim", () => {
   test("produces a coherent quote from live-shaped inputs", () => {
     const q = quoteWith();
     expect(q).not.toBeNull();
@@ -341,7 +344,7 @@ test.describe("priceClaim", () => {
     // Touching is strictly likelier than finishing above the same level, so the
     // two models must not agree — that difference IS the reason both exist.
     expect((touch as NonNullable<typeof touch>).modelProbability).toBeGreaterThan(
-      (terminal as NonNullable<typeof terminal>).modelProbability,
+      (terminal as NonNullable<typeof terminal>).modelProbability
     );
     // No closed-form greeks for a barrier.
     expect((touch as NonNullable<typeof touch>).greeks).toBeNull();

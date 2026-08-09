@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { type DerivativeQuote, REFERENCE_POSITION_USD } from "@/lib/derivatives";
-import { fmtUsd } from "@/lib/polymarket";
+import { usd as fmtUsd } from "@/lib/format";
 
 /**
  * One priced claim.
@@ -19,7 +19,7 @@ import { fmtUsd } from "@/lib/polymarket";
 const pct = (p: number) => `${(p * 100).toFixed(1)}%`;
 const pp = (x: number) => `${x >= 0 ? "+" : ""}${(x * 100).toFixed(1)}pp`;
 const vol = (s: number | null) =>
-  s == null || !Number.isFinite(s) ? "—" : `${(s * 100).toFixed(0)}%`;
+  s === null || !Number.isFinite(s) ? "—" : `${(s * 100).toFixed(0)}%`;
 
 /** Horizon, in the coarsest unit that still reads precisely. */
 function horizon(hours: number): string {
@@ -158,12 +158,12 @@ export function DerivativesRow({ quote: q }: { quote: DerivativeQuote }) {
         <Field
           label="NET EXP"
           value={
-            q.netExpectedUsd == null
+            q.netExpectedUsd === null
               ? "—"
               : `${q.netExpectedUsd >= 0 ? "+" : "−"}${fmtUsd(Math.abs(q.netExpectedUsd))}`
           }
           tone={
-            q.netExpectedUsd == null
+            q.netExpectedUsd === null
               ? undefined
               : q.netExpectedUsd >= 0
                 ? "text-accent"
@@ -188,7 +188,7 @@ export function DerivativesRow({ quote: q }: { quote: DerivativeQuote }) {
         <span title="Spread across HL's oracle, mark and mid — a staleness check.">
           DISPERSION {q.dispersionBps.toFixed(1)}BPS
         </span>
-        {q.crossVenueBpsPerHour != null && (
+        {q.crossVenueBpsPerHour !== null && (
           <span title="HL funding minus the mean of Binance/Bybit, per hour. A persistent gap is a real cross-venue carry trade.">
             HL−PEERS {q.crossVenueBpsPerHour >= 0 ? "+" : ""}
             {q.crossVenueBpsPerHour.toFixed(2)}BPS/H
@@ -214,7 +214,7 @@ export function DerivativesRow({ quote: q }: { quote: DerivativeQuote }) {
             </span>
           </>
         ) : (
-          q.impactSpreadBps != null && (
+          q.impactSpreadBps !== null && (
             <span title="HL's own $20k impact quote — the live ladder was unavailable.">
               IMPACT {q.impactSpreadBps.toFixed(1)}BPS
             </span>
