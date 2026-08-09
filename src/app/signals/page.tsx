@@ -35,8 +35,8 @@ const SORTS = [
 ] as const;
 
 const HIGH_CONVICTION = 60;
-const SCAN_DEPTH = 200;
-const SHOW_LIMIT = 60;
+const SCAN_DEPTH = 500;
+const SHOW_LIMIT = 240;
 
 interface SearchParams {
   tag?: string;

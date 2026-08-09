@@ -1,4 +1,4 @@
-import { eventOutcomes, type GammaEvent } from "./polymarket";
+import { eventOutcomes, type GammaEvent, type Outcome } from "./polymarket";
 
 /**
  * Client-side "edge" scanner for prediction markets.
@@ -50,6 +50,12 @@ export interface Signal {
   volume24h: number;
   /** Short human-readable rationale, terminal-styled uppercase. */
   detail: string;
+  /**
+   * Edge after crossing the spread on every leg, in bps. Positive = a real
+   * buy-all (or sell-all) profit at the touch. Null when a leg is unquoted.
+   * This is the number that decides whether `edgeBps` is a trade or a fact.
+   */
+  executableBps: number | null;
   /** Outcomes to fill: all legs for ARB, just the mover for MOMENTUM. */
   legs: SignalLeg[];
 }
@@ -60,6 +66,41 @@ function legsOf(outcomes: { tokenId?: string; label: string; price: number }[]):
     if (o.tokenId) legs.push({ tokenId: o.tokenId, label: o.label, price: o.price });
   }
   return legs;
+}
+
+/**
+ * The arb you could actually put on, priced off the touch rather than the mid.
+ *
+ * The mid-price sum is a fair-value statement; it is not a trade. Buying every
+ * YES costs the ASKS, so the executable underround is `1 − Σ(bestAsk)`.
+ * Selling the complete set collects the BIDS, so the executable overround is
+ * `Σ(bestBid) − 1`. Those two numbers are routinely several hundred bps worse
+ * than the mid-based edge, which is exactly why a board full of "2% arbs"
+ * contains almost nothing executable.
+ *
+ * Returns null when any leg is missing a quote — a basket is only as real as
+ * its worst-quoted leg, and guessing one is how a phantom arb gets printed.
+ */
+function executableArb(outs: Outcome[]): {
+  askSum: number;
+  bidSum: number;
+  buyBps: number;
+  sellBps: number;
+} | null {
+  let askSum = 0;
+  let bidSum = 0;
+  for (const o of outs) {
+    if (typeof o.bestAsk !== "number" || typeof o.bestBid !== "number") return null;
+    if (!(o.bestAsk > 0) || !(o.bestBid > 0)) return null;
+    askSum += o.bestAsk;
+    bidSum += o.bestBid;
+  }
+  return {
+    askSum,
+    bidSum,
+    buyBps: (1 - askSum) * 10000,
+    sellBps: (bidSum - 1) * 10000,
+  };
 }
 
 export interface ScanOptions {
@@ -79,7 +120,7 @@ export interface ScanOptions {
   maxSpreadBps?: number;
   /** Restrict output to these signal kinds. Default: all. */
   kinds?: SignalKind[];
-  /** Max signals returned. Default 12. */
+  /** Max signals returned. Omit for no cap — truncation is a display concern. */
   limit?: number;
   /** Reference "now" in ms, for time-to-expiry. Default Date.now(). */
   now?: number;
@@ -91,7 +132,7 @@ const DEFAULTS = {
   minLiquidity: 5000,
   tradeBand: [0.15, 0.85] as [number, number],
   maxSpreadBps: 2500,
-  limit: 12,
+  limit: Number.POSITIVE_INFINITY,
 };
 
 const clamp = (x: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, x));
@@ -189,8 +230,19 @@ export function scanSignals(events: GammaEvent[], opts: ScanOptions = {}): Signa
       const sum = outs.reduce((s, o) => s + o.price, 0);
       const edgeBps = (1 - sum) * 10000; // >0 underround (buyable), <0 overround
       if (Math.abs(edgeBps) >= arbMinBps) {
-        // Depth matters more than turnover for capturing a book edge.
-        const score = clamp(100 * magnitude(edgeBps, 250) * (0.5 + 0.5 * liqW), 0, 100);
+        // What survives crossing the spread on every leg.
+        const exec = executableArb(outs);
+        const executableBps = exec == null ? null : edgeBps > 0 ? exec.buyBps : exec.sellBps;
+        // Depth matters more than turnover for capturing a book edge, and an
+        // edge that dies at the touch is not an edge: an unexecutable basket is
+        // scored down hard rather than dropped, so the board still shows the
+        // mispricing while making clear it cannot be lifted.
+        const executablePenalty = executableBps == null ? 0.6 : executableBps > 0 ? 1 : 0.25;
+        const score = clamp(
+          100 * magnitude(edgeBps, 250) * (0.5 + 0.5 * liqW) * executablePenalty,
+          0,
+          100,
+        );
         // Underround: buying every YES for $sum returns $1 → (1/sum − 1) profit.
         // Overround: the book's built-in vig you pay is (sum − 1).
         const ret = edgeBps > 0 ? (1 / sum - 1) * 100 : (sum - 1) * 100;
@@ -207,7 +259,12 @@ export function scanSignals(events: GammaEvent[], opts: ScanOptions = {}): Signa
           spreadBps,
           liquidity,
           volume24h,
-          detail: `${outs.length} OUTCOMES SUM ${(sum * 100).toFixed(1)}% · ${dir}`,
+          executableBps,
+          detail: `${outs.length} OUTCOMES SUM ${(sum * 100).toFixed(1)}% · ${dir}${
+            executableBps == null
+              ? " · NO TOUCH QUOTE"
+              : ` · AT TOUCH ${executableBps > 0 ? "+" : ""}${(executableBps / 100).toFixed(2)}%`
+          }`,
           legs: legsOf(outs),
         });
       }
@@ -257,6 +314,8 @@ export function scanSignals(events: GammaEvent[], opts: ScanOptions = {}): Signa
           spreadBps: moverSpread,
           liquidity,
           volume24h,
+          // A directional entry pays half the spread to get in.
+          executableBps: moverSpread == null ? null : movePts * 100 - moverSpread / 2,
           detail: `${arrow} ${Math.abs(movePts).toFixed(1)}PTS/24H → ${(mover.price * 100).toFixed(0)}% · ${mover.label.toUpperCase()} · ${trend}${wkTag}`,
           legs: legsOf([mover]),
         });
@@ -264,5 +323,6 @@ export function scanSignals(events: GammaEvent[], opts: ScanOptions = {}): Signa
     }
   }
 
-  return signals.toSorted((a, b) => b.score - a.score).slice(0, limit);
+  const ranked = signals.toSorted((a, b) => b.score - a.score);
+  return Number.isFinite(limit) ? ranked.slice(0, limit) : ranked;
 }

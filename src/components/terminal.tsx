@@ -252,10 +252,11 @@ export function Terminal() {
     const momN = signals.length - arbN;
     const avg = Math.round(signals.reduce((a, s) => a + s.score, 0) / signals.length);
     const best = signals[0];
+    const liftable = signals.filter((s) => (s.executableBps ?? 0) > 0).length;
     print(
       L(
         "ok",
-        `${arbN} ARB / ${momN} MOM · AVG SCORE ${avg} · TOP ${Math.round(best.score)} (${best.kind}) — ${best.title.toUpperCase().slice(0, 46)}`,
+        `${arbN} ARB / ${momN} MOM · ${liftable} LIFTABLE AFTER SPREAD · AVG SCORE ${avg} · TOP ${Math.round(best.score)} (${best.kind}) — ${best.title.toUpperCase().slice(0, 46)}`,
       ),
     );
     for (const [i, s] of signals.entries()) {
@@ -266,12 +267,18 @@ export function Terminal() {
           ? `${s.edgeBps > 0 ? "+" : ""}${(s.edgeBps / 100).toFixed(2)}%`
           : `${s.edgeBps > 0 ? "+" : ""}${(s.edgeBps / 100).toFixed(1)}%`;
       const spr = s.spreadBps != null ? `${(s.spreadBps / 100).toFixed(1)}% SPR` : "—";
+      // The mid-based edge is a fact about the book; this is whether it is a
+      // trade. Printed next to it so the two are never confused.
+      const exec =
+        s.executableBps == null
+          ? "NO TOUCH"
+          : `${s.executableBps > 0 ? "+" : ""}${(s.executableBps / 100).toFixed(2)}% NET`;
       print(
         L(
           s.score >= 60 ? "ok" : "out",
           `${handle} ${s.kind.padEnd(8)} ${bar.padEnd(10)} ${String(Math.round(s.score)).padStart(
             3,
-          )} · EDGE ${edge.padStart(7)} · ${spr.padStart(9)} · ${fmtUsd(s.liquidity).padStart(6)} LIQ`,
+          )} · EDGE ${edge.padStart(7)} · ${exec.padStart(11)} · ${spr.padStart(9)} · ${fmtUsd(s.liquidity).padStart(6)} LIQ`,
         ),
       );
       print(L("dim", `   ${s.title.toUpperCase()} — ${s.detail}`));
@@ -280,7 +287,7 @@ export function Terminal() {
     print(
       L(
         "dim",
-        "EDGE IS A MISPRICING SIGNAL, NOT A FILLABLE QUOTE — DEPTH, SLIPPAGE & FEES UNMODELED · INFORMATIONAL ONLY, NOT FINANCIAL ADVICE",
+        "EDGE IS THE MID-PRICE MISPRICING · NET IS WHAT SURVIVES THE TOUCH · DEPTH BEYOND THE TOP LEVEL AND FEES STILL UNMODELED — RUN SIM E<#> · NOT FINANCIAL ADVICE",
       ),
     );
   }
@@ -629,7 +636,7 @@ export function Terminal() {
           else if (t === "mom" || t === "momentum") kinds = ["MOMENTUM"];
           else {
             const n = Number(t);
-            if (Number.isInteger(n) && n > 0 && n <= 40) limit = n;
+            if (Number.isInteger(n) && n > 0) limit = n;
           }
         }
         void doScan(limit, kinds);

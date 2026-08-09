@@ -67,12 +67,19 @@ function styleFor(s: EdgeSignal): KindStyle {
   };
 }
 
+/** Score at which a signal is worth drawing the eye to. */
+const PULSE_SCORE = 70;
+
 /**
  * One edge-scanner result. Shared by the on-board EDGE RADAR strip and the
  * full-board /signals scanner so their look stays in lockstep.
  */
 export function SignalCard({ signal: s, rank }: { signal: EdgeSignal; rank?: number }) {
   const st = styleFor(s);
+  // Pulse only when the signal is BOTH strong and actually liftable. Pulsing a
+  // high score that dies at the touch would be drawing the eye to nothing —
+  // which is worse than not drawing it at all.
+  const live = s.score >= PULSE_SCORE && (s.executableBps ?? 0) > 0;
 
   // Spread as a rough execution-quality read: tight books are cheaper to trade.
   const spreadPct = s.spreadBps != null ? s.spreadBps / 100 : null;
@@ -94,6 +101,12 @@ export function SignalCard({ signal: s, rank }: { signal: EdgeSignal; rank?: num
     >
       <div className="flex items-center justify-between gap-2 text-[10px] tracking-widest">
         <span className="flex items-center gap-1.5">
+          {live && (
+            <span
+              className="signal-pulse inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-accent"
+              title="Strong score and still liftable after crossing the spread"
+            />
+          )}
           {rank != null && (
             <span className="tabular-nums text-muted/40">{String(rank).padStart(2, "0")}</span>
           )}
@@ -131,6 +144,17 @@ export function SignalCard({ signal: s, rank }: { signal: EdgeSignal; rank?: num
           {spreadPct != null ? `${spreadPct.toFixed(1)}% SPR` : "NO BOOK"}
         </span>
       </div>
+
+      {/* Does the edge survive crossing the spread? This is the line that
+          separates a mispricing from a trade. */}
+      {s.executableBps != null && (
+        <div className="flex items-center justify-between gap-2 text-[10px] tabular-nums">
+          <span className={s.executableBps > 0 ? "text-accent" : "text-red/80"}>
+            {s.executableBps > 0 ? "LIFTABLE" : "DEAD AT TOUCH"} {fmtEdge(s.executableBps)}
+          </span>
+          <span className="text-muted/40">AFTER SPREAD</span>
+        </div>
+      )}
 
       {/* Execution context — how tradeable this actually is */}
       <div className="flex items-center justify-between gap-2 text-[10px] tabular-nums text-muted/50">

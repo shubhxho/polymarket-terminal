@@ -376,6 +376,25 @@ body::after {
 /* `!important` is load-bearing here: these animations are declared on the same
    elements by utility classes, and a reduced-motion preference must win over
    them unconditionally. This is the one case where the cascade is not enough. */
+
+/* Signal pulse — marks a signal that is BOTH high-scoring and still liftable
+   after crossing the spread. Deliberately slower and softer than `.live-dot`
+   so a board with several does not strobe. */
+@keyframes signal-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent);
+  }
+  50% {
+    opacity: 0.55;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 0%, transparent);
+  }
+}
+.signal-pulse {
+  animation: signal-pulse 2.4s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sheen::after,
   .ping-ring::before,
@@ -384,6 +403,7 @@ body::after {
   .live-dot,
   .cursor-blink,
   .shimmer::after,
+  .signal-pulse,
   .scan-sweep::before {
     animation: none !important;
   }

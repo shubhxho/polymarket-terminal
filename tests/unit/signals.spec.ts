@@ -86,6 +86,52 @@ test.describe("ARB requires a complete outcome set", () => {
   });
 });
 
+test.describe("executable edge at the touch", () => {
+  /** Mids sum to 0.85 (a 15pt underround) but the asks sum to 1.03. */
+  const wideBooks = [
+    market({ id: "a", price: 0.3, bestBid: 0.25, bestAsk: 0.35 }),
+    market({ id: "b", price: 0.3, bestBid: 0.25, bestAsk: 0.35 }),
+    market({ id: "c", price: 0.25, bestBid: 0.2, bestAsk: 0.33 }),
+  ];
+  /** Same mids, tight books: asks sum to 0.88, so the arb survives. */
+  const tightBooks = [
+    market({ id: "a", price: 0.3, bestBid: 0.29, bestAsk: 0.31 }),
+    market({ id: "b", price: 0.3, bestBid: 0.29, bestAsk: 0.31 }),
+    market({ id: "c", price: 0.25, bestBid: 0.24, bestAsk: 0.26 }),
+  ];
+
+  test("a mid-price edge that dies at the ask is reported as unliftable", () => {
+    const [sig] = scanSignals([event(wideBooks)], { kinds: ["ARB"] });
+    expect(sig.edgeBps).toBeGreaterThan(0); // the mispricing is real...
+    expect(sig.executableBps).not.toBeNull();
+    expect(sig.executableBps as number).toBeLessThan(0); // ...the trade is not
+  });
+
+  test("a tight book keeps the edge, and scores higher than the wide one", () => {
+    const [tight] = scanSignals([event(tightBooks)], { kinds: ["ARB"] });
+    const [wide] = scanSignals([event(wideBooks)], { kinds: ["ARB"] });
+    expect(tight.executableBps as number).toBeGreaterThan(0);
+    // Identical mid edge, so the score difference is purely executability.
+    expect(tight.edgeBps).toBeCloseTo(wide.edgeBps, 9);
+    expect(tight.score).toBeGreaterThan(wide.score);
+  });
+
+  test("a missing quote on any leg yields null rather than a guess", () => {
+    const partialQuotes = [
+      market({ id: "a", price: 0.3, bestBid: 0.29, bestAsk: 0.31 }),
+      market({ id: "b", price: 0.3, bestBid: 0.29, bestAsk: 0.31 }),
+      market({ id: "c", price: 0.25 }), // unquoted
+    ];
+    const [sig] = scanSignals([event(partialQuotes)], { kinds: ["ARB"] });
+    expect(sig.executableBps).toBeNull();
+  });
+
+  test("scanEdges agrees with scanSignals on executability", () => {
+    const [plus] = scanEdges([event(wideBooks)], { kinds: ["ARB"] });
+    expect(plus.executableBps as number).toBeLessThan(0);
+  });
+});
+
 test.describe("scanEdges kind filtering", () => {
   /** Many moderate MOMENTUM signals plus a few strong LIQUIDITY ones. */
   function board(): GammaEvent[] {

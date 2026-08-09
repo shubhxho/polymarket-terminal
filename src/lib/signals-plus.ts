@@ -1,4 +1,4 @@
-import { daysUntil, eventOutcomes, fmtUsd, type GammaEvent } from "./polymarket";
+import { daysUntil, eventOutcomes, fmtUsd, type GammaEvent, type Outcome } from "./polymarket";
 
 /**
  * Enhanced edge scanner — a superset of the base ARB/MOMENTUM kernel that adds
@@ -33,6 +33,12 @@ export interface EdgeSignal {
   spreadBps: number | null;
   liquidity: number;
   volume24h: number;
+  /**
+   * Edge after crossing the spread on every leg, in bps. Null when a leg is
+   * unquoted. `edgeBps` says a mispricing exists; this says whether it can be
+   * lifted.
+   */
+  executableBps: number | null;
   /** Short, terminal-styled uppercase rationale. */
   detail: string;
 }
@@ -64,7 +70,11 @@ export interface ScanEdgeOptions {
    * signals of that kind.
    */
   kinds?: EdgeKind[];
-  /** Max signals returned. Default 60. */
+  /**
+   * Max signals returned. Omit for no cap — the scanners are cheap (they run
+   * over already-fetched data), so truncation should be a display decision,
+   * not something the kernel imposes on every caller.
+   */
   limit?: number;
 }
 
@@ -76,7 +86,7 @@ const DEFAULTS: Required<Omit<ScanEdgeOptions, "kinds">> = {
   resolutionMaxDays: 3,
   resolutionMinUsd: 5_000,
   minLiquidity: 5_000,
-  limit: 60,
+  limit: Number.POSITIVE_INFINITY,
 };
 
 const clamp = (x: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, x));
@@ -97,6 +107,24 @@ function spreadBpsOf(o: { spread?: number; bestBid?: number; bestAsk?: number })
     return s > 0 ? s * 10000 : null;
   }
   return null;
+}
+
+/**
+ * The arb priced at the touch instead of the mid — see `signals.ts` for the
+ * full rationale. Buying every YES pays the ASKS; selling the set collects the
+ * BIDS. Null when any leg lacks a quote, because a basket is only as real as
+ * its worst-quoted leg.
+ */
+function executableArb(outs: Outcome[]): { buyBps: number; sellBps: number } | null {
+  let askSum = 0;
+  let bidSum = 0;
+  for (const o of outs) {
+    if (typeof o.bestAsk !== "number" || typeof o.bestBid !== "number") return null;
+    if (!(o.bestAsk > 0) || !(o.bestBid > 0)) return null;
+    askSum += o.bestAsk;
+    bidSum += o.bestBid;
+  }
+  return { buyBps: (1 - askSum) * 10000, sellBps: (bidSum - 1) * 10000 };
 }
 
 export function scanEdges(events: GammaEvent[], opts: ScanEdgeOptions = {}): EdgeSignal[] {
@@ -137,6 +165,9 @@ export function scanEdges(events: GammaEvent[], opts: ScanEdgeOptions = {}): Edg
       spreadBps,
       liquidity,
       volume24h,
+      // Kinds that are not a basket trade have no cross-the-spread cost of
+      // their own; they override this where they do.
+      executableBps: null as number | null,
     };
 
     // ── ARB: mutually-exclusive outcomes should price to a sum of 1 ──
@@ -155,14 +186,28 @@ export function scanEdges(events: GammaEvent[], opts: ScanEdgeOptions = {}): Edg
       const sum = outs.reduce((s, o) => s + o.price, 0);
       const edgeBps = (1 - sum) * 10000; // >0 underround (buyable), <0 overround
       if (Math.abs(edgeBps) >= arbMinBps) {
-        const score = clamp((Math.abs(edgeBps) / 300) * 100 * (0.4 + 0.6 * liqW), 0, 100);
+        const exec = executableArb(outs);
+        const executableBps = exec == null ? null : edgeBps > 0 ? exec.buyBps : exec.sellBps;
+        // An edge that dies at the touch is scored down hard rather than
+        // hidden — the mispricing is real, the trade is not.
+        const executablePenalty = executableBps == null ? 0.6 : executableBps > 0 ? 1 : 0.25;
+        const score = clamp(
+          (Math.abs(edgeBps) / 300) * 100 * (0.4 + 0.6 * liqW) * executablePenalty,
+          0,
+          100,
+        );
         const dir = edgeBps > 0 ? "UNDERROUND · BUY-ALL EDGE" : "OVERROUND · VIG";
         signals.push({
           ...base,
           kind: "ARB",
           edgeBps,
           score,
-          detail: `${outs.length} OUTCOMES SUM ${(sum * 100).toFixed(1)}% · ${dir}`,
+          executableBps,
+          detail: `${outs.length} OUTCOMES SUM ${(sum * 100).toFixed(1)}% · ${dir}${
+            executableBps == null
+              ? " · NO TOUCH QUOTE"
+              : ` · AT TOUCH ${executableBps > 0 ? "+" : ""}${(executableBps / 100).toFixed(2)}%`
+          }`,
         });
       }
     }
@@ -243,5 +288,6 @@ export function scanEdges(events: GammaEvent[], opts: ScanEdgeOptions = {}): Edg
     }
   }
 
-  return signals.toSorted((a, b) => b.score - a.score).slice(0, limit);
+  const ranked = signals.toSorted((a, b) => b.score - a.score);
+  return Number.isFinite(limit) ? ranked.slice(0, limit) : ranked;
 }
