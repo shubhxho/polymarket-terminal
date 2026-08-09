@@ -1,0 +1,25 @@
+{
+  "train_rows": 7961,
+  "val_rows": 1899,
+  "val_auc": 0.6558,
+  "val_balanced_acc": 0.6164,
+  "val_acc": 0.6377,
+  "val_bce": 0.6133,
+  "train_auc": 0.6475,
+  "threshold": 0.38,
+  "majority_baseline_acc": 0.6614,
+  "auc_edge": 0.1558,
+  "features": [
+    "last",
+    "mean_ret",
+    "vol",
+    "drift",
+    "band_z",
+    "momentum",
+    "autocorr",
+    "activity"
+  ],
+  "hidden": 24,
+  "dropout": 0.2,
+  "epochs": 120
+}

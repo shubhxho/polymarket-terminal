@@ -1,50 +1,44 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": [
-    "react",
-    "jsx-a11y",
-    "nextjs",
-    "import",
-    "typescript",
-    "unicorn",
-    "promise",
-    "oxc"
-  ],
+  "plugins": ["react", "typescript", "unicorn", "oxc"],
+  "env": { "browser": true, "es2024": true },
   "categories": {
     "correctness": "error",
-    "suspicious": "error",
-    "perf": "warn",
-    "pedantic": "off",
-    "style": "off"
+    "suspicious": "warn",
+    "perf": "warn"
   },
-  "env": {
-    "browser": true,
-    "node": true,
-    "es2024": true
-  },
-  "ignorePatterns": ["node_modules", ".next", "dist", "build", "coverage"],
   "rules": {
+    "eqeqeq": "error",
+    "no-console": "warn",
+    "no-var": "error",
+    "prefer-const": "error",
+    "typescript/no-explicit-any": "warn",
+    "unicorn/no-array-sort": "off",
+    "unicorn/no-array-reverse": "off",
     "react/react-in-jsx-scope": "off",
-    "unicorn/require-post-message-target-origin": "off",
-    "import/no-unassigned-import": "off",
-    "eslint/no-unused-vars": [
-      "error",
-      { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }
-    ],
-    "react/no-array-index-key": "error",
     "react/jsx-key": "error",
-    "import/no-duplicates": "error",
-    "unicorn/prefer-number-properties": "error",
-    "typescript/no-explicit-any": "error"
+    "react/no-array-index-key": "off",
+    "unicorn/prefer-add-event-listener": "off",
+    "no-await-in-loop": "off",
+    "no-new": "off"
   },
+  "ignorePatterns": [
+    "node_modules",
+    ".next",
+    "out",
+    "build",
+    "coverage",
+    "playwright-report",
+    "test-results",
+    "next-env.d.ts"
+  ],
   "overrides": [
     {
-      "files": ["src/workers/**/*.ts"],
-      "env": { "worker": true }
-    },
-    {
-      "files": ["tests/**/*.ts"],
-      "rules": { "typescript/no-explicit-any": "off" }
+      "files": ["tests/**/*.ts", "tests/**/*.tsx"],
+      "rules": {
+        "oxc/approx-constant": "off",
+        "typescript/no-explicit-any": "off"
+      }
     }
   ]
 }

@@ -1,114 +1,63 @@
-import type { Metadata } from "next";
-import { Geist_Mono } from "next/font/google";
-import Link from "next/link";
-import { Suspense } from "react";
-import { Clock } from "@/components/clock";
-import { SearchFocuser } from "@/components/search-focuser";
-import { Terminal } from "@/components/terminal";
-import { Ticker } from "@/components/ticker";
+import type { Metadata, Viewport } from "next";
+import { Inter, JetBrains_Mono } from "next/font/google";
+import { Providers } from "@/components/Providers";
 import "./globals.css";
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+/**
+ * Inter carries the interface — chrome, labels and the data tables alike. Its
+ * tabular figures hold a price column steady, which is the one thing this UI
+ * cannot compromise on, and it sets far calmer than monospace at 12px.
+ */
+const ui = Inter({
   subsets: ["latin"],
+  display: "swap",
+  variable: "--font-inter",
 });
 
-const NAV = [
-  { href: "/", label: "BOARD", title: "The market board" },
-  { href: "/signals", label: "EDGE", title: "Board-wide edge scanner" },
-  {
-    href: "/derivatives",
-    label: "DESK",
-    title: "Derivatives desk — claims priced against Hyperliquid",
-  },
-];
+/**
+ * Monospace is reserved for machine identifiers: the command line, token ids,
+ * condition hashes and wallet addresses. Self-hosted by `next/font`, so there
+ * is no FOUT and no layout shift as the grid paints.
+ */
+const mono = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  display: "swap",
+  variable: "--font-terminal",
+});
 
+const TITLE = "PMT · Polymarket Terminal";
+const DESCRIPTION =
+  "A trading terminal for Polymarket — live order books, depth, time & sales, movers, signals and basket arbitrage.";
+
+// Absolute base for og:image / twitter:image. Vercel provides the canonical
+// production host at build; fall back to localhost in dev.
+const SITE_URL = process.env.VERCEL_PROJECT_PRODUCTION_URL
+  ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+  : "http://localhost:3000";
+
+// og:image / twitter:image are wired automatically from app/opengraph-image.tsx
+// and app/twitter-image.tsx; here we set the card type, title and description.
 export const metadata: Metadata = {
-  title: {
-    default: "POLYMARKET TERMINAL",
-    template: "%s · POLYMARKET TERMINAL",
-  },
-  description: "Real-time prediction market terminal. Prices, volume and odds from Polymarket.",
+  metadataBase: new URL(SITE_URL),
+  title: TITLE,
+  description: DESCRIPTION,
+  applicationName: "PMT",
+  openGraph: { title: TITLE, description: DESCRIPTION, type: "website", siteName: "PMT" },
+  twitter: { card: "summary_large_image", title: TITLE, description: DESCRIPTION },
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export const viewport: Viewport = {
+  themeColor: "#ffffff",
+  width: "device-width",
+  initialScale: 1,
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${geistMono.variable} h-full antialiased`}>
-      <body className="flex min-h-full flex-col">
-        <script
-          // Restore the saved phosphor theme before first paint to avoid a color flash
-          // Static inline snippet with no user input — it only reads a value
-          // this app wrote and stamps it on <html> before first paint.
-          dangerouslySetInnerHTML={{
-            __html: `try{var t=localStorage.getItem("pm-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}`,
-          }}
-        />
-        <header className="sticky top-0 z-40 border-b border-edge bg-panel/95 backdrop-blur-sm panel-lit">
-          <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-2">
-            <Link href="/" className="group flex items-baseline gap-2">
-              <span className="bg-accent px-1.5 py-0.5 text-xs font-bold text-black shadow-[0_0_14px_var(--accent-dim)]">
-                PM
-              </span>
-              <span className="text-sm font-bold tracking-widest text-foreground group-hover:text-accent group-hover:glow-soft">
-                POLYMARKET TERMINAL
-              </span>
-              <span className="cursor-blink text-accent">▊</span>
-            </Link>
-            <div className="flex items-center gap-3 text-xs text-muted sm:gap-4">
-              {/* Primary sections. Both existed as routes with nothing linking
-                  to them — reachable only by typing the URL. */}
-              <nav className="flex items-center gap-px border border-edge bg-edge">
-                {NAV.map((n) => (
-                  <Link
-                    key={n.href}
-                    href={n.href}
-                    title={n.title}
-                    className="bg-panel px-2 py-1 text-[10px] tracking-widest text-muted transition-colors hover:bg-panel-raised hover:text-accent"
-                  >
-                    {n.label}
-                  </Link>
-                ))}
-              </nav>
-              <span className="hidden h-3 w-px bg-edge lg:block" />
-              <span className="hidden items-center gap-2 sm:flex">
-                <span className="relative inline-flex h-1.5 w-1.5">
-                  <span className="ping-ring absolute inline-flex h-full w-full" />
-                  <span className="relative inline-block h-1.5 w-1.5 rounded-full bg-accent" />
-                </span>
-                <span className="text-accent glow-soft">LIVE</span>
-              </span>
-              <span className="hidden text-foreground/80 sm:block">
-                <Clock />
-              </span>
-            </div>
-          </div>
-          <div className="rule-glow h-px" />
-        </header>
-        <SearchFocuser />
-        <Suspense fallback={<div className="h-[30px] border-b border-edge bg-panel-raised" />}>
-          <Ticker />
-        </Suspense>
-        <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 py-4">{children}</div>
-        <footer className="border-t border-edge bg-panel panel-lit">
-          <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2 px-4 py-2 text-[11px] text-muted">
-            <span className="flex items-center gap-1.5">
-              <span className="live-dot inline-block h-1 w-1 rounded-full bg-accent/70" />
-              DATA: GAMMA-API.POLYMARKET.COM · CLOB.POLYMARKET.COM
-            </span>
-            <span className="hidden md:block">
-              <kbd className="border border-edge bg-panel-raised px-1">`</kbd> TERMINAL ·{" "}
-              <kbd className="border border-edge bg-panel-raised px-1">/</kbd> SEARCH
-            </span>
-            <span>NOT FINANCIAL ADVICE · PRICES = IMPLIED PROBABILITY</span>
-          </div>
-        </footer>
-        <Suspense fallback={null}>
-          <Terminal />
-        </Suspense>
+    <html lang="en" className={`h-full ${ui.variable} ${mono.variable}`}>
+      <body className="h-full bg-canvas text-ink">
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

@@ -1,372 +1,354 @@
+import type {
+  EventSummary,
+  Holder,
+  HistoryInterval,
+  Market,
+  OrderBook,
+  Position,
+  PricePoint,
+  Trade,
+} from "./types";
+
 const GAMMA = "https://gamma-api.polymarket.com";
 const CLOB = "https://clob.polymarket.com";
+const DATA = "https://data-api.polymarket.com";
 
-export interface GammaMarket {
-  id: string;
-  question: string;
-  slug: string;
-  groupItemTitle?: string;
-  outcomes?: string; // JSON-encoded string[]
-  outcomePrices?: string; // JSON-encoded string[]
-  clobTokenIds?: string; // JSON-encoded string[]
-  lastTradePrice?: number;
-  bestBid?: number;
-  bestAsk?: number;
-  spread?: number;
-  oneDayPriceChange?: number;
-  oneWeekPriceChange?: number;
-  volume24hr?: number;
-  volumeNum?: number;
-  liquidityNum?: number;
-  endDate?: string;
-  active?: boolean;
-  closed?: boolean;
-  icon?: string;
-}
-
-export interface GammaEvent {
-  id: string;
-  slug: string;
-  title: string;
-  description?: string;
-  icon?: string;
-  image?: string;
-  endDate?: string;
-  liquidity?: number;
-  volume?: number;
-  volume24hr?: number;
-  volume1wk?: number;
-  openInterest?: number;
-  commentCount?: number;
-  negRisk?: boolean;
-  markets: GammaMarket[];
-  tags?: { id: string; label: string; slug: string }[];
-}
-
-export interface PricePoint {
-  t: number; // unix seconds
-  p: number; // price 0..1
-}
-
-export interface Outcome {
-  marketId: string;
-  label: string;
-  price: number;
-  change24h: number;
-  volume24h: number;
-  bestBid?: number;
-  bestAsk?: number;
-  spread?: number;
-  tokenId?: string;
-}
-
-async function gamma<T>(path: string, revalidate: number): Promise<T> {
-  const res = await fetch(`${GAMMA}${path}`, { next: { revalidate } });
-  if (!res.ok) {
-    throw new Error(`Gamma API ${res.status} for ${path}`);
+/** Upstream sometimes 5xxs under load; one retry turns a blank panel into a
+ *  half-second stall. `revalidate` is seconds of Next data-cache reuse. */
+async function get<T>(url: string, revalidate: number, retries = 1): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url, {
+        next: { revalidate },
+        headers: { accept: "application/json" },
+      });
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText} :: ${url}`);
+      return (await res.json()) as T;
+    } catch (err) {
+      lastErr = err;
+      if (attempt < retries) await new Promise((r) => setTimeout(r, 250));
+    }
   }
-  return res.json();
+  throw lastErr;
 }
 
-/**
- * Same call, but explicitly opted OUT of Next's data cache.
- *
- * Used only for the oversized list endpoints. Asking Next to cache a 3MB
- * response is not a no-op that quietly degrades: it serializes the body,
- * discovers it exceeds the 2MB ceiling, throws it away and logs an error —
- * every request, for a cache entry that can never exist. Declaring `no-store`
- * says the true thing, skips that work, and leaves `cachedList` as the single
- * caching layer for these paths.
- */
-async function gammaUncached<T>(path: string): Promise<T> {
-  const res = await fetch(`${GAMMA}${path}`, { cache: "no-store" });
-  if (!res.ok) {
-    throw new Error(`Gamma API ${res.status} for ${path}`);
+function n(v: unknown, fallback = 0): number {
+  const x = typeof v === "string" ? parseFloat(v) : typeof v === "number" ? v : NaN;
+  return Number.isFinite(x) ? x : fallback;
+}
+
+/** Gamma returns `outcomes`/`outcomePrices`/`clobTokenIds` as JSON-encoded
+ *  strings rather than arrays, so every read has to go through this. */
+function jsonArray(v: unknown): string[] {
+  if (Array.isArray(v)) return v.map(String);
+  if (typeof v === "string") {
+    try {
+      const parsed = JSON.parse(v);
+      return Array.isArray(parsed) ? parsed.map(String) : [];
+    } catch {
+      return [];
+    }
   }
-  return res.json();
+  return [];
 }
 
-/* ─────────────────────── the list-payload problem ─────────────────────── */
+type RawMarket = Record<string, unknown>;
 
-/**
- * Gamma's `/events` list endpoint returns 2.5–4MB for a single page.
- *
- * Next's data cache refuses to store any entry over 2MB, so `next: { revalidate }`
- * on these calls did not merely underperform — it failed outright on every
- * request ("items over 2MB can not be cached"), meaning the board refetched
- * multiple megabytes on every single render and logged an error each time.
- *
- * Almost all of that weight is prose we never render on a list: per-market
- * `description` (the full resolution rules), images, and dozens of unused
- * fields. So instead of trying to cache the raw response, we cache the TRIMMED
- * projection — the ~30 fields the board, the scanners and the desk actually
- * read. That is two orders of magnitude smaller, fits the cache comfortably,
- * and is also less to hand to the Web Worker.
- */
-const LIST_TTL_MS = 60_000;
-/** Bounded so a long-lived server can't accumulate pages indefinitely. */
-const LIST_CACHE_MAX = 64;
+export function normalizeMarket(raw: RawMarket): Market {
+  const labels = jsonArray(raw.outcomes);
+  const prices = jsonArray(raw.outcomePrices).map((p) => n(p));
+  const tokens = jsonArray(raw.clobTokenIds);
 
-const listCache = new Map<string, { at: number; events: GammaEvent[] }>();
+  const outcomes = labels.map((label, i) => ({
+    label,
+    price: prices[i] ?? 0,
+    tokenId: tokens[i] ?? "",
+  }));
 
-/** Keep only what a list view reads. Drops the multi-KB prose fields. */
-function trimForList(event: GammaEvent): GammaEvent {
+  const events = Array.isArray(raw.events) ? (raw.events as RawMarket[]) : [];
+  const ev = events[0];
+  const evTags = ev && Array.isArray(ev.tags) ? (ev.tags as RawMarket[]) : [];
+
+  // `lastTradePrice` is the truest mark, but it is absent on thin markets —
+  // fall back to the quoted outcome price.
+  const last = n(raw.lastTradePrice, outcomes[0]?.price ?? 0);
+
   return {
-    id: event.id,
-    slug: event.slug,
-    title: event.title,
-    icon: event.icon,
-    endDate: event.endDate,
-    liquidity: event.liquidity,
-    volume: event.volume,
-    volume24hr: event.volume24hr,
-    openInterest: event.openInterest,
-    negRisk: event.negRisk,
-    tags: event.tags,
-    markets: (event.markets ?? []).map((m) => ({
-      id: m.id,
-      question: m.question,
-      slug: m.slug,
-      groupItemTitle: m.groupItemTitle,
-      outcomes: m.outcomes,
-      outcomePrices: m.outcomePrices,
-      clobTokenIds: m.clobTokenIds,
-      lastTradePrice: m.lastTradePrice,
-      bestBid: m.bestBid,
-      bestAsk: m.bestAsk,
-      spread: m.spread,
-      oneDayPriceChange: m.oneDayPriceChange,
-      oneWeekPriceChange: m.oneWeekPriceChange,
-      volume24hr: m.volume24hr,
-      endDate: m.endDate,
-      active: m.active,
-      closed: m.closed,
-    })),
+    id: String(raw.id ?? ""),
+    slug: String(raw.slug ?? ""),
+    question: String(raw.question ?? ""),
+    groupItemTitle: raw.groupItemTitle ? String(raw.groupItemTitle) : undefined,
+    conditionId: String(raw.conditionId ?? ""),
+    icon: raw.icon ? String(raw.icon) : undefined,
+    description: raw.description ? String(raw.description) : undefined,
+    outcomes,
+    last,
+    bestBid: raw.bestBid !== undefined ? n(raw.bestBid) : undefined,
+    bestAsk: raw.bestAsk !== undefined ? n(raw.bestAsk) : undefined,
+    spread: raw.spread !== undefined ? n(raw.spread) : undefined,
+    // Upstream expresses changes in probability (0..1); screens want points.
+    chg1h: n(raw.oneHourPriceChange) * 100,
+    chg24h: n(raw.oneDayPriceChange) * 100,
+    chg1w: n(raw.oneWeekPriceChange) * 100,
+    volume: n(raw.volumeNum, n(raw.volume)),
+    volume24h: n(raw.volume24hr),
+    volume1w: n(raw.volume1wk),
+    liquidity: n(raw.liquidityNum, n(raw.liquidity)),
+    endDate: raw.endDate ? String(raw.endDate) : undefined,
+    startDate: raw.startDate ? String(raw.startDate) : undefined,
+    active: raw.active === true,
+    closed: raw.closed === true,
+    acceptingOrders: raw.acceptingOrders !== false,
+    negRisk: raw.negRisk === true,
+    tickSize: n(raw.orderPriceMinTickSize, 0.001),
+    eventId: ev ? String(ev.id) : undefined,
+    eventTitle: ev ? String(ev.title ?? "") : undefined,
+    eventSlug: ev ? String(ev.slug ?? "") : undefined,
+    eventTicker: ev ? String(ev.ticker ?? "") : undefined,
+    tags: evTags.map((t) => String(t.label ?? "")).filter(Boolean),
   };
 }
 
-/**
- * Fetch a list endpoint, trim it, and memoize the trimmed result in-process.
- *
- * This REPLACES Next's data cache for these paths rather than layering on it,
- * because that cache provably cannot hold them. The TTL matches the 60s
- * revalidate the fetches used to ask for, so refresh behaviour is unchanged;
- * what changes is that the cache now actually holds something.
- */
-async function cachedList(
-  path: string,
-  extract: (raw: unknown) => GammaEvent[],
-): Promise<GammaEvent[]> {
-  const hit = listCache.get(path);
-  const now = Date.now();
-  if (hit && now - hit.at < LIST_TTL_MS) return hit.events;
-
-  const raw = await gammaUncached<unknown>(path);
-  const events = extract(raw).map(trimForList);
-
-  if (listCache.size >= LIST_CACHE_MAX) {
-    // Map preserves insertion order, so the first key is the oldest entry.
-    const oldest = listCache.keys().next().value;
-    if (oldest !== undefined) listCache.delete(oldest);
-  }
-  listCache.set(path, { at: now, events });
-  return events;
+function normalizeEvent(raw: RawMarket): EventSummary {
+  const markets = Array.isArray(raw.markets) ? (raw.markets as RawMarket[]) : [];
+  const tags = Array.isArray(raw.tags) ? (raw.tags as RawMarket[]) : [];
+  return {
+    id: String(raw.id ?? ""),
+    ticker: String(raw.ticker ?? ""),
+    slug: String(raw.slug ?? ""),
+    title: String(raw.title ?? ""),
+    icon: raw.icon ? String(raw.icon) : undefined,
+    volume: n(raw.volume),
+    volume24h: n(raw.volume24hr),
+    liquidity: n(raw.liquidity),
+    openInterest: n(raw.openInterest),
+    endDate: raw.endDate ? String(raw.endDate) : undefined,
+    competitive: raw.competitive !== undefined ? n(raw.competitive) : undefined,
+    markets: markets
+      .map((m) => normalizeMarket({ ...m, events: [{ ...raw, tags }] }))
+      .filter((m) => m.outcomes.length > 0),
+    tags: tags.map((t) => String(t.label ?? "")).filter(Boolean),
+  };
 }
 
-export async function getTopEvents(
-  tagSlug?: string,
-  limit = 25,
-  offset = 0,
-): Promise<GammaEvent[]> {
-  const params = new URLSearchParams({
-    limit: String(limit),
-    offset: String(offset),
-    active: "true",
-    closed: "false",
-    order: "volume24hr",
-    ascending: "false",
+export type MarketQuery = {
+  limit?: number;
+  offset?: number;
+  order?: string;
+  ascending?: boolean;
+  tagId?: string;
+  closed?: boolean;
+  ids?: string[];
+  slug?: string;
+  tokenIds?: string[];
+};
+
+export async function fetchMarkets(q: MarketQuery = {}): Promise<Market[]> {
+  const p = new URLSearchParams();
+  p.set("limit", String(q.limit ?? 60));
+  if (q.offset) p.set("offset", String(q.offset));
+  p.set("order", q.order ?? "volume24hr");
+  p.set("ascending", String(q.ascending ?? false));
+  // A slug (or explicit id list) is a unique key — never constrain it by
+  // status, or a market that has since resolved (e.g. an expired
+  // "…-end-of-july" question) returns nothing and can't be opened at all.
+  const byKey = Boolean(q.slug) || (q.ids?.length ?? 0) > 0;
+  if (byKey) {
+    // no active/closed filter — match the exact market whatever its status
+  } else if (q.closed === undefined) {
+    p.set("active", "true");
+    p.set("closed", "false");
+  } else {
+    p.set("closed", String(q.closed));
+  }
+  if (q.tagId) p.set("tag_id", q.tagId);
+  if (q.slug) p.set("slug", q.slug);
+  q.ids?.forEach((id) => p.append("id", id));
+  q.tokenIds?.forEach((t) => p.append("clob_token_ids", t));
+
+  const raw = await get<RawMarket[]>(`${GAMMA}/markets?${p}`, 10);
+  return (Array.isArray(raw) ? raw : []).map(normalizeMarket);
+}
+
+export async function fetchEvents(q: MarketQuery = {}): Promise<EventSummary[]> {
+  const p = new URLSearchParams();
+  p.set("limit", String(q.limit ?? 30));
+  if (q.offset) p.set("offset", String(q.offset));
+  p.set("order", q.order ?? "volume24hr");
+  p.set("ascending", String(q.ascending ?? false));
+  // Same rule as fetchMarkets: a slug is exact, so don't hide resolved events.
+  if (!q.slug) {
+    p.set("active", "true");
+    p.set("closed", "false");
+  }
+  if (q.tagId) p.set("tag_id", q.tagId);
+  if (q.slug) p.set("slug", q.slug);
+
+  const raw = await get<RawMarket[]>(`${GAMMA}/events?${p}`, 10);
+  return (Array.isArray(raw) ? raw : []).map(normalizeEvent);
+}
+
+export async function searchPolymarket(
+  query: string,
+  limit = 12
+): Promise<{ events: EventSummary[]; markets: Market[] }> {
+  const p = new URLSearchParams({
+    q: query,
+    limit_per_type: String(limit),
+    events_status: "active",
   });
-  if (tagSlug) params.set("tag_slug", tagSlug);
-  return cachedList(`/events?${params}`, (raw) =>
-    Array.isArray(raw) ? (raw as GammaEvent[]) : [],
+  const raw = await get<{ events?: RawMarket[]; markets?: RawMarket[] }>(
+    `${GAMMA}/public-search?${p}`,
+    15
+  );
+
+  const events = (raw.events ?? []).map(normalizeEvent);
+  const direct = (raw.markets ?? []).map(normalizeMarket);
+
+  // Upstream almost always returns an empty top-level `markets` array and puts
+  // the real matches inside each event, so a naive read shows "no markets" for
+  // a query that in fact matched dozens. Fall back to the event legs, ranked
+  // by turnover, and de-duplicate against anything upstream did return.
+  const seen = new Set(direct.map((m) => m.id));
+  const nested = events
+    .flatMap((e) => e.markets)
+    .filter((m) => m.id && !seen.has(m.id) && seen.add(m.id));
+
+  return {
+    events,
+    markets: [...direct, ...nested].sort((a, b) => b.volume24h - a.volume24h),
+  };
+}
+
+function normalizeBook(raw: RawMarket): OrderBook {
+  const level = (v: unknown): { price: number; size: number }[] =>
+    (Array.isArray(v) ? v : []).map((l) => {
+      const o = l as RawMarket;
+      return { price: n(o.price), size: n(o.size) };
+    });
+  return {
+    tokenId: String(raw.asset_id ?? ""),
+    // CLOB returns bids ascending and asks descending; screens render both
+    // best-first, so sort here rather than in every consumer.
+    bids: level(raw.bids).sort((a, b) => b.price - a.price),
+    asks: level(raw.asks).sort((a, b) => a.price - b.price),
+    timestamp: n(raw.timestamp, Date.now()),
+  };
+}
+
+export async function fetchBooks(tokenIds: string[]): Promise<OrderBook[]> {
+  const ids = tokenIds.filter(Boolean);
+  if (ids.length === 0) return [];
+  const res = await fetch(`${CLOB}/books`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(ids.map((token_id) => ({ token_id }))),
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`books ${res.status}`);
+  const raw = (await res.json()) as RawMarket[];
+  return (Array.isArray(raw) ? raw : []).map(normalizeBook);
+}
+
+export async function fetchHistory(
+  tokenId: string,
+  interval: HistoryInterval = "1d",
+  fidelity?: number
+): Promise<PricePoint[]> {
+  // Point spacing in minutes. Too fine over a long window returns thousands of
+  // points the chart can't resolve; these keep each series near 200-600 points.
+  const defaults: Record<HistoryInterval, number> = {
+    "1h": 1,
+    "6h": 5,
+    "1d": 10,
+    "1w": 60,
+    "1m": 240,
+    max: 720,
+  };
+  const p = new URLSearchParams({
+    market: tokenId,
+    interval,
+    fidelity: String(fidelity ?? defaults[interval]),
+  });
+  const raw = await get<{ history?: { t: number; p: number }[] }>(
+    `${CLOB}/prices-history?${p}`,
+    20
+  );
+  return (raw.history ?? []).map((h) => ({ t: n(h.t), p: n(h.p) }));
+}
+
+function normalizeTrade(raw: RawMarket, i: number): Trade {
+  return {
+    id: `${String(raw.transactionHash ?? i)}-${String(raw.asset ?? "")}-${i}`,
+    wallet: String(raw.proxyWallet ?? ""),
+    name: raw.name ? String(raw.name) : raw.pseudonym ? String(raw.pseudonym) : undefined,
+    side: raw.side === "SELL" ? "SELL" : "BUY",
+    outcome: String(raw.outcome ?? ""),
+    outcomeIndex: n(raw.outcomeIndex),
+    size: n(raw.size),
+    price: n(raw.price),
+    timestamp: n(raw.timestamp),
+    title: String(raw.title ?? ""),
+    slug: raw.slug ? String(raw.slug) : undefined,
+    conditionId: String(raw.conditionId ?? ""),
+    asset: String(raw.asset ?? ""),
+  };
+}
+
+export async function fetchTrades(opts: {
+  conditionId?: string;
+  user?: string;
+  limit?: number;
+  /** Filter to trades at or above this notional (size x price) in USDC. */
+  minSize?: number;
+}): Promise<Trade[]> {
+  const p = new URLSearchParams();
+  p.set("limit", String(opts.limit ?? 60));
+  p.set("takerOnly", "true");
+  if (opts.conditionId) p.set("market", opts.conditionId);
+  if (opts.user) p.set("user", opts.user);
+  if (opts.minSize) p.set("filterAmount", String(opts.minSize));
+  const raw = await get<RawMarket[]>(`${DATA}/trades?${p}`, 3);
+  return (Array.isArray(raw) ? raw : []).map(normalizeTrade);
+}
+
+export async function fetchHolders(conditionId: string, limit = 12): Promise<Holder[][]> {
+  const p = new URLSearchParams({ market: conditionId, limit: String(limit) });
+  const raw = await get<{ token: string; holders: RawMarket[] }[]>(`${DATA}/holders?${p}`, 30);
+  return (Array.isArray(raw) ? raw : []).map((group) =>
+    (group.holders ?? []).map((h) => ({
+      wallet: String(h.proxyWallet ?? ""),
+      name: h.name ? String(h.name) : h.pseudonym ? String(h.pseudonym) : undefined,
+      amount: n(h.amount),
+      outcomeIndex: n(h.outcomeIndex),
+    }))
   );
 }
 
-export async function getRelatedEvents(
-  slug: string,
-  tagSlugs: string[],
-  limit = 6,
-): Promise<GammaEvent[]> {
-  const tag = tagSlugs[0];
-  if (!tag) return [];
-  const events = await getTopEvents(tag, limit + 1, 0);
-  return events.filter((e) => e.slug !== slug).slice(0, limit);
-}
-
-export async function searchEvents(query: string): Promise<GammaEvent[]> {
-  const params = new URLSearchParams({
-    q: query,
-    limit_per_type: "40",
-    events_status: "active",
+export async function fetchPositions(user: string, limit = 50): Promise<Position[]> {
+  const p = new URLSearchParams({
+    user,
+    limit: String(limit),
+    sortBy: "CURRENT",
+    sortDirection: "DESC",
+    sizeThreshold: "1",
   });
-  // `trimForList` already normalizes `markets` to an array, which matters here:
-  // search results sometimes omit the nested markets entirely.
-  return cachedList(`/public-search?${params}`, (raw) => {
-    const data = raw as { events?: GammaEvent[] };
-    return data.events ?? [];
-  });
-}
-
-export async function getEventBySlug(slug: string): Promise<GammaEvent | null> {
-  const events = await gamma<GammaEvent[]>(`/events?slug=${encodeURIComponent(slug)}`, 30);
-  return events[0] ?? null;
-}
-
-export async function getPriceHistory(tokenId: string, interval: string): Promise<PricePoint[]> {
-  const fidelity =
-    interval === "1d"
-      ? "5"
-      : interval === "1w"
-        ? "30"
-        : interval === "1m"
-          ? "60"
-          : interval === "3m"
-            ? "240"
-            : "1440";
-  const params = new URLSearchParams({
-    market: tokenId,
-    interval,
-    fidelity,
-  });
-  const res = await fetch(`${CLOB}/prices-history?${params}`, {
-    next: { revalidate: 120 },
-  });
-  if (!res.ok) return [];
-  const data: { history?: PricePoint[] } = await res.json();
-  return data.history ?? [];
-}
-
-function parseJsonArray(value: string | undefined): string[] {
-  if (!value) return [];
-  try {
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-/**
- * Memoized per event object.
- *
- * `eventOutcomes` is called five or six times for the same event in a single
- * board render — the sort comparator, the row, the breadth bar, the movers
- * strip, the ticker — and each call `JSON.parse`s three encoded arrays per
- * market. On a 25-row board of multi-outcome events that is thousands of
- * redundant parses per request. A WeakMap keyed on the event object collapses
- * them to one, and because every request deserializes fresh objects there is no
- * staleness risk: a new fetch is a new key.
- */
-const outcomeCache = new WeakMap<GammaEvent, Outcome[]>();
-
-/**
- * Flatten an event's markets into displayable outcomes. Multi-market events
- * (e.g. "World Cup Winner") use each market's Yes side labeled by
- * groupItemTitle; single binary markets expand to their Yes/No outcomes.
- */
-export function eventOutcomes(event: GammaEvent): Outcome[] {
-  const cached = outcomeCache.get(event);
-  if (cached) return cached;
-  const computed = computeOutcomes(event);
-  outcomeCache.set(event, computed);
-  return computed;
-}
-
-function computeOutcomes(event: GammaEvent): Outcome[] {
-  const open = event.markets.filter((m) => m.active && !m.closed);
-  if (open.length === 0) return [];
-
-  if (open.length === 1) {
-    const m = open[0];
-    const labels = parseJsonArray(m.outcomes);
-    const prices = parseJsonArray(m.outcomePrices).map(Number);
-    const tokens = parseJsonArray(m.clobTokenIds);
-    return labels.map((label, i) => ({
-      marketId: m.id,
-      label,
-      price: prices[i] ?? 0,
-      change24h: i === 0 ? (m.oneDayPriceChange ?? 0) : -(m.oneDayPriceChange ?? 0),
-      volume24h: m.volume24hr ?? 0,
-      bestBid: m.bestBid,
-      bestAsk: m.bestAsk,
-      spread: m.spread,
-      tokenId: tokens[i],
-    }));
-  }
-
-  return open
-    .map((m) => {
-      const prices = parseJsonArray(m.outcomePrices).map(Number);
-      const tokens = parseJsonArray(m.clobTokenIds);
-      return {
-        marketId: m.id,
-        label: m.groupItemTitle || m.question,
-        price: prices[0] ?? m.lastTradePrice ?? 0,
-        change24h: m.oneDayPriceChange ?? 0,
-        volume24h: m.volume24hr ?? 0,
-        bestBid: m.bestBid,
-        bestAsk: m.bestAsk,
-        spread: m.spread,
-        tokenId: tokens[0],
-      };
-    })
-    .toSorted((a, b) => b.price - a.price);
-}
-
-/** Top outcome of an event, for the dashboard table. */
-export function leadingOutcome(event: GammaEvent): Outcome | null {
-  return eventOutcomes(event)[0] ?? null;
-}
-
-export function fmtUsd(value: number | undefined): string {
-  const v = value ?? 0;
-  if (v >= 1e9) return `$${(v / 1e9).toFixed(2)}B`;
-  if (v >= 1e6) return `$${(v / 1e6).toFixed(1)}M`;
-  if (v >= 1e3) return `$${(v / 1e3).toFixed(1)}K`;
-  return `$${v.toFixed(0)}`;
-}
-
-export function fmtCents(price: number): string {
-  return `${(price * 100).toFixed(1)}¢`;
-}
-
-export function fmtPct(price: number): string {
-  return `${(price * 100).toFixed(price >= 0.995 || price < 0.01 ? 1 : 0)}%`;
-}
-
-export function fmtChange(change: number): string {
-  const pts = change * 100;
-  const sign = pts > 0 ? "+" : "";
-  return `${sign}${pts.toFixed(1)}`;
-}
-
-export function daysUntil(iso: string | undefined): number {
-  if (!iso) return Infinity;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return Infinity;
-  return (d.getTime() - Date.now()) / 86400000;
-}
-
-export function fmtDate(iso: string | undefined): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d
-    .toLocaleDateString("en-US", {
-      month: "short",
-      day: "2-digit",
-      year: "numeric",
-      timeZone: "UTC",
-    })
-    .toUpperCase();
+  const raw = await get<RawMarket[]>(`${DATA}/positions?${p}`, 10);
+  return (Array.isArray(raw) ? raw : []).map((r) => ({
+    conditionId: String(r.conditionId ?? ""),
+    asset: String(r.asset ?? ""),
+    title: String(r.title ?? ""),
+    slug: r.slug ? String(r.slug) : undefined,
+    outcome: String(r.outcome ?? ""),
+    size: n(r.size),
+    avgPrice: n(r.avgPrice),
+    curPrice: n(r.curPrice),
+    value: n(r.currentValue),
+    cashPnl: n(r.cashPnl),
+    percentPnl: n(r.percentPnl),
+    realizedPnl: n(r.realizedPnl),
+    redeemable: r.redeemable === true,
+    endDate: r.endDate ? String(r.endDate) : undefined,
+  }));
 }

@@ -2,6 +2,9 @@
 
 # dependencies
 /node_modules
+# This project standardizes on Bun; bun.lock is the committed lockfile and a
+# stray npm lockfile is noise.
+package-lock.json
 /.pnp
 .pnp.*
 .yarn/*
@@ -12,6 +15,9 @@
 
 # testing
 /coverage
+/test-results
+/playwright-report
+/playwright/.cache
 
 # this project installs with bun — bun.lock is the lockfile of record.
 # A stray package-lock.json means two resolvers disagreeing about the tree.
@@ -48,3 +54,22 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# ml — venv + regenerable dataset are not committed; the trained model is
+ml/.venv
+ml/data/series.json
+__pycache__/
+*.pyc
+ml/data/ohlcv.json
+ml/data/series_100kb.json
+ml/data/bigdata_gbdt.txt
+
+# Claude Code agent worktrees / orchestration scratch — never commit
+.claude/worktrees/
+.conductor/
+ml/data/bigdata_gbdt.json
+ml/data/mega_call_ids.json
+ml/data/mega_mega_gbdt.txt
+
+# allow the example env to be committed (real .env stays ignored above)
+!.env.example
