@@ -1,0 +1,59 @@
+{
+  "runtime": "modal H100 / distillation",
+  "teacher": "amazon/chronos-bolt-base",
+  "student": "gru+features (torch)",
+  "series": 840,
+  "windows": 40000,
+  "features": [
+    "last",
+    "mean_ret",
+    "vol",
+    "drift",
+    "band_z",
+    "momentum",
+    "autocorr",
+    "activity",
+    "rsi",
+    "cci",
+    "macd_hist",
+    "stoch_k",
+    "downside_vol"
+  ],
+  "horizon": 4,
+  "alpha_kd": 0.5,
+  "teacher_signal": {
+    "direction_acc": 0.5234,
+    "auc": 0.5266,
+    "n": 23928,
+    "backtest": {
+      "top_up_rate": 0.51,
+      "bottom_up_rate": 0.441,
+      "up_rate_spread": 0.068,
+      "slice": 4785
+    }
+  },
+  "student_distilled": {
+    "direction_acc": 0.5381,
+    "auc": 0.5286,
+    "n": 4605,
+    "backtest": {
+      "top_up_rate": 0.489,
+      "bottom_up_rate": 0.425,
+      "up_rate_spread": 0.064,
+      "slice": 921
+    }
+  },
+  "student_no_kd": {
+    "direction_acc": 0.5403,
+    "auc": 0.5259,
+    "n": 4605,
+    "backtest": {
+      "top_up_rate": 0.499,
+      "bottom_up_rate": 0.432,
+      "up_rate_spread": 0.067,
+      "slice": 921
+    }
+  },
+  "kd_auc_gain": 0.0027,
+  "kd_acc_gain": -0.0022
+}

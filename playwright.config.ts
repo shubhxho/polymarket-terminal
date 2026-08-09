@@ -1,10 +1,16 @@
 import { defineConfig, devices } from "@playwright/test";
 
 /**
- * E2E config. Tests run against `next dev` on purpose: React only emits the
- * duplicate-key / hydration warnings we guard against in development builds.
+ * End-to-end layer. Drives the real terminal in a real Chromium against a
+ * production build, so what the suite asserts is what a user gets — routing,
+ * keyboard shortcuts, the command line, the wallet control and theming.
+ *
+ * The tests deliberately assert on shell behaviour, never on live Polymarket
+ * data: the upstream feed is not ours to make deterministic, so binding
+ * assertions to it would trade real coverage for flakes. The HELP screen and
+ * navigation are fully client-side, which is exactly where e2e earns its keep.
  */
-const PORT = 3123;
+const PORT = 3100;
 const BASE_URL = `http://localhost:${PORT}`;
 
 export default defineConfig({
@@ -18,12 +24,14 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  // A production build, not `next dev`: it's the artifact that ships, and it
+  // starts clean without the dev overlay intercepting keystrokes.
   webServer: {
-    command: `bun x next dev --port ${PORT}`,
+    // Build and serve on the Bun runtime — the same `bun --bun next` path the
+    // app scripts use — so e2e exercises exactly what ships.
+    command: `bun run build && bun run start -- --port ${PORT}`,
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-    stdout: "pipe",
-    stderr: "pipe",
+    timeout: 180_000,
   },
 });

@@ -1,0 +1,112 @@
+name: CI / CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# One in-flight run per ref; a new push cancels the stale one.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: CI only reads the repo. The deploy job carries its own token.
+permissions:
+  contents: read
+
+jobs:
+  # Lint, format, types and the Vitest unit suite — the fast gate every push
+  # must pass. Pure logic, no browser, no network.
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Lint (oxlint)
+        run: bun run lint
+      - name: Format check (oxfmt)
+        run: bun run fmt:check
+      - name: Typecheck (tsc)
+        run: bun run typecheck
+      - name: Unit tests (vitest)
+        run: bun run test
+
+  # The ML signal pipeline is pure Python. This gate runs the stdlib selfchecks
+  # and the derivative / backtest / trading-model test suites (incl. the GBDT
+  # walker == booster.predict parity check). No MLX, no network, no GPU — only
+  # numpy + lightgbm, everything else stdlib against committed data.
+  ml:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Create env + install ML deps (uv)
+        run: |
+          uv venv --python 3.12
+          uv pip install numpy lightgbm
+      - name: ML test gate
+        run: PYTHON="$PWD/.venv/bin/python" bash ml/run_tests.sh
+
+  # Playwright drives a production build in real Chromium. Kept in its own job so
+  # a browser flake never blocks the unit gate.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Resolve Playwright version
+        id: pw
+        run: echo "v=$(bunx playwright --version | grep -oE '[0-9.]+')" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.v }}
+      - name: Install Chromium
+        run: bunx playwright install --with-deps chromium
+      - name: Cache Next build
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: next-${{ runner.os }}-${{ hashFiles('bun.lock') }}-${{ hashFiles('src/**', 'tsconfig.json') }}
+          restore-keys: next-${{ runner.os }}-
+      - name: E2E tests (playwright)
+        run: bun run test:e2e
+
+  # Continuous deployment to Vercel — only after unit + ml pass, only on main.
+  #
+  # OPT-IN and inert by default: it runs solely when the repo variable
+  # DEPLOY_VIA_ACTIONS == "true", so it never double-deploys against Vercel's own
+  # git integration and never fails a run when the secrets are absent. To let
+  # Actions own the deploy: turn OFF Vercel's git auto-deploy for this project,
+  # set the variable, and add the three secrets below
+  # (VERCEL_TOKEN / VERCEL_ORG_ID / VERCEL_PROJECT_ID).
+  deploy:
+    needs: [unit, ml]
+    if: ${{ github.ref == 'refs/heads/main' && vars.DEPLOY_VIA_ACTIONS == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Deploy to Vercel (production)
+        id: deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          bunx vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+          bunx vercel build --prod --token="$VERCEL_TOKEN"
+          url=$(bunx vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")
+          echo "Deployed: $url"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+      - name: Smoke check the deployment
+        run: curl -fsS --retry 5 --retry-delay 3 "${{ steps.deploy.outputs.url }}" > /dev/null && echo "smoke ok"

@@ -1,0 +1,89 @@
+{
+  "series": 430,
+  "train_windows": 106661,
+  "val_windows": 27306,
+  "majority_baseline_acc": 0.6998,
+  "models": {
+    "feature_mlp": {
+      "val_auc": 0.6502,
+      "backtest": {
+        "top_up_rate": 0.402,
+        "bottom_up_rate": 0.128,
+        "up_rate_spread": 0.274,
+        "top_median_pts": 0.0,
+        "bottom_median_pts": 0.0,
+        "slice": 5461
+      }
+    },
+    "seq_gru": {
+      "val_auc": 0.6466,
+      "backtest": {
+        "top_up_rate": 0.399,
+        "bottom_up_rate": 0.129,
+        "up_rate_spread": 0.27,
+        "top_median_pts": 0.0,
+        "bottom_median_pts": 0.0,
+        "slice": 5461
+      }
+    },
+    "ensemble": {
+      "val_auc": 0.6496,
+      "backtest": {
+        "top_up_rate": 0.397,
+        "bottom_up_rate": 0.129,
+        "up_rate_spread": 0.268,
+        "top_median_pts": 0.0,
+        "bottom_median_pts": 0.0,
+        "slice": 5461
+      }
+    }
+  },
+  "winner": "feature_mlp",
+  "walk_forward": {
+    "folds": [
+      {
+        "fold": 1,
+        "val_auc": 0.603,
+        "up_rate_spread": 0.22,
+        "val_windows": 27130
+      },
+      {
+        "fold": 2,
+        "val_auc": 0.6207,
+        "up_rate_spread": 0.228,
+        "val_windows": 27140
+      },
+      {
+        "fold": 3,
+        "val_auc": 0.6395,
+        "up_rate_spread": 0.268,
+        "val_windows": 27130
+      },
+      {
+        "fold": 4,
+        "val_auc": 0.6492,
+        "up_rate_spread": 0.27,
+        "val_windows": 27306
+      }
+    ],
+    "mean_auc": 0.6281,
+    "min_auc": 0.603,
+    "note": "each fold trains on earlier time blocks, validates on the next \u2014 AUC>0.5 across folds = signal persists over time."
+  },
+  "seq_len": 15,
+  "features": [
+    "last",
+    "mean_ret",
+    "vol",
+    "drift",
+    "band_z",
+    "momentum",
+    "autocorr",
+    "activity",
+    "rsi",
+    "cci",
+    "macd_hist",
+    "stoch_k",
+    "downside_vol"
+  ]
+}

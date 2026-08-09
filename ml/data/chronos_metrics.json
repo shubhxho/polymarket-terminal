@@ -1,0 +1,27 @@
+{
+  "runtime": "modal H100 / chronos-bolt-base",
+  "base_model": "amazon/chronos-bolt-base",
+  "series": 727,
+  "horizon": 6,
+  "zero_shot": {
+    "direction_acc": 0.507,
+    "n": 497,
+    "backtest": {
+      "top_up_rate": 0.394,
+      "bottom_up_rate": 0.404,
+      "up_rate_spread": -0.01,
+      "slice": 99
+    }
+  },
+  "fine_tuned": {
+    "direction_acc": 0.5372,
+    "n": 497,
+    "backtest": {
+      "top_up_rate": 0.455,
+      "bottom_up_rate": 0.404,
+      "up_rate_spread": 0.051,
+      "slice": 99
+    }
+  },
+  "improvement_acc": 0.0302
+}

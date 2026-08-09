@@ -1,0 +1,17 @@
+{
+  "runtime": "modal H100 / multilingual",
+  "text_model": "paraphrase-multilingual-MiniLM-L12-v2",
+  "markets": 596,
+  "cross_lingual_cosine_to_en": {
+    "es": 0.789,
+    "zh": 0.931,
+    "ar": 0.931,
+    "hi": 0.89,
+    "pt": 0.918
+  },
+  "mean_cross_lingual_cosine": 0.892,
+  "price_only_auc": 0.636,
+  "text_only_auc": 0.6099,
+  "fusion_auc": 0.6343,
+  "text_adds_auc": -0.0017
+}

@@ -1,0 +1,200 @@
+{
+  "runtime": "modal H100 / bigdata (all-GPU: XGBoost-CUDA + bi-GRU fusion)",
+  "dataset": "TimeSeventeen/Polymarket-v1",
+  "source": "orderfilled tape (1.2B trades) \u2192 300s OHLCV + true order-flow",
+  "files_processed": 42,
+  "tokens": 2000,
+  "bars": 21420590,
+  "windows": 20785510,
+  "features": [
+    "last",
+    "mean_ret",
+    "vol",
+    "drift",
+    "band_z",
+    "momentum",
+    "rsi",
+    "cci",
+    "stoch_k",
+    "williams_r",
+    "atr",
+    "parkinson_vol",
+    "ofi_window",
+    "ofi_last",
+    "ofi_trend",
+    "vol_z",
+    "trade_intensity",
+    "log_avg_trade",
+    "extremeness",
+    "log_volume",
+    "log_trades",
+    "win_len"
+  ],
+  "seq_channels": [
+    "ret",
+    "range",
+    "body",
+    "log_vol",
+    "flow",
+    "log_trades"
+  ],
+  "window": 16,
+  "horizon": 4,
+  "bar_seconds": 300,
+  "label_mode": "tb",
+  "tb_k": 1.5,
+  "embargo": 0.02,
+  "train_windows": 16257340,
+  "val_windows": 4111102,
+  "majority_baseline_acc": 0.5734,
+  "gbdt": {
+    "impl": "xgboost-cuda",
+    "best_iteration": 1878,
+    "val_auc": 0.5799,
+    "brier": 0.2441,
+    "backtest": {
+      "top_up_rate": 0.562,
+      "bottom_up_rate": 0.448,
+      "up_rate_spread": 0.114,
+      "slice": 588697
+    }
+  },
+  "feature_importance_gbdt": [
+    [
+      "williams_r",
+      127.9
+    ],
+    [
+      "vol",
+      71.9
+    ],
+    [
+      "last",
+      60.4
+    ],
+    [
+      "band_z",
+      55.1
+    ],
+    [
+      "stoch_k",
+      42.7
+    ],
+    [
+      "atr",
+      29.3
+    ],
+    [
+      "extremeness",
+      26.8
+    ],
+    [
+      "momentum",
+      24.9
+    ],
+    [
+      "rsi",
+      22.3
+    ],
+    [
+      "ofi_trend",
+      19.2
+    ],
+    [
+      "ofi_last",
+      18.4
+    ],
+    [
+      "drift",
+      18.1
+    ],
+    [
+      "parkinson_vol",
+      17.0
+    ],
+    [
+      "cci",
+      15.4
+    ],
+    [
+      "log_trades",
+      14.9
+    ],
+    [
+      "mean_ret",
+      13.8
+    ],
+    [
+      "log_avg_trade",
+      13.6
+    ],
+    [
+      "log_volume",
+      12.8
+    ],
+    [
+      "ofi_window",
+      11.5
+    ],
+    [
+      "trade_intensity",
+      11.1
+    ],
+    [
+      "vol_z",
+      10.6
+    ],
+    [
+      "win_len",
+      0.0
+    ]
+  ],
+  "neural": {
+    "impl": "bi-GRU+feat-MLP fusion (fp32, cosine LR)",
+    "val_auc": 0.5745,
+    "brier": 0.2447,
+    "backtest": {
+      "top_up_rate": 0.569,
+      "bottom_up_rate": 0.442,
+      "up_rate_spread": 0.127,
+      "slice": 588697
+    }
+  },
+  "ensemble": {
+    "gbdt_weight": 0.7,
+    "val_auc": 0.5814,
+    "brier": 0.2439,
+    "backtest": {
+      "top_up_rate": 0.567,
+      "bottom_up_rate": 0.443,
+      "up_rate_spread": 0.125,
+      "slice": 588697
+    }
+  },
+  "overall_best": "ensemble",
+  "walk_forward": {
+    "folds": [
+      {
+        "fold": 1,
+        "val_auc": 0.5777,
+        "up_rate_spread": 0.129
+      },
+      {
+        "fold": 2,
+        "val_auc": 0.5787,
+        "up_rate_spread": 0.124
+      },
+      {
+        "fold": 3,
+        "val_auc": 0.5783,
+        "up_rate_spread": 0.121
+      },
+      {
+        "fold": 4,
+        "val_auc": 0.579,
+        "up_rate_spread": 0.112
+      }
+    ],
+    "mean_auc": 0.5784
+  }
+}

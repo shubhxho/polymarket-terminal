@@ -1,0 +1,32 @@
+{
+  "dataset": "series_100kb.json (~100kB Polymarket slice)",
+  "bytes": 103654,
+  "markets": 26,
+  "train_windows": 8184,
+  "val_windows": 2088,
+  "models": {
+    "feature_mlp": {
+      "val_auc": 0.6388,
+      "up_rate_spread": 0.297
+    },
+    "seq_gru": {
+      "val_auc": 0.6424,
+      "up_rate_spread": 0.283
+    }
+  },
+  "features": [
+    "last",
+    "mean_ret",
+    "vol",
+    "drift",
+    "band_z",
+    "momentum",
+    "autocorr",
+    "activity",
+    "rsi",
+    "cci",
+    "macd_hist",
+    "stoch_k",
+    "downside_vol"
+  ]
+}
