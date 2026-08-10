@@ -42,6 +42,22 @@ describe("strike parsing", () => {
     expect(parseStrike("Above 1,250,000 total")).toBe(1_250_000);
   });
 
+  test("a DATE range is not a price range", () => {
+    // REGRESSION: the corridor guard matched any two hyphenated digits, so
+    // "August 3-9" read as a range and the claim was thrown away. Four of every
+    // five real crypto markets on the live board were lost to this.
+    expect(parseStrike("Will Bitcoin reach $68,000 August 3-9?")).toBe(68_000);
+    expect(parseStrike("Will Ethereum reach $2,000 August 3-9?")).toBe(2_000);
+    const claim = parseClaim("What price will Bitcoin hit August 3-9? ↑ 68,000");
+    expect(claim?.coin).toBe("BTC");
+    expect(claim?.strike).toBe(68_000);
+    expect(claim?.style).toBe("TOUCH");
+  });
+
+  test("a market with no threshold at all is still refused", () => {
+    expect(parseClaim("Bitcoin Up or Down on August 10?")).toBeNull();
+  });
+
   test("a two-sided range is refused rather than halved", () => {
     // A corridor is not a threshold; taking its first number would price a
     // one-sided claim the market never offered.

@@ -159,34 +159,50 @@ const STRIKE_RE = /(\$\s?)?(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s?([kmb]
 const GROUPED_RE = /^\d{1,3}(?:,\d{3})+(?:\.\d+)?$/;
 
 /**
- * Two-sided phrasing. "Between $100k and $120k" is a corridor, not a threshold;
- * taking its first number would price a one-sided claim the market never made.
+ * Words that join two thresholds into a corridor rather than a single level.
  */
-const RANGE_RE = /\b(between|from)\b[^?]*\b(and|to)\b|\b\d[\d,.]*\s*[-–—]\s*\$?\d/i;
+const RANGE_JOINER = /\b(and|to)\b|[-–—]/i;
 
 /**
- * Pull a price threshold out of a title, or null when there isn't exactly one.
- *
- * Returns the FIRST qualifying number: Polymarket phrases the threshold before
- * any secondary figures.
+ * Every number in the text that qualifies as a price threshold, with where it
+ * was found. Qualifying means a `$` prefix, a k/m/b magnitude, or proper
+ * thousands grouping — a bare integer is never a strike, which is what keeps
+ * years and days out.
  */
-export function parseStrike(text: string): number | null {
-  if (RANGE_RE.test(text)) return null;
+function collectStrikes(text: string): { value: number; start: number; end: number }[] {
+  const out: { value: number; start: number; end: number }[] = [];
   for (const m of text.matchAll(STRIKE_RE)) {
     const digits = m[2];
     const suffix = m[3]?.toLowerCase();
-    const hadDollar = Boolean(m[1]);
-    const grouped = GROUPED_RE.test(digits);
-    if (!hadDollar && !suffix && !grouped) continue;
-
+    if (!m[1] && !suffix && !GROUPED_RE.test(digits)) continue;
     let value = Number.parseFloat(digits.replace(/,/g, ""));
     if (!Number.isFinite(value) || value <= 0) continue;
     if (suffix === "k") value *= 1e3;
     else if (suffix === "m") value *= 1e6;
     else if (suffix === "b") value *= 1e9;
-    return value;
+    out.push({ value, start: m.index ?? 0, end: (m.index ?? 0) + m[0].length });
   }
-  return null;
+  return out;
+}
+
+/**
+ * Pull a price threshold out of a title, or null when there isn't exactly one.
+ *
+ * A corridor ("between $100k and $120k") is refused: taking its first number
+ * would price a one-sided claim the market never offered. But the test has to
+ * be made against QUALIFYING strikes, not against any hyphenated digits — a
+ * date range like "August 3-9" is not a price range, and treating it as one
+ * rejected four out of every five real crypto markets on the live board.
+ */
+export function parseStrike(text: string): number | null {
+  const found = collectStrikes(text);
+  if (found.length === 0) return null;
+  if (found.length >= 2) {
+    // Two thresholds joined by "and"/"to"/a dash is a corridor.
+    const between = text.slice(found[0].end, found[1].start);
+    if (RANGE_JOINER.test(between)) return null;
+  }
+  return found[0].value;
 }
 
 /**
