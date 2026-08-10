@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { type DerivativeQuote, REFERENCE_POSITION_USD } from "@/lib/derivatives";
-import { fmtUsd } from "@/lib/polymarket";
+import { usd as fmtUsd } from "@/lib/format";
 
 /**
  * One priced claim.
@@ -19,7 +19,7 @@ import { fmtUsd } from "@/lib/polymarket";
 const pct = (p: number) => `${(p * 100).toFixed(1)}%`;
 const pp = (x: number) => `${x >= 0 ? "+" : ""}${(x * 100).toFixed(1)}pp`;
 const vol = (s: number | null) =>
-  s == null || !Number.isFinite(s) ? "—" : `${(s * 100).toFixed(0)}%`;
+  s === null || !Number.isFinite(s) ? "—" : `${(s * 100).toFixed(0)}%`;
 
 /** Horizon, in the coarsest unit that still reads precisely. */
 function horizon(hours: number): string {
@@ -156,6 +156,22 @@ export function DerivativesRow({ quote: q }: { quote: DerivativeQuote }) {
           title="Week-averaged HL funding, annualized. This is the carry the forward is built from."
         />
         <Field
+          label="NET EXP"
+          value={
+            q.netExpectedUsd === null
+              ? "—"
+              : `${q.netExpectedUsd >= 0 ? "+" : "−"}${fmtUsd(Math.abs(q.netExpectedUsd))}`
+          }
+          tone={
+            q.netExpectedUsd === null
+              ? undefined
+              : q.netExpectedUsd >= 0
+                ? "text-accent"
+                : "text-red"
+          }
+          title={`Expected profit on a $${REFERENCE_POSITION_USD.toLocaleString("en-US")} stake, after paying to cross Hyperliquid's ladder for the delta hedge. This is the edge net of what it costs to carry, not the edge on paper.`}
+        />
+        <Field
           label="KELLY"
           value={`${q.kelly >= 0 ? "+" : ""}${(q.kelly * 100).toFixed(1)}%`}
           tone={q.kelly >= 0 ? "text-accent" : "text-red"}
@@ -172,7 +188,7 @@ export function DerivativesRow({ quote: q }: { quote: DerivativeQuote }) {
         <span title="Spread across HL's oracle, mark and mid — a staleness check.">
           DISPERSION {q.dispersionBps.toFixed(1)}BPS
         </span>
-        {q.crossVenueBpsPerHour != null && (
+        {q.crossVenueBpsPerHour !== null && (
           <span title="HL funding minus the mean of Binance/Bybit, per hour. A persistent gap is a real cross-venue carry trade.">
             HL−PEERS {q.crossVenueBpsPerHour >= 0 ? "+" : ""}
             {q.crossVenueBpsPerHour.toFixed(2)}BPS/H
@@ -187,7 +203,10 @@ export function DerivativesRow({ quote: q }: { quote: DerivativeQuote }) {
               className={q.book.depthCoverage < 1 ? "text-amber/70" : undefined}
               title="Resting notional within ±25bps of mid (both sides), and how many times over it covers the hedge this claim needs."
             >
-              DEPTH {fmtUsd(q.book.depthUsd)} · {q.book.depthCoverage.toFixed(1)}× HEDGE
+              DEPTH {fmtUsd(q.book.depthUsd)} ·{" "}
+              {Number.isFinite(q.book.depthCoverage)
+                ? `${q.book.depthCoverage.toFixed(1)}× HEDGE`
+                : "NO HEDGE NEEDED"}
             </span>
             <span
               className={q.book.hedgeFilled ? undefined : "text-amber/70"}
@@ -198,7 +217,7 @@ export function DerivativesRow({ quote: q }: { quote: DerivativeQuote }) {
             </span>
           </>
         ) : (
-          q.impactSpreadBps != null && (
+          q.impactSpreadBps !== null && (
             <span title="HL's own $20k impact quote — the live ladder was unavailable.">
               IMPACT {q.impactSpreadBps.toFixed(1)}BPS
             </span>

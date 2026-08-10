@@ -1,4 +1,4 @@
-import { asksAscending, bidsDescending, buyDollars, type OrderBook } from "./execution";
+import { asksAscending, bidsDescending, buyDollars } from "./fills";
 import {
   averageFunding,
   type CandleInterval,
@@ -13,7 +13,7 @@ import {
   intervalForHorizon,
   type PerpContext,
 } from "./hyperliquid";
-import { eventOutcomes, type GammaEvent, type Outcome } from "./polymarket";
+import type { Market, OrderBook, Outcome } from "./types";
 import {
   basisBps,
   type Candle,
@@ -38,7 +38,7 @@ import {
   type VolSuite,
   varianceRatio,
   volSuite,
-} from "./quant";
+} from "./options";
 
 /**
  * The bridge: Polymarket claim ⇄ Hyperliquid continuous market.
@@ -159,34 +159,50 @@ const STRIKE_RE = /(\$\s?)?(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s?([kmb]
 const GROUPED_RE = /^\d{1,3}(?:,\d{3})+(?:\.\d+)?$/;
 
 /**
- * Two-sided phrasing. "Between $100k and $120k" is a corridor, not a threshold;
- * taking its first number would price a one-sided claim the market never made.
+ * Words that join two thresholds into a corridor rather than a single level.
  */
-const RANGE_RE = /\b(between|from)\b[^?]*\b(and|to)\b|\b\d[\d,.]*\s*[-–—]\s*\$?\d/i;
+const RANGE_JOINER = /\b(and|to)\b|[-–—]/i;
 
 /**
- * Pull a price threshold out of a title, or null when there isn't exactly one.
- *
- * Returns the FIRST qualifying number: Polymarket phrases the threshold before
- * any secondary figures.
+ * Every number in the text that qualifies as a price threshold, with where it
+ * was found. Qualifying means a `$` prefix, a k/m/b magnitude, or proper
+ * thousands grouping — a bare integer is never a strike, which is what keeps
+ * years and days out.
  */
-export function parseStrike(text: string): number | null {
-  if (RANGE_RE.test(text)) return null;
+function collectStrikes(text: string): { value: number; start: number; end: number }[] {
+  const out: { value: number; start: number; end: number }[] = [];
   for (const m of text.matchAll(STRIKE_RE)) {
     const digits = m[2];
     const suffix = m[3]?.toLowerCase();
-    const hadDollar = Boolean(m[1]);
-    const grouped = GROUPED_RE.test(digits);
-    if (!hadDollar && !suffix && !grouped) continue;
-
+    if (!m[1] && !suffix && !GROUPED_RE.test(digits)) continue;
     let value = Number.parseFloat(digits.replace(/,/g, ""));
     if (!Number.isFinite(value) || value <= 0) continue;
     if (suffix === "k") value *= 1e3;
     else if (suffix === "m") value *= 1e6;
     else if (suffix === "b") value *= 1e9;
-    return value;
+    out.push({ value, start: m.index ?? 0, end: (m.index ?? 0) + m[0].length });
   }
-  return null;
+  return out;
+}
+
+/**
+ * Pull a price threshold out of a title, or null when there isn't exactly one.
+ *
+ * A corridor ("between $100k and $120k") is refused: taking its first number
+ * would price a one-sided claim the market never offered. But the test has to
+ * be made against QUALIFYING strikes, not against any hyphenated digits — a
+ * date range like "August 3-9" is not a price range, and treating it as one
+ * rejected four out of every five real crypto markets on the live board.
+ */
+export function parseStrike(text: string): number | null {
+  const found = collectStrikes(text);
+  if (found.length === 0) return null;
+  if (found.length >= 2) {
+    // Two thresholds joined by "and"/"to"/a dash is a corridor.
+    const between = text.slice(found[0].end, found[1].start);
+    if (RANGE_JOINER.test(between)) return null;
+  }
+  return found[0].value;
 }
 
 /**
@@ -226,7 +242,7 @@ export function parseClaim(title: string): ParsedClaim | null {
   const coin = matchCoin(title);
   if (!coin) return null;
   const strike = parseStrike(title);
-  if (strike == null) return null;
+  if (strike === null) return null;
 
   const touchMatch = title.match(TOUCH_WORDS);
   const terminalMatch = title.match(TERMINAL_WORDS);
@@ -276,6 +292,14 @@ export interface DerivativeQuote {
   kelly: number;
   /** EV per $1 staked buying the YES side at the market price. */
   ev: number;
+  /**
+   * Expected profit on a REFERENCE_POSITION_USD stake, in dollars, AFTER the
+   * cost of crossing Hyperliquid's ladder to put the delta hedge on. EV alone
+   * flatters every position: a 6% edge that costs 80bps of hedge slippage on a
+   * hedge twice the size of the position is not a 6% trade. Null when no ladder
+   * was available to cost the hedge against.
+   */
+  netExpectedUsd: number | null;
   /** HL validator-median oracle price — the settlement reference. */
   spot: number;
   forward: number;
@@ -333,6 +357,16 @@ export const REFERENCE_POSITION_USD = 10_000;
 /** How far from mid still counts as "depth you could actually lift". */
 const DEPTH_BAND_BPS = 25;
 
+/**
+ * Below this, the hedge is dust and there is nothing to cost.
+ *
+ * A deep in-the-money digital has delta ~ 0 — it already behaves like cash, so
+ * it needs no perp against it. Dividing depth by a sub-dollar hedge produced a
+ * coverage of 4.6e9x against live data, which reads as a number rather than as
+ * "no hedge required". Infinity says the true thing.
+ */
+const MIN_HEDGE_USD = 1;
+
 export interface BookLiquidity {
   /** True top-of-book spread, in bps of mid. */
   spreadBps: number;
@@ -366,7 +400,7 @@ export function hedgeNotionalFor(
   delta: number,
   spot: number,
   contractPrice: number,
-  positionUsd = REFERENCE_POSITION_USD,
+  positionUsd = REFERENCE_POSITION_USD
 ): number {
   if (!(spot > 0) || !Number.isFinite(delta)) return 0;
   const price = clamp(contractPrice, 0.01, 0.99);
@@ -386,7 +420,7 @@ export function hedgeNotionalFor(
  */
 export function bookLiquidity(
   book: OrderBook,
-  notionalUsd = REFERENCE_POSITION_USD,
+  notionalUsd = REFERENCE_POSITION_USD
 ): BookLiquidity | null {
   const asks = asksAscending(book);
   const bids = bidsDescending(book);
@@ -408,14 +442,16 @@ export function bookLiquidity(
     depthUsd += level.price * level.size;
   }
 
+  const negligible = notionalUsd < MIN_HEDGE_USD;
   const fill = buyDollars(book, notionalUsd);
   return {
     spreadBps: ((bestAsk - bestBid) / mid) * 10_000,
     depthUsd,
     hedgeNotionalUsd: notionalUsd,
-    hedgeSlippageBps: fill.slippageBps,
-    hedgeFilled: fill.filled,
-    depthCoverage: notionalUsd > 0 ? depthUsd / notionalUsd : 0,
+    // A hedge too small to place costs nothing and always "fills".
+    hedgeSlippageBps: negligible ? 0 : fill.slippageBps,
+    hedgeFilled: negligible ? true : fill.filled,
+    depthCoverage: negligible ? Number.POSITIVE_INFINITY : depthUsd / notionalUsd,
   };
 }
 
@@ -492,7 +528,7 @@ export function priceClaim(args: {
   if (claim.style === "TOUCH") {
     modelProbability = touchProbability(spot, claim.strike, years, sigma, drift);
     impliedVol = impliedVolFromTouch(marketProbability, spot, claim.strike, years, drift);
-    unattainable = impliedVol == null;
+    unattainable = impliedVol === null;
     // No closed-form vega for a one-touch: bump σ by 1% and difference it.
     const bump = Math.max(sigma * 0.01, 1e-4);
     vega =
@@ -515,14 +551,14 @@ export function priceClaim(args: {
     const callProbability = claim.direction === "UP" ? marketProbability : 1 - marketProbability;
     const roots = impliedVolFromDigitalCall(callProbability, forward, claim.strike, years);
     impliedVol = pickImpliedVol(roots, sigma);
-    if (roots == null) {
+    if (roots === null) {
       // The extremum is a CEILING: out of the money the price rises to
       // Φ(−√(−2m)) at σ* and falls away again, so a quote is unreachable when
       // it sits ABOVE that cap, never below. Comparing the wrong way round
       // labels ordinary cheap quotes "unattainable" and silently hides the
       // genuinely inexpressible ones.
       const cap = digitalProbabilityExtremum(forward, claim.strike, years);
-      unattainable = cap == null || callProbability > cap.probability;
+      unattainable = cap === null || callProbability > cap.probability;
     }
   }
 
@@ -544,6 +580,8 @@ export function priceClaim(args: {
       (touchProbability(spot + bump, claim.strike, years, sigma, drift) - modelProbability) / bump;
   }
   const hedgeNotionalUsd = hedgeNotionalFor(delta, spot, marketProbability);
+
+  const book = args.book ? bookLiquidity(args.book, hedgeNotionalUsd) : null;
 
   const band = probabilityBand(modelProbability, vega, vol.spread);
   const edge = modelProbability - marketProbability;
@@ -584,7 +622,11 @@ export function priceClaim(args: {
     openInterest: perp.openInterest,
     perpDayVolume: perp.dayNotionalVolume,
     perpChange24h: perp.prevDayPx > 0 ? perp.markPx / perp.prevDayPx - 1 : 0,
-    book: args.book ? bookLiquidity(args.book, hedgeNotionalUsd) : null,
+    book,
+    netExpectedUsd:
+      book === null
+        ? null
+        : REFERENCE_POSITION_USD * ev - (book.hedgeNotionalUsd * book.hedgeSlippageBps) / 10_000,
     greeks,
   };
 }
@@ -625,8 +667,8 @@ function yesOutcome(outcomes: Outcome[]): Outcome | null {
  * drops only its own rows.
  */
 export async function buildDesk(
-  events: GammaEvent[],
-  opts: { now?: number; maxRows?: number } = {},
+  markets: Market[],
+  opts: { now?: number; maxRows?: number } = {}
 ): Promise<Desk> {
   const now = opts.now ?? Date.now();
   const maxRows = opts.maxRows ?? 40;
@@ -640,57 +682,37 @@ export async function buildDesk(
     endDate: string | undefined;
   }[] = [];
 
-  for (const event of events) {
-    if (!event.markets || event.markets.length === 0) continue;
-    if (!matchCoin(event.title)) continue; // not a crypto market at all
+  for (const m of markets) {
+    if (!m.active || m.closed) continue;
+    // A market in a multi-outcome event carries its strike in its own question;
+    // a standalone binary carries it in the event title. Try the most specific
+    // text first and fall back, so "Bitcoin price on July 31 — $120,000" and
+    // "Bitcoin above $120,000 on July 31" both resolve.
+    const specific = m.groupItemTitle ? `${m.eventTitle ?? ""} ${m.groupItemTitle}` : m.question;
+    const claim = parseClaim(specific) ?? parseClaim(m.question) ?? parseClaim(m.eventTitle ?? "");
+    const title = m.groupItemTitle
+      ? `${m.eventTitle ?? m.question} — ${m.groupItemTitle}`
+      : m.question;
 
-    const outcomes = eventOutcomes(event);
-    if (outcomes.length === 0) continue;
-
-    // Multi-market events carry one strike per market row; single binary
-    // markets carry it in the event title.
-    const openMarkets = event.markets.filter((m) => m.active && !m.closed);
-    if (openMarkets.length > 1) {
-      for (const m of openMarkets) {
-        const rowTitle = `${event.title} — ${m.groupItemTitle || m.question}`;
-        const claim =
-          parseClaim(m.question) ?? parseClaim(`${event.title} ${m.groupItemTitle ?? ""}`);
-        const outcome = outcomes.find((o) => o.marketId === m.id);
-        if (!claim || !outcome) {
-          unparsed.push({
-            slug: event.slug,
-            title: rowTitle,
-            reason: claim ? "NO OUTCOME" : "UNCLASSIFIED PHRASING",
-          });
-          continue;
-        }
-        candidates.push({
-          claim,
-          slug: event.slug,
-          title: rowTitle,
-          outcome,
-          endDate: m.endDate ?? event.endDate,
-        });
-      }
-    } else {
-      const claim = parseClaim(event.title);
-      const outcome = yesOutcome(outcomes);
-      if (!claim || !outcome) {
-        unparsed.push({
-          slug: event.slug,
-          title: event.title,
-          reason: claim ? "NO OUTCOME" : "UNCLASSIFIED PHRASING",
-        });
-        continue;
-      }
-      candidates.push({
-        claim,
-        slug: event.slug,
-        title: event.title,
-        outcome,
-        endDate: openMarkets[0]?.endDate ?? event.endDate,
-      });
+    if (!matchCoin(specific) && !matchCoin(m.question) && !matchCoin(m.eventTitle ?? "")) {
+      continue; // not a crypto market at all — silent, not "unparsed"
     }
+    const outcome = yesOutcome(m.outcomes);
+    if (!claim || !outcome) {
+      unparsed.push({
+        slug: m.eventSlug ?? m.slug,
+        title,
+        reason: claim ? "NO OUTCOME" : "UNCLASSIFIED PHRASING",
+      });
+      continue;
+    }
+    candidates.push({
+      claim,
+      slug: m.eventSlug ?? m.slug,
+      title,
+      outcome,
+      endDate: m.endDate,
+    });
   }
 
   const empty: Desk = { rows: [], unparsed, perps: [], funding: new Map() };

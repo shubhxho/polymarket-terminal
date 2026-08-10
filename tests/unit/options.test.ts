@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { describe, expect, test } from "vitest";
 import {
   brentSolve,
   type Candle,
@@ -8,6 +8,7 @@ import {
   edgeZ,
   erfc,
   expectedValue,
+  MIN_BAND_HALF_WIDTH,
   forwardFromFunding,
   impliedVolFromDigitalCall,
   impliedVolFromTouch,
@@ -23,7 +24,7 @@ import {
   volSuite,
   wilsonInterval,
   yangZhangVol,
-} from "../../src/lib/quant";
+} from "../../src/lib/options";
 
 /**
  * Unit tests for the quant kernel.
@@ -134,7 +135,7 @@ function autocorrelated(phi: number, seed: number, bars = 600): Candle[] {
   return out;
 }
 
-test.describe("normal distribution", () => {
+describe("normal distribution", () => {
   test("erfc matches known values inside its stated 1.2e-7 error", () => {
     expect(erfc(0)).toBeCloseTo(1, 12);
     // erfc(1) and erfc(2), standard references.
@@ -164,7 +165,7 @@ test.describe("normal distribution", () => {
   });
 });
 
-test.describe("digital options", () => {
+describe("digital options", () => {
   const base = { spot: 100, strike: 100, years: 0.25, sigma: 0.6 };
 
   test("put-call parity holds exactly", () => {
@@ -276,7 +277,7 @@ test.describe("digital options", () => {
     // it has two. Getting this backwards is exactly the bug this test exists
     // to catch.
     expect(
-      impliedVolFromDigitalCall(Math.min(probability * 1.5, 0.999), forward, strike, years),
+      impliedVolFromDigitalCall(Math.min(probability * 1.5, 0.999), forward, strike, years)
     ).toBeNull();
     expect(impliedVolFromDigitalCall(probability * 0.5, forward, strike, years)).not.toBeNull();
     // In the money there is no interior peak.
@@ -284,7 +285,7 @@ test.describe("digital options", () => {
   });
 });
 
-test.describe("one-touch barriers", () => {
+describe("one-touch barriers", () => {
   test("touching is strictly more likely than finishing above", () => {
     const spot = 100;
     const barrier = 115;
@@ -338,7 +339,7 @@ test.describe("one-touch barriers", () => {
   });
 });
 
-test.describe("realized volatility", () => {
+describe("realized volatility", () => {
   test("Yang-Zhang recovers the simulated sigma within 15%", () => {
     const sigma = 0.8;
     const candles = simulateCandles({
@@ -415,7 +416,7 @@ test.describe("realized volatility", () => {
   });
 });
 
-test.describe("carry and forwards", () => {
+describe("carry and forwards", () => {
   test("positive funding lifts the forward above spot", () => {
     const f = forwardFromFunding(100, 0.0001, 24 * 30);
     expect(f).toBeGreaterThan(100);
@@ -429,7 +430,7 @@ test.describe("carry and forwards", () => {
   });
 });
 
-test.describe("sizing and uncertainty", () => {
+describe("sizing and uncertainty", () => {
   test("Kelly is signed by which side is cheap", () => {
     // Model 60%, market 50% ⇒ buy YES.
     expect(kellyBinary(0.6, 0.5)).toBeGreaterThan(0);
@@ -458,6 +459,21 @@ test.describe("sizing and uncertainty", () => {
     const clamped = probabilityBand(0.02, -5, 2);
     expect(clamped.lo).toBeGreaterThanOrEqual(0);
     expect(clamped.hi).toBeLessThanOrEqual(1);
+  });
+
+  test("the band never collapses to zero, however certain the model looks", () => {
+    // REGRESSION: deep in/out of the money a digital's vega goes to zero, so a
+    // purely vega-derived band claimed infinite certainty. Against live data a
+    // 0.5pp disagreement on a 99.5c contract scored z = 3e7 and swamped a desk
+    // that ranks by |z|.
+    const degenerate = probabilityBand(0.995, 0, 0);
+    expect(degenerate.width).toBeGreaterThan(0);
+    expect(degenerate.width / 2).toBeCloseTo(MIN_BAND_HALF_WIDTH, 12);
+    // A half-point edge against that floor is ~1 sigma, i.e. not conviction.
+    expect(Math.abs(edgeZ(0.005, degenerate.width / 2))).toBeLessThanOrEqual(1.001);
+    // The floor must not widen a band that genuinely exceeds it.
+    const real = probabilityBand(0.5, -0.4, 0.4);
+    expect(real.width / 2).toBeGreaterThan(MIN_BAND_HALF_WIDTH);
   });
 
   test("edge z-score reports conviction relative to the band", () => {
@@ -496,7 +512,7 @@ test.describe("sizing and uncertainty", () => {
   });
 });
 
-test.describe("root finding", () => {
+describe("root finding", () => {
   test("Brent solves a bracketed root", () => {
     const root = brentSolve((x) => x * x - 2, { lo: 0, hi: 4 });
     expect(root).not.toBeNull();
