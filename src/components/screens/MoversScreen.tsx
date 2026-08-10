@@ -19,7 +19,7 @@ const TIMEFRAMES: Timeframe[] = ["1H", "24H", "1W"];
  * edge. These five columns need ~360px, so this leaves the market title a
  * usable ~200px and nothing scrolls.
  */
-const SIDE_BY_SIDE_MIN_W = "sm:min-w-[560px]";
+const SIDE_BY_SIDE_MIN_W = "lg:min-w-[560px]";
 
 const CHANGE_COLUMN: Record<Timeframe, GridColumn> = {
   "1H": "chg1h",
