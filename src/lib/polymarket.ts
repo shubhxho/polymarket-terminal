@@ -144,6 +144,66 @@ export type MarketQuery = {
   tokenIds?: string[];
 };
 
+/**
+ * Gamma's list endpoints return far more than Next's data cache will hold.
+ *
+ * `/events` alone comes back at ~11.5MB, against a 2MB ceiling, so
+ * `next: { revalidate }` did not merely fail to help — every request paid to
+ * serialize the body, had the write rejected, logged
+ * "items over 2MB can not be cached", and refetched the whole payload on the
+ * next render. Caching was doing negative work.
+ *
+ * Almost all of that weight is prose and fields no screen reads, and
+ * `normalizeMarket` / `normalizeEvent` already drop them. So the cache holds
+ * the NORMALIZED result instead of the response: two orders of magnitude
+ * smaller, and it actually survives.
+ */
+const LIST_CACHE_MAX = 64;
+const listCache = new Map<string, { at: number; value: unknown }>();
+
+/** As `get`, but explicitly out of a data cache that cannot hold the response. */
+async function getUncached<T>(url: string, retries = 1): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url, {
+        cache: "no-store",
+        headers: { accept: "application/json" },
+      });
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText} :: ${url}`);
+      return (await res.json()) as T;
+    } catch (err) {
+      lastErr = err;
+      if (attempt < retries) await new Promise((r) => setTimeout(r, 250));
+    }
+  }
+  throw lastErr;
+}
+
+/**
+ * Fetch, normalize, and memoize the small result in-process for `ttlSeconds`.
+ * The TTL mirrors the `revalidate` these calls used to ask for, so refresh
+ * behaviour is unchanged — what changes is that the cache now holds something.
+ */
+async function cachedList<T>(
+  url: string,
+  ttlSeconds: number,
+  normalize: (raw: unknown) => T
+): Promise<T> {
+  const hit = listCache.get(url);
+  const now = Date.now();
+  if (hit && now - hit.at < ttlSeconds * 1000) return hit.value as T;
+
+  const value = normalize(await getUncached<unknown>(url));
+  if (listCache.size >= LIST_CACHE_MAX) {
+    // Insertion-ordered, so the first key is the oldest entry.
+    const oldest = listCache.keys().next().value;
+    if (oldest !== undefined) listCache.delete(oldest);
+  }
+  listCache.set(url, { at: now, value });
+  return value;
+}
+
 export async function fetchMarkets(q: MarketQuery = {}): Promise<Market[]> {
   const p = new URLSearchParams();
   p.set("limit", String(q.limit ?? 60));
@@ -167,8 +227,9 @@ export async function fetchMarkets(q: MarketQuery = {}): Promise<Market[]> {
   q.ids?.forEach((id) => p.append("id", id));
   q.tokenIds?.forEach((t) => p.append("clob_token_ids", t));
 
-  const raw = await get<RawMarket[]>(`${GAMMA}/markets?${p}`, 10);
-  return (Array.isArray(raw) ? raw : []).map(normalizeMarket);
+  return cachedList(`${GAMMA}/markets?${p}`, 10, (raw) =>
+    (Array.isArray(raw) ? (raw as RawMarket[]) : []).map(normalizeMarket)
+  );
 }
 
 export async function fetchEvents(q: MarketQuery = {}): Promise<EventSummary[]> {
@@ -185,8 +246,9 @@ export async function fetchEvents(q: MarketQuery = {}): Promise<EventSummary[]> 
   if (q.tagId) p.set("tag_id", q.tagId);
   if (q.slug) p.set("slug", q.slug);
 
-  const raw = await get<RawMarket[]>(`${GAMMA}/events?${p}`, 10);
-  return (Array.isArray(raw) ? raw : []).map(normalizeEvent);
+  return cachedList(`${GAMMA}/events?${p}`, 10, (raw) =>
+    (Array.isArray(raw) ? (raw as RawMarket[]) : []).map(normalizeEvent)
+  );
 }
 
 export async function searchPolymarket(
