@@ -12,6 +12,15 @@ type Timeframe = "1H" | "24H" | "1W";
 
 const TIMEFRAMES: Timeframe[] = ["1H", "24H", "1W"];
 
+/**
+ * Gainers and losers sit side by side from xl, so each grid gets roughly half
+ * the workspace — about 614px at 1440. The grid's default 720px floor is sized
+ * for a full-width panel and overflowed here, pushing the last column past the
+ * edge. These five columns need ~360px, so this leaves the market title a
+ * usable ~200px and nothing scrolls.
+ */
+const SIDE_BY_SIDE_MIN_W = "sm:min-w-[560px]";
+
 const CHANGE_COLUMN: Record<Timeframe, GridColumn> = {
   "1H": "chg1h",
   "24H": "chg24h",
@@ -159,7 +168,12 @@ export default function MoversScreen() {
             className="min-h-0 flex-1"
           >
             <Body loading={loading} error={error} hasData={!!data}>
-              <MarketGrid markets={gainers} columns={columns} emptyText="no advancers" />
+              <MarketGrid
+                markets={gainers}
+                columns={columns}
+                emptyText="no advancers"
+                minWidthClass={SIDE_BY_SIDE_MIN_W}
+              />
             </Body>
           </Panel>
         </motion.div>
@@ -172,7 +186,12 @@ export default function MoversScreen() {
             className="min-h-0 flex-1"
           >
             <Body loading={loading} error={error} hasData={!!data}>
-              <MarketGrid markets={losers} columns={columns} emptyText="no decliners" />
+              <MarketGrid
+                markets={losers}
+                columns={columns}
+                emptyText="no decliners"
+                minWidthClass={SIDE_BY_SIDE_MIN_W}
+              />
             </Body>
           </Panel>
         </motion.div>
