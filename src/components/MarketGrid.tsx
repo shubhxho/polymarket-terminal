@@ -86,7 +86,7 @@ export function MarketGrid({
   live = true,
   showRank = true,
   emptyText = "no markets",
-  minWidthClass = "sm:min-w-[720px]",
+  minWidthClass = "lg:min-w-[720px]",
 }: {
   markets: Market[];
   columns?: GridColumn[];
@@ -98,6 +98,11 @@ export function MarketGrid({
    * full-width panel; a caller showing fewer columns, or placing two grids side
    * by side, needs a smaller one. A viewport breakpoint cannot see how wide the
    * grid's *container* is, so the caller has to say.
+   *
+   * Gated at `lg`, not `sm`: the sidebar takes ~200px, so an 820px tablet
+   * leaves the grid 618px and a 720px floor overflowed it on Sectors, Search,
+   * Monitor and Portfolio alike. `lg` is the first width where the panel is
+   * genuinely wider than the floor it is being given.
    */
   minWidthClass?: string;
 }) {
