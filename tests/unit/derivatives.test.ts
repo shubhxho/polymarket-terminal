@@ -254,6 +254,20 @@ describe("bookLiquidity", () => {
     expect(l.depthCoverage).toBeCloseTo(l.depthUsd / 50_000, 9);
   });
 
+  test("a dust hedge reports no hedge needed, not a billion-x coverage", () => {
+    // REGRESSION: a deep in-the-money digital has delta ~ 0, so the hedge is
+    // sub-dollar. Dividing depth by it produced coverage of 4.6e9x against live
+    // data — a number where the truth is "nothing to hedge".
+    const liq = bookLiquidity(ladder(100_000, 5, 5, 40), 0.000002);
+    const l = liq as NonNullable<typeof liq>;
+    expect(Number.isFinite(l.depthCoverage)).toBe(false);
+    expect(l.hedgeSlippageBps).toBe(0);
+    expect(l.hedgeFilled).toBe(true);
+    // A real clip still reports a finite ratio.
+    const real = bookLiquidity(ladder(100_000, 5, 5, 40), 50_000);
+    expect(Number.isFinite((real as NonNullable<typeof real>).depthCoverage)).toBe(true);
+  });
+
   test("an empty or one-sided book yields nothing rather than NaN", () => {
     expect(bookLiquidity({ tokenId: "HL:BTC", timestamp: 0, asks: [], bids: [] })).toBeNull();
     expect(

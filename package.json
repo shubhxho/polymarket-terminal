@@ -20,7 +20,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "verify:live": "bun run scripts/verify-live.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",

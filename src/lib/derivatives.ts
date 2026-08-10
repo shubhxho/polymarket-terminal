@@ -341,6 +341,16 @@ export const REFERENCE_POSITION_USD = 10_000;
 /** How far from mid still counts as "depth you could actually lift". */
 const DEPTH_BAND_BPS = 25;
 
+/**
+ * Below this, the hedge is dust and there is nothing to cost.
+ *
+ * A deep in-the-money digital has delta ~ 0 — it already behaves like cash, so
+ * it needs no perp against it. Dividing depth by a sub-dollar hedge produced a
+ * coverage of 4.6e9x against live data, which reads as a number rather than as
+ * "no hedge required". Infinity says the true thing.
+ */
+const MIN_HEDGE_USD = 1;
+
 export interface BookLiquidity {
   /** True top-of-book spread, in bps of mid. */
   spreadBps: number;
@@ -416,14 +426,16 @@ export function bookLiquidity(
     depthUsd += level.price * level.size;
   }
 
+  const negligible = notionalUsd < MIN_HEDGE_USD;
   const fill = buyDollars(book, notionalUsd);
   return {
     spreadBps: ((bestAsk - bestBid) / mid) * 10_000,
     depthUsd,
     hedgeNotionalUsd: notionalUsd,
-    hedgeSlippageBps: fill.slippageBps,
-    hedgeFilled: fill.filled,
-    depthCoverage: notionalUsd > 0 ? depthUsd / notionalUsd : 0,
+    // A hedge too small to place costs nothing and always "fills".
+    hedgeSlippageBps: negligible ? 0 : fill.slippageBps,
+    hedgeFilled: negligible ? true : fill.filled,
+    depthCoverage: negligible ? Number.POSITIVE_INFINITY : depthUsd / notionalUsd,
   };
 }
 

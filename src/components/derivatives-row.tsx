@@ -203,7 +203,10 @@ export function DerivativesRow({ quote: q }: { quote: DerivativeQuote }) {
               className={q.book.depthCoverage < 1 ? "text-amber/70" : undefined}
               title="Resting notional within ±25bps of mid (both sides), and how many times over it covers the hedge this claim needs."
             >
-              DEPTH {fmtUsd(q.book.depthUsd)} · {q.book.depthCoverage.toFixed(1)}× HEDGE
+              DEPTH {fmtUsd(q.book.depthUsd)} ·{" "}
+              {Number.isFinite(q.book.depthCoverage)
+                ? `${q.book.depthCoverage.toFixed(1)}× HEDGE`
+                : "NO HEDGE NEEDED"}
             </span>
             <span
               className={q.book.hedgeFilled ? undefined : "text-amber/70"}

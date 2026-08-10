@@ -14,7 +14,12 @@ export const metadata: Metadata = {
 };
 
 /** How deep into the board to look for parseable crypto claims. */
-const SCAN_DEPTH = 120;
+/**
+ * Gamma caps a single page at 100 rows no matter what `limit` asks for —
+ * requesting 500 silently returns 100. Stating the real number keeps the
+ * header copy honest about how deep the scan goes.
+ */
+const SCAN_DEPTH = 100;
 const MAX_ROWS = 30;
 
 const TAGS = [
