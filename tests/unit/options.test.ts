@@ -8,6 +8,7 @@ import {
   edgeZ,
   erfc,
   expectedValue,
+  MIN_BAND_HALF_WIDTH,
   forwardFromFunding,
   impliedVolFromDigitalCall,
   impliedVolFromTouch,
@@ -458,6 +459,21 @@ describe("sizing and uncertainty", () => {
     const clamped = probabilityBand(0.02, -5, 2);
     expect(clamped.lo).toBeGreaterThanOrEqual(0);
     expect(clamped.hi).toBeLessThanOrEqual(1);
+  });
+
+  test("the band never collapses to zero, however certain the model looks", () => {
+    // REGRESSION: deep in/out of the money a digital's vega goes to zero, so a
+    // purely vega-derived band claimed infinite certainty. Against live data a
+    // 0.5pp disagreement on a 99.5c contract scored z = 3e7 and swamped a desk
+    // that ranks by |z|.
+    const degenerate = probabilityBand(0.995, 0, 0);
+    expect(degenerate.width).toBeGreaterThan(0);
+    expect(degenerate.width / 2).toBeCloseTo(MIN_BAND_HALF_WIDTH, 12);
+    // A half-point edge against that floor is ~1 sigma, i.e. not conviction.
+    expect(Math.abs(edgeZ(0.005, degenerate.width / 2))).toBeLessThanOrEqual(1.001);
+    // The floor must not widen a band that genuinely exceeds it.
+    const real = probabilityBand(0.5, -0.4, 0.4);
+    expect(real.width / 2).toBeGreaterThan(MIN_BAND_HALF_WIDTH);
   });
 
   test("edge z-score reports conviction relative to the band", () => {

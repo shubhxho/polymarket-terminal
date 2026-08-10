@@ -2,7 +2,7 @@
  * Quant kernel — the pure math the whole terminal is built on.
  *
  * No I/O, no fetch, no framework. Every function here is deterministic and
- * unit-tested (`tests/unit/quant.spec.ts`), so the derivative desk can be
+ * unit-tested (`tests/unit/options.spec.ts`), so the derivative desk can be
  * audited number-by-number instead of trusted.
  *
  * WHAT THIS EXISTS TO DO
@@ -841,6 +841,12 @@ export function wilsonInterval(p: number, n: number, z = 1.96): { lo: number; hi
 }
 
 /**
+ * Irreducible model uncertainty, as a half-width in probability. Nothing this
+ * desk prices is known to better than roughly half a point.
+ */
+export const MIN_BAND_HALF_WIDTH = 0.005;
+
+/**
  * Translate the vol estimator spread into a probability band on the model.
  *
  * A digital's sensitivity to vol is its vega. If our estimators disagree by
@@ -853,7 +859,17 @@ export function probabilityBand(
   vega: number,
   sigmaSpread: number
 ): { lo: number; hi: number; width: number } {
-  const half = Math.abs(vega) * Math.max(0, sigmaSpread) * 0.5;
+  // Vega-derived width alone goes to ZERO deep in or out of the money, where a
+  // digital stops caring about vol. Taken literally that claims the model is
+  // infinitely certain, and any edge divided by it explodes — a 0.5pp
+  // disagreement on a 99.5c contract scored z = 3e7 against live data and
+  // swamped the whole desk ranking.
+  //
+  // Vol dispersion is not the only thing we can be wrong about. Jumps, the
+  // discreteness of a 1c tick, a stale oracle and the GBM assumption itself all
+  // survive at zero vega, so the band carries a floor representing that
+  // irreducible model risk.
+  const half = Math.max(Math.abs(vega) * Math.max(0, sigmaSpread) * 0.5, MIN_BAND_HALF_WIDTH);
   return {
     lo: clamp(probability - half, 0, 1),
     hi: clamp(probability + half, 0, 1),
