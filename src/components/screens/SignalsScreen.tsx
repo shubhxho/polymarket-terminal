@@ -377,7 +377,15 @@ export default function SignalsScreen() {
           ) : rows.length === 0 ? (
             <Empty text={active.length > 0 ? "no markets match that filter" : "no signals"} />
           ) : (
-            <div ref={bodyRef} className="min-w-[1040px] text-tiny">
+            <div ref={bodyRef} className="min-w-[860px] text-tiny">
+              {/* The rail takes 330px of the xl grid, leaving this scroller
+                  ~900px. A 1040px floor therefore pushed the last column (the
+                  badges) past the edge on every render — they were not clipped
+                  by a bug, they were scrolled out of view, which reads the same
+                  to anyone looking at it. The fixed columns plus gaps need
+                  ~660px, so this floor still guarantees the numeric columns
+                  their width and lets the Market title (min-w-0 flex-1) take
+                  the rest. */}
               <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-edge bg-surface-2 px-2.5 py-[4px]">
                 <span className="eyebrow w-[22px] shrink-0 text-right">#</span>
                 <span
