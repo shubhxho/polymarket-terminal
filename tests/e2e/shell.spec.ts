@@ -8,7 +8,9 @@ import { expect, test } from "@playwright/test";
 test.describe("shell", () => {
   test("renders the masthead and the default Monitor screen", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByText("Polymarket Terminal")).toBeVisible();
+    // The wordmark is an SVG mark, so "Polymarket Terminal" is its accessible
+    // name rather than page text — getByText cannot see it.
+    await expect(page.getByRole("img", { name: "Polymarket Terminal" })).toBeVisible();
     // TopBar prints the active screen's title; MON is home. Scope to the
     // masthead — the screen body echoes the same title in a panel.
     await expect(page.getByRole("banner").getByText("MARKET MONITOR")).toBeVisible();

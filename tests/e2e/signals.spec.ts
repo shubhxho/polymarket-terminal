@@ -101,9 +101,16 @@ test.describe("signal scanner", () => {
     await expect(page.getByRole("banner").getByText("SIGNAL SCANNER")).toBeVisible();
 
     // The ranked table, its Model column, and the market from the fixture.
-    await expect(page.getByText("Ranked signals")).toBeVisible();
-    await expect(page.getByText("Model", { exact: true })).toBeVisible();
-    await expect(page.getByText("E2E ALPHA MARKET", { exact: false })).toBeVisible();
+    // Exact: the command palette's blurb for SIG opens with the same words
+    // ("Ranked signals, block flow and basket arbitrage"), so a substring
+    // match hits the palette option as well as the panel's eyebrow.
+    await expect(page.getByText("Ranked signals", { exact: true })).toBeVisible();
+    // "Model" is both the ranked table's column header and the detail rail's
+    // panel title, and with a row auto-selected both are on screen.
+    await expect(page.getByText("Model", { exact: true }).first()).toBeVisible();
+    // The market name appears twice once a row is selected — in the ranked
+    // table's row button and again in the detail rail. Target the row.
+    await expect(page.getByRole("button", { name: /E2E ALPHA MARKET/ })).toBeVisible();
 
     // The model's up-probability (0.71 → 71%) is rendered in the model column.
     await expect(page.getByText("71%").first()).toBeVisible();
@@ -119,7 +126,7 @@ test.describe("signal scanner", () => {
     await page.getByRole("combobox", { name: "Command line" }).fill("SIG");
     await page.keyboard.press("Enter");
 
-    await page.getByText("E2E ALPHA MARKET", { exact: false }).click();
+    await page.getByRole("button", { name: /E2E ALPHA MARKET/ }).click();
 
     // The detail rail's Model panel states the out-of-sample AUC caveat.
     await expect(page.getByText("AUC", { exact: false }).first()).toBeVisible();
