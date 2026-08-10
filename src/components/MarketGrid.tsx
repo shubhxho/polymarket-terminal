@@ -86,12 +86,20 @@ export function MarketGrid({
   live = true,
   showRank = true,
   emptyText = "no markets",
+  minWidthClass = "sm:min-w-[720px]",
 }: {
   markets: Market[];
   columns?: GridColumn[];
   live?: boolean;
   showRank?: boolean;
   emptyText?: string;
+  /**
+   * Desk-width floor for the row. The default suits the full column set in a
+   * full-width panel; a caller showing fewer columns, or placing two grids side
+   * by side, needs a smaller one. A viewport breakpoint cannot see how wide the
+   * grid's *container* is, so the caller has to say.
+   */
+  minWidthClass?: string;
 }) {
   const { go, toggleWatch, isWatched } = useTerminal();
   const [sel, setSel] = useState(0);
@@ -197,7 +205,7 @@ export function MarketGrid({
       ref={bodyRef}
       // The 720px floor is what the full column set needs; below `sm` the
       // grid drops to price and change, which fit a phone without scrolling.
-      className="min-w-0 text-tiny sm:min-w-[720px]"
+      className={`min-w-0 text-tiny ${minWidthClass}`}
       variants={staggerContainer}
       initial="initial"
       animate="animate"
