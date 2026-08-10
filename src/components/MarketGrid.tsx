@@ -34,18 +34,33 @@ const DEFAULT_COLUMNS: GridColumn[] = [
   "expiry",
 ];
 
+/**
+ * Column geometry, including when a column earns its width.
+ *
+ * The `width` string is consumed by the header AND by every row cell, so the
+ * responsive visibility rides along with it and there is exactly one place to
+ * change a column's behaviour.
+ *
+ * Below `sm` the grid keeps only price and change. Everything else is context:
+ * useful on a desk, not worth the horizontal scroll on a phone. Before this,
+ * the grid forced a 720px floor at every width, so on a 390px screen a "Top
+ * Gainers" table showed the market name and nothing else — the move itself,
+ * which is the entire point of the list, sat outside the scroller.
+ */
+const DESK_ONLY = "hidden sm:block";
+
 const COLUMN_META: Record<GridColumn, { label: string; width: string; title: string }> = {
   last: { label: "LAST", width: "w-[52px]", title: "Last traded probability, in cents" },
-  bid: { label: "BID", width: "w-[48px]", title: "Best bid" },
-  ask: { label: "ASK", width: "w-[48px]", title: "Best ask" },
-  spread: { label: "SPRD", width: "w-[44px]", title: "Bid/ask spread in cents" },
+  bid: { label: "BID", width: `w-[48px] ${DESK_ONLY}`, title: "Best bid" },
+  ask: { label: "ASK", width: `w-[48px] ${DESK_ONLY}`, title: "Best ask" },
+  spread: { label: "SPRD", width: `w-[44px] ${DESK_ONLY}`, title: "Bid/ask spread in cents" },
   chg1h: { label: "1H", width: "w-[48px]", title: "Change over 1 hour, in probability points" },
   chg24h: { label: "24H", width: "w-[52px]", title: "Change over 24 hours, in probability points" },
   chg1w: { label: "1W", width: "w-[52px]", title: "Change over 1 week, in probability points" },
-  vol24h: { label: "VOL 24H", width: "w-[64px]", title: "24-hour notional volume" },
-  volume: { label: "VOL TOT", width: "w-[64px]", title: "Lifetime notional volume" },
-  liquidity: { label: "LIQ", width: "w-[60px]", title: "Resting book liquidity" },
-  expiry: { label: "EXPIRY", width: "w-[64px]", title: "Time to resolution" },
+  vol24h: { label: "VOL 24H", width: `w-[64px] ${DESK_ONLY}`, title: "24-hour notional volume" },
+  volume: { label: "VOL TOT", width: `w-[64px] ${DESK_ONLY}`, title: "Lifetime notional volume" },
+  liquidity: { label: "LIQ", width: `w-[60px] ${DESK_ONLY}`, title: "Resting book liquidity" },
+  expiry: { label: "EXPIRY", width: `w-[64px] ${DESK_ONLY}`, title: "Time to resolution" },
 };
 
 /**
@@ -180,7 +195,9 @@ export function MarketGrid({
   return (
     <motion.div
       ref={bodyRef}
-      className="min-w-[720px] text-tiny"
+      // The 720px floor is what the full column set needs; below `sm` the
+      // grid drops to price and change, which fit a phone without scrolling.
+      className="min-w-0 text-tiny sm:min-w-[720px]"
       variants={staggerContainer}
       initial="initial"
       animate="animate"
